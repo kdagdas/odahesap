@@ -1,0 +1,71 @@
+/** HouseholdContext — loads current household + members + pending state. */
+import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { apiGet } from "./api";
+import { useAuth, AppUser } from "./auth";
+
+export type Household = {
+  household_id: string;
+  name: string;
+  invite_code: string;
+  created_by: string;
+  member_ids: string[];
+  pending_member_ids?: string[];
+  current_period_id: string;
+};
+export type Period = {
+  period_id: string;
+  household_id: string;
+  started_at: string;
+  closed_at: string | null;
+  status: "active" | "closed";
+};
+export type PendingHouseholdRef = { household_id: string; name: string };
+
+type Ctx = {
+  household: Household | null;
+  members: AppUser[];
+  pendingMembers: AppUser[];
+  pendingHousehold: PendingHouseholdRef | null; // when *I* am waiting
+  activePeriod: Period | null;
+  loading: boolean;
+  refresh: () => Promise<void>;
+};
+
+const HH = createContext<Ctx>({} as any);
+export const useHousehold = () => useContext(HH);
+
+export function HouseholdProvider({ children }: { children: React.ReactNode }) {
+  const { user } = useAuth();
+  const [household, setHousehold] = useState<Household | null>(null);
+  const [members, setMembers] = useState<AppUser[]>([]);
+  const [pendingMembers, setPendingMembers] = useState<AppUser[]>([]);
+  const [pendingHousehold, setPendingHousehold] = useState<PendingHouseholdRef | null>(null);
+  const [activePeriod, setActivePeriod] = useState<Period | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const refresh = useCallback(async () => {
+    if (!user) {
+      setHousehold(null); setMembers([]); setPendingMembers([]);
+      setPendingHousehold(null); setActivePeriod(null); setLoading(false);
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await apiGet<any>("/households/me");
+      setHousehold(res.household || null);
+      setMembers(res.members || []);
+      setPendingMembers(res.pending_members || []);
+      setPendingHousehold(res.pending_household || null);
+      setActivePeriod(res.active_period || null);
+    } catch (e) { console.log("household refresh failed", e); }
+    finally { setLoading(false); }
+  }, [user]);
+
+  useEffect(() => { refresh(); }, [refresh]);
+
+  return (
+    <HH.Provider value={{ household, members, pendingMembers, pendingHousehold, activePeriod, loading, refresh }}>
+      {children}
+    </HH.Provider>
+  );
+}

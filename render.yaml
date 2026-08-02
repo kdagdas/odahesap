@@ -1,0 +1,26 @@
+# Render Blueprint — https://render.com/docs/blueprint-spec
+# "New +" > "Blueprint" > bu repoyu sec. Secretler repoda degil, Render
+# panelinde tanimlanir (sync: false olanlar deploy sirasinda sorulur).
+services:
+  - type: web
+    name: odahesap-api
+    runtime: python
+    plan: free
+    region: frankfurt
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn server:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.7"
+      - key: DB_NAME
+        value: odahesap_db
+      - key: GEMINI_MODEL
+        value: gemini-3.5-flash
+      - key: SESSION_DAYS
+        value: "90"
+      - key: MONGO_URL
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false

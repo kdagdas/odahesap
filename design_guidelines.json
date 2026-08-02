@@ -1,0 +1,204 @@
+{
+  "app_name": "OdaHesap (Roommate Expense Splitter)",
+  "personality": "1 iOS-Native Clean",
+  "personality_one_liner": "A warm, trustworthy, and highly readable iOS-native experience that removes the stress from sharing roommate finances.",
+  "color": {
+    "surface": "#FDFDFB",
+    "onSurface": "#1C1B1A",
+    "surfaceSecondary": "#F4F2EC",
+    "onSurfaceSecondary": "#3A3836",
+    "surfaceTertiary": "#EBE7DF",
+    "onSurfaceTertiary": "#585551",
+    "surfaceInverse": "#262524",
+    "onSurfaceInverse": "#FDFDFB",
+    "brand": "#C86A53",
+    "brandPrimary": "#C86A53",
+    "onBrandPrimary": "#FFFFFF",
+    "brandSecondary": "#D88673",
+    "onBrandSecondary": "#FFFFFF",
+    "brandTertiary": "#FCE9E4",
+    "onBrandTertiary": "#A54D39",
+    "success": "#607A65",
+    "onSuccess": "#FFFFFF",
+    "warning": "#DFA042",
+    "onWarning": "#FFFFFF",
+    "error": "#B84A3E",
+    "onError": "#FFFFFF",
+    "info": "#607A65",
+    "onInfo": "#FFFFFF",
+    "border": "#E1DDD4",
+    "borderStrong": "#CCC6B8",
+    "divider": "#EAE6DE",
+    "dark": {
+      "surface": "#1A1918",
+      "onSurface": "#FDFDFB",
+      "surfaceSecondary": "#242322",
+      "onSurfaceSecondary": "#EAE6DE",
+      "surfaceTertiary": "#312F2D",
+      "onSurfaceTertiary": "#CCC6B8",
+      "surfaceInverse": "#FDFDFB",
+      "onSurfaceInverse": "#1C1B1A",
+      "brand": "#C86A53",
+      "brandPrimary": "#D88673",
+      "onBrandPrimary": "#1A1918",
+      "brandSecondary": "#E0A092",
+      "onBrandSecondary": "#1A1918",
+      "brandTertiary": "#45251C",
+      "onBrandTertiary": "#FCE9E4",
+      "success": "#75937B",
+      "onSuccess": "#1A1918",
+      "warning": "#E8B263",
+      "onWarning": "#1A1918",
+      "error": "#D16B5F",
+      "onError": "#1A1918",
+      "border": "#312F2D",
+      "borderStrong": "#4A4744",
+      "divider": "#2A2827"
+    }
+  },
+  "typography": {
+    "displayFontFamily": "Plus Jakarta Sans",
+    "textFontFamily": "Plus Jakarta Sans",
+    "scale": {
+      "sm": 12,
+      "base": 14,
+      "lg": 16,
+      "xl": 20,
+      "2xl": 24
+    }
+  },
+  "spacing": {
+    "rule": "Generous vertical breathing room. Accommodate longer Turkish words (e.g. 'Denkleştir', 'Harcamalar') without cramping or truncation. Cards always get md/lg padding.",
+    "xs": 4,
+    "sm": 8,
+    "md": 12,
+    "lg": 16,
+    "xl": 24,
+    "2xl": 32,
+    "3xl": 48
+  },
+  "radius_tokens": {
+    "sm": 6,
+    "md": 12,
+    "lg": 20,
+    "pill": 999
+  },
+  "shadow_tier": "1",
+  "navigation": "bottom_tabs",
+  "icon_set": "Phosphor",
+  "glassmorphism": {
+    "enabled": true,
+    "do's": [
+      "Use frosted glass overlays on bottom tab bars",
+      "Use glass on sticky headers over scrolling feeds like Harcamalar",
+      "Use glass on the 'Settle Up / Denkleştir' sticky bottom CTA container"
+    ],
+    "dont's": [
+      "Never blur item list rows or form inputs",
+      "Do not blur entire screens"
+    ]
+  },
+  "platform_libraries": {
+    "glass": {
+      "ios": "expo-glass-effect",
+      "android": "expo-blur",
+      "low_end_android_fallback": "solid surfaceSecondary"
+    },
+    "image": "expo-image",
+    "blur": "expo-blur",
+    "bottom_sheet": "@gorhom/bottom-sheet",
+    "animation": "react-native-reanimated",
+    "gesture": "react-native-gesture-handler"
+  },
+  "screens": [
+    {
+      "name": "Panel (Dashboard)",
+      "purpose": "Overview of the household pool, showing who paid what, with a filterable running total.",
+      "states": {
+        "loading": "Skeleton UI for top balance cards and recent list",
+        "empty": "Illustration of a happy apartment with text 'Henüz bir harcama yok. İlk fişi tara!' (No expenses yet. Scan the first receipt!)",
+        "error": "Error loading household data with a 'Tekrar Dene' (Retry) CTA"
+      },
+      "layout": "Top section uses a hero card with a warm sand texture and glass overlay showing 'Ev Bakiyesi' (Household Balance). Below it: quick breakdown per roommate (Avatar + Net Balance). Bottom half: Filterable sticky tabs for 'Tümü' (All), 'Bu Ay' (This Month) over a scrolling list of recent expenses."
+    },
+    {
+      "name": "Fiş Tara (Receipt Scan Capture)",
+      "purpose": "Camera capture interface dedicated to framing and snapping a German grocery receipt.",
+      "states": {
+        "loading": "Camera initializing",
+        "empty": "Camera viewfinder with a rectangular framing guide and edge detection hints",
+        "error": "Camera permission denied message"
+      },
+      "layout": "Full-screen camera. Minimal UI. Prominent capture button at the bottom. A small 'Galeriden Seç' (Choose from Gallery) icon next to it. After capture, show a 'Fatura okunuyor...' (Reading receipt...) processing overlay."
+    },
+    {
+      "name": "Fiş İnceleme (OCR Review & Correction)",
+      "purpose": "Editable line-item list to fix OCR mistakes and assign items to specific roommates or household.",
+      "states": {
+        "loading": "Waiting for Gemini Vision API to finish parsing",
+        "empty": "No items found (fallback to manual entry)",
+        "error": "OCR failed, show 'Fiş okunamadı, lütfen manuel girin' (Receipt could not be read, please enter manually)"
+      },
+      "layout": "Three-part stack: 1. Top sticky header with receipt thumbnail and total. 2. Scrollable list of items. Each row has inline editing (Name, Price right-aligned) and a 3-way segment chip below it: 'Kendim' (Self), 'Ev' (Household), 'Oda Arkadaşı' (Roommate). 3. Fixed bottom glass container with recalculating 'Toplam' and primary 'Kaydet' (Save) CTA."
+    },
+    {
+      "name": "Harcamalar (Expenses & History)",
+      "purpose": "Chronological archive of all household and personal expenses, separated by settled periods.",
+      "states": {
+        "loading": "Centered spinner",
+        "empty": "Text: 'Geçmiş harcama bulunmuyor' (No past expenses)",
+        "error": "Readable error message + Retry button"
+      },
+      "layout": "List-heavy view with a glass sticky header. Filterable by person and date. Visual separation between current active period and archived 'Kapatılmış Dönemler' (Closed Periods)."
+    },
+    {
+      "name": "Denge (Settle Up)",
+      "purpose": "Simplified debt visualization showing who owes whom, and the final action to close the period.",
+      "states": {
+        "loading": "Centered spinner",
+        "empty": "Text: 'Herkes ödeşmiş durumda! 🎉' (Everyone is settled up!)",
+        "error": "Readable error message + Retry button"
+      },
+      "layout": "Clean cards stating 'A kişisi B kişisine X € borçlu' (Person A owes Person B X €). Prominent 'Dönemi Kapat & Denkleştir' (Close Period & Settle) primary CTA pinned at the bottom in a safe-area cleared glass container."
+    },
+    {
+      "name": "Manuel Ekle (Manual Entry)",
+      "purpose": "A quick form to add an expense without a receipt (e.g., utilities, rent).",
+      "states": {
+        "loading": "Saving...",
+        "empty": "Standard blank form",
+        "error": "Validation errors on inputs"
+      },
+      "layout": "Single column form. Floating labels above inputs. Large amount input at the top. Same 3-way assignment chip picker (Kendim, Ev, Oda Arkadaşı) and free-text category tags. Sticky 'Ekle' (Add) button over keyboard."
+    }
+  ],
+  "images": {
+    "hero_background": {
+      "url": "https://images.unsplash.com/photo-1534171472159-edb6d1e0b63c?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTF8MHwxfHNlYXJjaHwxfHxhYnN0cmFjdCUyMHdhcm0lMjBzYW5kJTIwdGV4dHVyZXxlbnwwfHx8fDE3ODU2ODg4Mjd8MA&ixlib=rb-4.1.0&q=85",
+      "alt": "Abstract warm sand texture representing a calm, neutral household"
+    },
+    "receipt_placeholder": {
+      "url": "https://images.pexels.com/photos/14647295/pexels-photo-14647295.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+      "alt": "Close-up of a receipt showing details"
+    }
+  },
+  "haptics": {
+    "events": {
+      "tab_press": "selection",
+      "primary_button_press": "light",
+      "assignment_chip_select": "light",
+      "save_success": "success",
+      "item_delete": "medium",
+      "camera_shutter": "medium"
+    }
+  },
+  "instructions_to_main_agent": [
+    "Strictly follow the color palette. Do NOT introduce blue, indigo, or purple. Terracotta (brand) and Sage Green (success) are the primary accents on top of warm off-white.",
+    "Typography MUST use 'Plus Jakarta Sans'. Accommodate long Turkish copy (e.g., 'Denkleştir', 'Oda Arkadaşı') by letting text wrap or using flexible flex layouts. Avoid fixed widths for text containers.",
+    "Implement the 'Fiş İnceleme' (OCR Review) screen with editable line items. Users must be able to change price/name and assign targets via chips right in the row.",
+    "Ensure the 'Denge' (Settle) screen uses a debt simplification algorithm visualization. Clean cards should declare 'A owes B' clearly.",
+    "Implement sticky primary CTAs over scrolling content using the exact glassmorphism setup defined in the design system.",
+    "The camera capture UI should be minimal. Only show framing guides and a shutter button. Transition to a loading state overlay while Gemini OCR is processing.",
+    "Always use the provided background image with a vertical gradient-to-dark scrim (transparent to surfaceInverse) before placing any white text on it."
+  ]
+}

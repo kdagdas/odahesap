@@ -1,0 +1,6 @@
+# Test-only dependencies (not installed on the deployed server).
+-r requirements.txt
+pytest>=8.0.0
+pytest-xdist>=3.6.0
+requests>=2.31.0
+pillow>=10.0.0

@@ -1,0 +1,46 @@
+{
+  "summary": "OdaHesap iteration 2 backend fully verified. 22/22 pytest tests passed against public preview URL, covering: (a) invite approval flow with pending_member_ids, GET /households/me pending states, approve (idempotent 404 for unknown), reject, (b) expense_date parsing (YYYY-MM-DD and DD.MM.YYYY -> normalized), quantity persisted per item, GET /expenses sorted expense_date desc, (c) new GET /api/members/{user_id}/expenses drill-down with per-caller visibility filter — Carol correctly sees only Alice's household expenses (household_total 33.00, roommate_total 0.00) while Bob sees both including Alice's roommate-for-Bob (roommate_total 12.00), (d) /api/balances now returns 'roommate_paid' per user (Bob 12.0, Alice 0.0, Carol 0.0 verified), (e) balance math smoke: Alice +22 / Bob +1 / Carol -23 with zero-sum property, (f) self-expense visibility invariant re-verified with fresh trio, (g) regression auth-401 with bogus session_id still returns 401, (h) OCR returns 'date' as 'YYYY-MM-DD' (normalized from 'Datum: 15.10.2025') and each item has a numeric 'quantity' (2 X Milch detected).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/households/me", "issue": "When user is neither a member nor pending, response omits 'pending_household' key entirely; test tolerates both null/missing. Consider always including the key for schema stability."},
+      {"endpoint": "POST /api/households/join", "issue": "If a pending user calls join again with the same code, returns 200 {pending:true, household:<old_pending_household>}, silently ignoring the new invite_code. Consider allowing switching pending household or explicit 409."},
+      {"endpoint": "POST /api/households/join", "issue": "No validation that invite_code is 6 digits — passes strip() and does a direct find. Non-existent still 404 which is fine, but could reject format early."},
+      {"endpoint": "POST /api/households/reject", "issue": "Endpoint returns 200 {ok:true} even when target user_id is not in pending_member_ids (no-op). Consider 404 for consistency with approve()."},
+      {"endpoint": "POST /api/households/approve", "issue": "No check that caller is 'created_by' owner — any current member can approve. If invite approval was intended to be owner-only, this needs enforcement."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration2.py",
+    "/app/backend/tests/conftest.py",
+    "/app/test_reports/pytest/iteration2_results.xml"
+  ],
+  "action_items": [
+    "Decide whether /households/approve should be restricted to the household creator (owner-only) or remain member-approvable; currently any member can approve/reject pending users.",
+    "Consider returning 404 from /households/reject when the user_id is not in pending_member_ids (mirrors approve behavior).",
+    "Consider always emitting 'pending_household' key in /households/me (null when absent) for a stable response schema for the mobile client.",
+    "Optional: allow a pending user to switch to a different invite_code (currently silently returns the previous pending household)."
+  ],
+  "critical_code_review_comments": [
+    "parse_date() in server.py silently returns None for unparseable date strings — an invalid client-supplied expense_date falls back to today() without warning. Consider raising 400 for a supplied-but-invalid expense_date so users notice typos.",
+    "member_expenses() re-applies _visible_filter but 404s only if member_id not in hh['member_ids']; a member with zero visible expenses returns {expenses: [], household_total: 0, roommate_total: 0} which is correct, but the client may need to distinguish 'unknown' vs 'empty' — it currently does via 404, fine.",
+    "server.py is now 738 lines (>700 guideline). Consider splitting routers (auth, households, expenses, balances, ocr) into separate modules for maintainability.",
+    "OCR endpoint still lacks image size/MIME validation; base64 payload can be arbitrarily large before hitting Gemini.",
+    "@app.on_event('startup'/'shutdown') is deprecated in modern FastAPI — migrate to lifespan context manager."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration2.py (new)"
+  ],
+  "success_rate": {"backend": "100% (22/22)", "frontend": "N/A - not requested"},
+  "seed_data_creation": "Re-used conftest.py session-scoped seed of TEST_ users (alice/bob/carol/dave) with fixed session tokens in odahesap_db. Added module-scoped 'fresh_state' fixture in test_iteration2.py that wipes any households/periods/expenses referencing the test user_ids before and after the module run, so the suite is fully re-runnable.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Run with `cd /app/backend && python -m pytest tests/test_iteration2.py -v -n 0` (serial required; suite is stateful across classes). OCR test calls real Gemini 3 Flash Vision via emergentintegrations and takes ~4-5s. NOTE: the old iteration_1 file /app/backend/tests/test_odahesap_backend.py is now stale — its join tests still assert auto-membership which is no longer the behaviour. Either delete it or migrate assertions to the pending-approval flow before running as regression. Base URL comes from EXPO_BACKEND_URL in frontend/.env; conftest currently defaults to https://expense-split-107.preview.emergentagent.com and reads MONGO_URL / DB_NAME from /app/backend/.env.",
+  "rca_of_issue": "N/A — no bugs found. All iteration-2 acceptance criteria verified end-to-end including the visibility invariant on the new drill-down endpoint (Carol vs Bob viewpoints on Alice's roommate-for-Bob expense) and the OCR schema additions (date normalized to YYYY-MM-DD, per-item quantity)."
+}
