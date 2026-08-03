@@ -60,7 +60,16 @@ IP'si sabit değildir.
 ## APK üretme
 
 `frontend/.env` içindeki `EXPO_PUBLIC_BACKEND_URL` **derleme anında** APK'ya gömülür.
-Sunucu adresi değişirse APK'yı yeniden derlemek gerekir.
+Sunucu adresi değişirse APK'yı yeniden derlemek gerekir. Yayındaki değer:
+
+```
+EXPO_PUBLIC_BACKEND_URL=https://odahesap-api.onrender.com
+```
+
+> `gradlew clean` **çalıştırma.** `clean` görevi CMake'i yeniden yapılandırıyor,
+> NDK 27 ise CMake 3.22'nin istediği `gold` bağlayıcısını desteklemiyor ve derleme
+> patlıyor. Temiz derleme için `android/app/build`, `android/app/.cxx` ve
+> `android/build` klasörlerini elle sil, sonra doğrudan `assembleRelease` çalıştır.
 
 ```bash
 cd frontend
