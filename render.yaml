@@ -24,3 +24,8 @@ services:
         sync: false
       - key: GEMINI_API_KEY
         sync: false
+      # Firebase servis hesabi JSON'unun tamami. Blueprint ile yonetilen bir
+      # serviste burada bildirilmeyen degiskenler deploy sirasinda silinebilir,
+      # o yuzden panele elle eklenecek olsa bile burada durmali.
+      - key: FIREBASE_SERVICE_ACCOUNT
+        sync: false
