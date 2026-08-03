@@ -20,7 +20,9 @@ export default function Settings() {
   const [nameDraft, setNameDraft] = useState("");
   const [savingName, setSavingName] = useState(false);
   const [transferTo, setTransferTo] = useState<string | null>(null);
+  const [removeTarget, setRemoveTarget] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   // Join requests land while the app is already open — without re-fetching on
   // focus, the admin never sees them until a full restart.
@@ -39,13 +41,24 @@ export default function Settings() {
   };
 
   const doTransfer = async (userId: string) => {
-    setBusy(userId); setMessage(null);
+    setBusy(userId); setMessage(null); setError(null);
     try {
       await apiPost("/households/transfer-admin", { user_id: userId });
       await refresh();
       setTransferTo(null);
       setMessage("Yöneticilik devredildi");
-    } catch (e: any) { setMessage(e?.message || "Devredilemedi"); }
+    } catch (e: any) { setError(e?.message || "Devredilemedi"); }
+    finally { setBusy(null); }
+  };
+
+  const doRemove = async (userId: string, name: string) => {
+    setBusy(userId); setMessage(null); setError(null);
+    try {
+      await apiPost("/households/remove-member", { user_id: userId });
+      await refresh();
+      setRemoveTarget(null);
+      setMessage(`${name} evden çıkarıldı`);
+    } catch (e: any) { setError(e?.message || "Çıkarılamadı"); }
     finally { setBusy(null); }
   };
 
@@ -270,14 +283,36 @@ export default function Settings() {
                           <Text style={styles.confirmSmallTxt}>Onayla</Text>
                         </Pressable>
                       </View>
+                    ) : removeTarget === m.user_id ? (
+                      <View style={styles.confirmRow}>
+                        <Pressable onPress={() => setRemoveTarget(null)} hitSlop={8} testID={`cancel-remove-${m.user_id}`}>
+                          <Text style={styles.cancelSmall}>Vazgeç</Text>
+                        </Pressable>
+                        <Pressable
+                          style={styles.removeConfirm}
+                          onPress={() => doRemove(m.user_id, m.name)}
+                          testID={`confirm-remove-${m.user_id}`}
+                        >
+                          <Text style={styles.confirmSmallTxt}>Çıkar</Text>
+                        </Pressable>
+                      </View>
                     ) : (
-                      <Pressable
-                        onPress={() => { setTransferTo(m.user_id); setMessage(null); }}
-                        hitSlop={8}
-                        testID={`transfer-admin-${m.user_id}`}
-                      >
-                        <Text style={styles.transferLink}>Yönetici yap</Text>
-                      </Pressable>
+                      <View style={styles.actionsCol}>
+                        <Pressable
+                          onPress={() => { setTransferTo(m.user_id); setRemoveTarget(null); setMessage(null); setError(null); }}
+                          hitSlop={6}
+                          testID={`transfer-admin-${m.user_id}`}
+                        >
+                          <Text style={styles.transferLink}>Yönetici yap</Text>
+                        </Pressable>
+                        <Pressable
+                          onPress={() => { setRemoveTarget(m.user_id); setTransferTo(null); setMessage(null); setError(null); }}
+                          hitSlop={6}
+                          testID={`remove-member-${m.user_id}`}
+                        >
+                          <Text style={styles.removeLink}>Evden çıkar</Text>
+                        </Pressable>
+                      </View>
                     )
                   )}
                 </Card>
@@ -289,7 +324,14 @@ export default function Settings() {
                 yetkilerini kaybedersin.
               </Text>
             )}
+            {removeTarget && (
+              <Text style={styles.warnTxt}>
+                Çıkarılan kişi evi ve harcamaları göremez. Geçmiş dönemlerdeki payı
+                kayıtlarda kalır. Açık dönemde harcaması varsa önce dönemi kapatman gerekir.
+              </Text>
+            )}
             {message && <Text style={styles.message}>{message}</Text>}
+            {error && <Text style={styles.errorMsg} testID="settings-error">{error}</Text>}
           </>
         )}
 
@@ -341,6 +383,10 @@ const styles = StyleSheet.create({
   },
   adminBadgeTxt: { fontSize: 10, fontWeight: font.weights.bold, color: colors.onBrandSoft },
   transferLink: { color: colors.brand, fontSize: font.sizes.sm, fontWeight: font.weights.semibold },
+  removeLink: { color: colors.error, fontSize: font.sizes.sm, fontWeight: font.weights.semibold },
+  actionsCol: { alignItems: "flex-end", gap: 6 },
+  removeConfirm: { backgroundColor: colors.error, paddingHorizontal: spacing.md, paddingVertical: 6, borderRadius: radius.pill },
+  errorMsg: { color: colors.error, fontWeight: font.weights.semibold, textAlign: "center", marginTop: spacing.sm, lineHeight: 20 },
   confirmRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   cancelSmall: { color: colors.onSurfaceTertiary, fontSize: font.sizes.sm },
   confirmSmall: { backgroundColor: colors.brand, paddingHorizontal: spacing.md, paddingVertical: 6, borderRadius: radius.pill },

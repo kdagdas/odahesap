@@ -388,6 +388,41 @@ async def transfer_admin(body: MemberActionReq, user=Depends(get_current_user)):
     return {"ok": True, "admin_id": body.user_id}
 
 
+@api.post("/households/remove-member")
+async def remove_member(body: MemberActionReq, user=Depends(get_current_user)):
+    """Kick a member out — for people who moved out and deleted the app
+    without leaving the household themselves.
+
+    Guarded on purpose: member_ids drives how household expenses are split, so
+    removing someone mid-period silently re-splits every expense in it and
+    erases what they owed. Settle and close the period first, then remove.
+    """
+    hh = await require_admin(user["user_id"])
+    if body.user_id == user["user_id"]:
+        raise HTTPException(status_code=400, detail="Kendinizi çıkaramazsınız, 'Evden ayrıl'ı kullanın")
+    if body.user_id not in hh.get("member_ids", []):
+        raise HTTPException(status_code=404, detail="Bu kişi evin üyesi değil")
+
+    period = await get_active_period(hh["household_id"])
+    if period:
+        involved = await db.expenses.count_documents({
+            "household_id": hh["household_id"],
+            "period_id": period["period_id"],
+            "$or": [{"added_by": body.user_id}, {"target_user_id": body.user_id}],
+        })
+        if involved:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Bu kişinin açık dönemde {involved} harcaması var. Çıkarmadan önce "
+                       "ödeşip dönemi kapatın, yoksa herkesin payı yeniden hesaplanır.",
+            )
+
+    await db.households.update_one(
+        {"household_id": hh["household_id"]}, {"$pull": {"member_ids": body.user_id}}
+    )
+    return {"ok": True, "removed": body.user_id}
+
+
 @api.post("/households/approve")
 async def approve_member(body: MemberActionReq, user=Depends(get_current_user)):
     hh = await require_admin(user["user_id"])
@@ -811,11 +846,30 @@ def simplify_debts(net: Dict[str, float]) -> List[dict]:
     return transfers
 
 
+async def period_participants(household_id: str, period_id: str, member_ids: List[str]) -> List[str]:
+    """Current members plus anyone who took part in this period.
+
+    A member who has since been removed still belongs in the maths for the
+    periods they lived through — otherwise closing the books on an old period
+    would re-split their share among whoever happens to be around today.
+    """
+    rows = await db.expenses.find(
+        {"household_id": household_id, "period_id": period_id},
+        {"_id": 0, "added_by": 1, "target_user_id": 1},
+    ).to_list(5000)
+    extra = set()
+    for r in rows:
+        extra.add(r["added_by"])
+        if r.get("target_user_id"):
+            extra.add(r["target_user_id"])
+    return list(member_ids) + [u for u in sorted(extra) if u not in member_ids]
+
+
 async def _compute_balances(household_id: str, period_id: str) -> dict:
     hh = await db.households.find_one({"household_id": household_id}, {"_id": 0})
     if not hh:
         return {"net": {}, "transfers": [], "totals_paid": {}}
-    members = hh["member_ids"]
+    members = await period_participants(household_id, period_id, hh["member_ids"])
     n = len(members)
     net: Dict[str, float] = {m: 0.0 for m in members}
     totals_paid: Dict[str, float] = {m: 0.0 for m in members}
@@ -868,8 +922,13 @@ async def balances(period_id: Optional[str] = None, user=Depends(get_current_use
     if not period:
         return {"net": {}, "transfers": [], "totals_paid": {}, "members": []}
     result = await _compute_balances(hh["household_id"], period["period_id"])
+    # Include former members who took part in this period, so archived views
+    # show their name instead of an unresolved id.
+    participants = await period_participants(
+        hh["household_id"], period["period_id"], hh["member_ids"]
+    )
     members = await db.users.find(
-        {"user_id": {"$in": hh["member_ids"]}}, PUBLIC_USER_PROJECTION
+        {"user_id": {"$in": participants}}, PUBLIC_USER_PROJECTION
     ).to_list(50)
     result["members"] = members
     result["period"] = period
