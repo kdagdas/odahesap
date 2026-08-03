@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, EmailStr, Field
-from typing import List, Literal, Optional, Dict
+from typing import Iterable, List, Literal, Optional, Dict
 from datetime import datetime, timezone, timedelta, date
 from pathlib import Path
 import os
@@ -16,6 +16,8 @@ import logging
 import json
 import bcrypt
 import httpx
+
+import push
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
@@ -64,6 +66,19 @@ class HouseholdJoin(BaseModel):
 
 class HouseholdRename(BaseModel):
     name: str = Field(min_length=1, max_length=60)
+
+
+class DeviceRegisterReq(BaseModel):
+    token: str = Field(min_length=10, max_length=4096)
+    platform: str = "android"
+
+
+class NotificationPrefs(BaseModel):
+    """Per-user switches. Expense pushes are the chatty ones, so they get
+    their own toggle — a busy household can fire a dozen a day."""
+    new_expense: Optional[bool] = None
+    join_request: Optional[bool] = None
+    period_closed: Optional[bool] = None
 
 
 class MemberActionReq(BaseModel):
@@ -211,6 +226,45 @@ def admin_id(hh: dict) -> str:
     return hh.get("admin_id") or hh["created_by"]
 
 
+DEFAULT_PREFS = {"new_expense": True, "join_request": True, "period_closed": True}
+
+
+async def notify(user_ids: Iterable[str], title: str, body: str,
+                 kind: str, data: Optional[dict] = None) -> None:
+    """Push to these users, honouring their per-kind switches.
+
+    Never raises: a failed notification must not fail the action that caused
+    it. Dead tokens are pruned using what FCM reports back.
+    """
+    try:
+        ids = [u for u in dict.fromkeys(user_ids) if u]
+        if not ids or not push.is_configured():
+            return
+
+        users = await db.users.find(
+            {"user_id": {"$in": ids}}, {"_id": 0, "user_id": 1, "notif_prefs": 1}
+        ).to_list(50)
+        allowed = {
+            u["user_id"] for u in users
+            if {**DEFAULT_PREFS, **(u.get("notif_prefs") or {})}.get(kind, True)
+        }
+        if not allowed:
+            return
+
+        devices = await db.devices.find(
+            {"user_id": {"$in": list(allowed)}}, {"_id": 0, "token": 1}
+        ).to_list(200)
+        tokens = [d["token"] for d in devices]
+        if not tokens:
+            return
+
+        result = await push.send_to_tokens(tokens, title, body, {**(data or {}), "kind": kind})
+        if result["invalid_tokens"]:
+            await db.devices.delete_many({"token": {"$in": result["invalid_tokens"]}})
+    except Exception:
+        logger.exception("Bildirim gonderilemedi (islem etkilenmedi)")
+
+
 async def require_admin(user_id: str) -> dict:
     """Return the caller's household, or 403 if they don't run it."""
     hh = await get_user_household(user_id)
@@ -285,7 +339,45 @@ async def update_profile(body: ProfileUpdate, user=Depends(get_current_user)):
 
 @api.get("/auth/me")
 async def auth_me(user=Depends(get_current_user)):
-    return {"user": public_user(user)}
+    u = public_user(user)
+    u["notif_prefs"] = {**DEFAULT_PREFS, **(user.get("notif_prefs") or {})}
+    return {"user": u, "push_enabled": push.is_configured()}
+
+
+@api.post("/devices/register")
+async def register_device(body: DeviceRegisterReq, user=Depends(get_current_user)):
+    """Store this phone's FCM token.
+
+    Keyed on the token, not the user: reinstalls mint a new token, and the same
+    phone can be handed to a different account. Upserting on the token keeps
+    exactly one row per device and re-points it at whoever logged in last.
+    """
+    await db.devices.update_one(
+        {"token": body.token},
+        {"$set": {
+            "token": body.token,
+            "user_id": user["user_id"],
+            "platform": body.platform,
+            "updated_at": now_utc(),
+        }},
+        upsert=True,
+    )
+    return {"ok": True}
+
+
+@api.post("/devices/unregister")
+async def unregister_device(body: DeviceRegisterReq, user=Depends(get_current_user)):
+    await db.devices.delete_one({"token": body.token, "user_id": user["user_id"]})
+    return {"ok": True}
+
+
+@api.patch("/auth/notifications")
+async def update_notification_prefs(body: NotificationPrefs, user=Depends(get_current_user)):
+    prefs = {**DEFAULT_PREFS, **(user.get("notif_prefs") or {})}
+    for key, value in body.model_dump(exclude_none=True).items():
+        prefs[key] = bool(value)
+    await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"notif_prefs": prefs}})
+    return {"notif_prefs": prefs}
 
 
 @api.post("/auth/logout")
@@ -362,6 +454,13 @@ async def join_household(body: HouseholdJoin, user=Depends(get_current_user)):
         {"$addToSet": {"pending_member_ids": user["user_id"]}},
     )
     hh = await db.households.find_one({"household_id": hh["household_id"]}, {"_id": 0})
+    await notify(
+        [admin_id(hh)],
+        "Yeni katılma isteği",
+        f"{user['name']} \"{hh['name']}\" evine katılmak istiyor.",
+        "join_request",
+        {"household_id": hh["household_id"]},
+    )
     return {"pending": True, "household": hh}
 
 
@@ -434,6 +533,13 @@ async def approve_member(body: MemberActionReq, user=Depends(get_current_user)):
             "$pull": {"pending_member_ids": body.user_id},
             "$addToSet": {"member_ids": body.user_id},
         },
+    )
+    await notify(
+        [body.user_id],
+        "İsteğin onaylandı",
+        f"Artık \"{hh['name']}\" evindesin. Harcamaları görebilirsin.",
+        "join_request",
+        {"household_id": hh["household_id"]},
     )
     return {"ok": True}
 
@@ -752,6 +858,28 @@ async def create_expense(body: ExpenseCreate, user=Depends(get_current_user)):
         "created_at": now_utc(),
     }
     await db.expenses.insert_one(doc.copy())
+
+    # Who hears about it follows who it affects: household expenses go to
+    # everyone else, a roommate expense only to the person it lands on, and a
+    # "self" expense to nobody — it is private by definition.
+    label = body.merchant or body.category or ("Fiş" if body.source == "receipt" else "Harcama")
+    amount = f"{doc['total']:.2f}".replace(".", ",")
+    if body.target_type == "household":
+        await notify(
+            [m for m in hh["member_ids"] if m != user["user_id"]],
+            "Yeni ev harcaması",
+            f"{user['name']} · {label} · {amount} €",
+            "new_expense",
+            {"expense_id": expense_id},
+        )
+    elif body.target_type == "roommate" and body.target_user_id:
+        await notify(
+            [body.target_user_id],
+            "Senin için bir harcama",
+            f"{user['name']} senin için {label} aldı · {amount} €",
+            "new_expense",
+            {"expense_id": expense_id},
+        )
     return {"expense": doc}
 
 
@@ -980,6 +1108,13 @@ async def close_period(user=Depends(get_current_user)):
     await db.households.update_one(
         {"household_id": hh["household_id"]}, {"$set": {"current_period_id": new_period_id}}
     )
+    await notify(
+        [m for m in hh["member_ids"] if m != user["user_id"]],
+        "Dönem kapatıldı",
+        f"{user['name']} dönemi kapattı, yeni dönem başladı. Bakiyeler sıfırlandı.",
+        "period_closed",
+        {"household_id": hh["household_id"]},
+    )
     return {"closed_period_id": period["period_id"], "new_period": new_period}
 
 
@@ -1055,7 +1190,12 @@ async def on_startup():
     await db.households.create_index("pending_member_ids")
     await db.periods.create_index([("household_id", 1), ("status", 1)])
     await db.expenses.create_index([("household_id", 1), ("period_id", 1)])
-    logger.info("OdaHesap backend started")
+    await db.devices.create_index("token", unique=True)
+    await db.devices.create_index("user_id")
+    logger.info(
+        "OdaHesap backend started (push: %s)",
+        "acik" if push.is_configured() else "kapali",
+    )
 
 
 @app.on_event("shutdown")

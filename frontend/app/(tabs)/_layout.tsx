@@ -95,8 +95,11 @@ const styles = StyleSheet.create({
     width: 48, height: 48, borderRadius: 24,
     alignItems: "center", justifyContent: "center",
     backgroundColor: colors.brandSoft,
-    // Lift it above the bar so it reads as the primary action.
-    marginTop: -10,
+    // The circle is twice the height of the other icons, so at the default
+    // position its lower edge grazed the "Fiş Tara" label. Lift the whole
+    // thing — circle and glyph together — clear of the text.
+    marginTop: -20,
+    marginBottom: 6,
   },
   centerIconFocused: {
     backgroundColor: colors.brand,

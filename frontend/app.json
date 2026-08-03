@@ -22,8 +22,9 @@
         "backgroundColor": "#101C33"
       },
       "edgeToEdgeEnabled": true,
+      "googleServicesFile": "./google-services.json",
       "package": "com.odahesap.app",
-      "versionCode": 2,
+      "versionCode": 6,
       "permissions": ["CAMERA", "READ_EXTERNAL_STORAGE", "READ_MEDIA_IMAGES"],
       "blockedPermissions": [
         "android.permission.RECORD_AUDIO",
@@ -60,6 +61,13 @@
           "imageWidth": 200,
           "resizeMode": "contain",
           "backgroundColor": "#101C33"
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#0EA5A5",
+          "defaultChannel": "default"
         }
       ]
     ],

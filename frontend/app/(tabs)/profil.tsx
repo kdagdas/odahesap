@@ -2,7 +2,7 @@
  *  Eskiden /settings altında bir yığın ekranıydı ve yalnızca Panel'deki avatara
  *  dokunarak açılıyordu — kimse bulamıyordu. Artık alt menüde kendi sekmesi var. */
 import { useCallback, useState } from "react";
-import { View, Text, StyleSheet, ScrollView, Pressable, Share, Platform, ActivityIndicator, TextInput } from "react-native";
+import { View, Text, StyleSheet, ScrollView, Pressable, Share, Platform, ActivityIndicator, TextInput, Switch } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -29,6 +29,20 @@ export default function Profil() {
   // Join requests land while the app is already open — without re-fetching on
   // focus, the admin never sees them until a full restart.
   useFocusEffect(useCallback(() => { refresh(); }, [refresh]));
+
+  const prefs = (user as any)?.notif_prefs ?? {
+    new_expense: true, join_request: true, period_closed: true,
+  };
+
+  const setPref = async (key: string, value: boolean) => {
+    try {
+      await api("/auth/notifications", {
+        method: "PATCH",
+        body: JSON.stringify({ [key]: value }),
+      });
+      await refreshAuth();
+    } catch (e: any) { setError(e?.message || "Ayar kaydedilemedi"); }
+  };
 
   const saveName = async () => {
     const next = nameDraft.trim();
@@ -343,6 +357,29 @@ export default function Profil() {
           </>
         )}
 
+        <Text style={styles.section}>Bildirimler</Text>
+        <Card style={{ padding: spacing.md, gap: spacing.xs }}>
+          {[
+            { key: "new_expense", label: "Yeni harcama", desc: "Ev arkadaşın harcama eklediğinde" },
+            { key: "join_request", label: "Katılma istekleri", desc: "İstek geldiğinde veya onaylandığında" },
+            { key: "period_closed", label: "Dönem kapatma", desc: "Dönem kapatılıp sıfırlandığında" },
+          ].map((row) => (
+            <View key={row.key} style={styles.prefRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.prefLabel}>{row.label}</Text>
+                <Text style={styles.prefDesc}>{row.desc}</Text>
+              </View>
+              <Switch
+                value={prefs[row.key] !== false}
+                onValueChange={(v) => setPref(row.key, v)}
+                trackColor={{ false: colors.border, true: colors.brand }}
+                thumbColor="#fff"
+                testID={`pref-${row.key}`}
+              />
+            </View>
+          ))}
+        </Card>
+
         <View style={styles.danger}>
           {household && (
             <Pressable style={styles.leaveBtn} onPress={leave} testID="leave-household-btn">
@@ -413,6 +450,9 @@ const styles = StyleSheet.create({
     padding: spacing.md, borderRadius: radius.md,
   },
   warnBoxTxt: { flex: 1, fontSize: font.sizes.sm, color: "#92400E", lineHeight: 18 },
+  prefRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.sm },
+  prefLabel: { fontSize: font.sizes.base, fontWeight: font.weights.semibold, color: colors.onSurface },
+  prefDesc: { fontSize: font.sizes.sm, color: colors.onSurfaceTertiary, marginTop: 1 },
   homeNameRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: spacing.md },
   nameInput: {
     borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surfaceSecondary,

@@ -10,6 +10,7 @@ import React, {
   useState,
 } from "react";
 import { apiPost, apiGet, getToken, setToken } from "./api";
+import { registerForPush, unregisterPush } from "./notifications";
 
 export type AppUser = {
   user_id: string;
@@ -41,6 +42,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const res = await apiGet<{ user: AppUser }>("/auth/me");
       setUser(res.user);
+      // Re-register on every successful session check: FCM rotates tokens, and
+      // a stale one means silent, undiagnosable notification loss.
+      registerForPush();
     } catch {
       setUser(null);
     }
@@ -65,6 +69,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
     await setToken(res.session_token);
     setUser(res.user);
+    registerForPush();
   }, []);
 
   const register = useCallback(
@@ -76,11 +81,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
       await setToken(res.session_token);
       setUser(res.user);
+      registerForPush();
     },
     []
   );
 
   const logout = useCallback(async () => {
+    // Detach the device first — after the token is cleared the call would 401
+    // and this phone would keep receiving the previous user's notifications.
+    await unregisterPush();
     try {
       await apiPost("/auth/logout", {});
     } catch {}

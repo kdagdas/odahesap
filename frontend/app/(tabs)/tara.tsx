@@ -117,6 +117,10 @@ export default function Tara() {
         </View>
       </View>
 
+      {/* Fades the camera out behind the buttons so the white icons stay
+          legible over a bright receipt. */}
+      <View style={styles.controlsScrim} pointerEvents="none" />
+
       {processing && (
         <View style={styles.processing} testID="ocr-processing">
           <ActivityIndicator size="large" color="#fff" />
@@ -149,19 +153,33 @@ export default function Tara() {
 }
 
 const CORNER = 24;
+// Shutter (84) + padding above and below. The guide frame reserves this much
+// room at the bottom so the two never share space.
+const CONTROLS_HEIGHT = 150;
+
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#000" },
   rootLight: { flex: 1, backgroundColor: colors.surface },
-  frame: { ...StyleSheet.absoluteFillObject, alignItems: "center", justifyContent: "center" },
-  frameBox: { width: "78%", aspectRatio: 0.55, position: "relative" },
+  // Centre the guide inside the space *above* the button row — centring it in
+  // the whole screen pushed the lower corners down among the buttons.
+  frame: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingBottom: CONTROLS_HEIGHT,
+    paddingTop: spacing.xl,
+    gap: spacing.lg,
+  },
+  frameBox: { width: "74%", aspectRatio: 0.62, position: "relative" },
   corner: { position: "absolute", width: CORNER, height: CORNER, borderColor: "#fff" },
   cornerTL: { top: 0, left: 0, borderTopWidth: 3, borderLeftWidth: 3, borderTopLeftRadius: 12 },
   cornerTR: { top: 0, right: 0, borderTopWidth: 3, borderRightWidth: 3, borderTopRightRadius: 12 },
   cornerBL: { bottom: 0, left: 0, borderBottomWidth: 3, borderLeftWidth: 3, borderBottomLeftRadius: 12 },
   cornerBR: { bottom: 0, right: 0, borderBottomWidth: 3, borderRightWidth: 3, borderBottomRightRadius: 12 },
+  // Sits under the box in normal flow now, so it can never land on the buttons.
   frameHint: {
-    position: "absolute", bottom: 160, alignSelf: "center", flexDirection: "row", alignItems: "center", gap: 6,
-    backgroundColor: "rgba(0,0,0,0.6)", paddingHorizontal: spacing.md, paddingVertical: 6, borderRadius: radius.pill,
+    flexDirection: "row", alignItems: "center", gap: 6,
+    backgroundColor: "rgba(0,0,0,0.55)", paddingHorizontal: spacing.md, paddingVertical: 7, borderRadius: radius.pill,
   },
   frameHintTxt: { color: "#fff", fontSize: font.sizes.base, fontWeight: font.weights.semibold },
   processing: {
@@ -173,11 +191,14 @@ const styles = StyleSheet.create({
   errorWrap: { position: "absolute", top: 60, left: 16, right: 16 },
   errorInner: { backgroundColor: colors.error, padding: spacing.md, borderRadius: radius.md },
   errorTxt: { color: "#fff", fontWeight: font.weights.semibold, textAlign: "center" },
+  controlsScrim: {
+    position: "absolute", left: 0, right: 0, bottom: 0, height: CONTROLS_HEIGHT + 60,
+    backgroundColor: "rgba(0,0,0,0.45)",
+  },
   controls: {
     position: "absolute", left: 0, right: 0, bottom: 0,
     flexDirection: "row", alignItems: "center", justifyContent: "space-around",
     paddingHorizontal: spacing.xl, paddingBottom: spacing.md, paddingTop: spacing.lg,
-    backgroundColor: "rgba(0,0,0,0.4)",
   },
   sideBtn: {
     width: 52, height: 52, borderRadius: 26, backgroundColor: "rgba(255,255,255,0.18)",
