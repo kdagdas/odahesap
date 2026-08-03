@@ -133,16 +133,21 @@ export default function Harcamalar() {
                     <Avatar name={author?.name || "?"} size={40} avatarId={(author as any)?.avatar_id} />
                     <View style={{ flex: 1, gap: 4 }}>
                       <View style={styles.titleRow}>
+                        {/* Who paid goes in the title; the merchant lives in the
+                            coloured badge. They used to both show the merchant. */}
                         <Text style={styles.expTitle} numberOfLines={1}>
-                          {e.merchant || e.category || (e.source === "receipt" ? "Fiş" : "Manuel")}
+                          {author?.name || "Bilinmeyen"}
                         </Text>
-                        {e.merchant && <MerchantBadge name={e.merchant} />}
+                        {e.merchant
+                          ? <MerchantBadge name={e.merchant} />
+                          : <Text style={styles.expSubtle}>
+                              {e.category || (e.source === "receipt" ? "Fiş" : "Manuel")}
+                            </Text>}
                       </View>
                       <View style={styles.metaRow}>
                         <View style={[styles.targetPill, { backgroundColor: targetChip.bg }]}>
                           <Text style={[styles.targetPillTxt, { color: targetChip.color }]}>{targetChip.txt}</Text>
                         </View>
-                        <Text style={styles.expSubtle}>· {author?.name?.split(" ")[0]}</Text>
                         {e.expense_date && (
                           <>
                             <Text style={styles.expDot}>·</Text>

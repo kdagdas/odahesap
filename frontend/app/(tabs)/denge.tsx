@@ -23,7 +23,7 @@ const periodLabel = (p: Period, idx: number, total: number) => {
 
 export default function Denge() {
   const { user } = useAuth();
-  const { members, activePeriod, refresh: refreshHH } = useHousehold();
+  const { members, activePeriod, isAdmin, refresh: refreshHH } = useHousehold();
   const router = useRouter();
   const [periods, setPeriods] = useState<Period[]>([]);
   const [selectedPeriod, setSelectedPeriod] = useState<string | undefined>(undefined);
@@ -35,7 +35,10 @@ export default function Denge() {
   const [refreshing, setRefreshing] = useState(false);
   const [closing, setClosing] = useState(false);
   const [confirmClose, setConfirmClose] = useState(false);
+  const [confirmReopen, setConfirmReopen] = useState(false);
+  const [reopening, setReopening] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -65,7 +68,7 @@ export default function Denge() {
   };
 
   const onCloseAndReset = async () => {
-    setClosing(true); setMessage(null);
+    setClosing(true); setMessage(null); setError(null);
     try {
       await apiPost("/periods/close", {});
       await refreshHH();
@@ -73,9 +76,28 @@ export default function Denge() {
       await load();
       setMessage("Dönem başarıyla kapatıldı. Yeni dönem başladı 🎉");
       setConfirmClose(false);
-    } catch (e: any) { setMessage(e.message || "İşlem başarısız"); }
+    } catch (e: any) { setError(e.message || "İşlem başarısız"); }
     finally { setClosing(false); }
   };
+
+  const onReopen = async () => {
+    setReopening(true); setMessage(null); setError(null);
+    try {
+      await apiPost("/periods/reopen", {});
+      await refreshHH();
+      setSelectedPeriod(undefined);
+      await load();
+      setMessage("Dönem yeniden açıldı, harcamalar geri geldi.");
+      setConfirmReopen(false);
+    } catch (e: any) { setError(e.message || "Geri alınamadı"); }
+    finally { setReopening(false); }
+  };
+
+  // Only worth offering right after a close: the server refuses once the fresh
+  // period has expenses in it, so don't dangle a button that will just error.
+  const closedPeriods = periods.filter((p) => p.status === "closed");
+  const canReopen = isAdmin && closedPeriods.length > 0 && transfers.length === 0
+    && Object.values(totalsPaid).every((v) => Math.abs(v) < 0.01);
 
   const settled = transfers.length === 0;
 
@@ -190,17 +212,56 @@ export default function Denge() {
         )}
 
         {message && <Text style={styles.message}>{message}</Text>}
+        {error && <Text style={styles.errorMsg} testID="denge-error">{error}</Text>}
       </ScrollView>
 
-      {!isArchived && (
+      {!isArchived && !isAdmin && (
         <View style={styles.footer}>
-          {!confirmClose ? (
-            <PrimaryButton
-              label="Dönemi Kapat & Denkleştir"
-              onPress={() => setConfirmClose(true)}
-              icon="checkmark-done"
-              testID="close-period-btn"
-            />
+          <View style={styles.memberNote}>
+            <Ionicons name="information-circle" size={16} color={colors.onBrandSoft} />
+            <Text style={styles.memberNoteTxt}>
+              Dönemi yalnızca ev yöneticisi kapatabilir.
+            </Text>
+          </View>
+        </View>
+      )}
+
+      {!isArchived && isAdmin && (
+        <View style={styles.footer}>
+          {!confirmClose && !confirmReopen ? (
+            <>
+              <PrimaryButton
+                label="Dönemi Kapat & Denkleştir"
+                onPress={() => setConfirmClose(true)}
+                icon="checkmark-done"
+                testID="close-period-btn"
+              />
+              {canReopen && (
+                <Pressable
+                  style={styles.undoBtn}
+                  onPress={() => { setConfirmReopen(true); setError(null); }}
+                  testID="reopen-period-btn"
+                >
+                  <Ionicons name="arrow-undo" size={15} color={colors.onSurfaceSecondary} />
+                  <Text style={styles.undoTxt}>Son kapatmayı geri al</Text>
+                </Pressable>
+              )}
+            </>
+          ) : confirmReopen ? (
+            <View style={styles.confirmWrap}>
+              <Text style={styles.confirmTxt}>
+                Son kapatılan dönem yeniden açılacak ve harcamaları geri gelecek.
+                Yeni döneme harcama girildiyse bu işlem yapılamaz.
+              </Text>
+              <View style={styles.confirmRow}>
+                <Pressable style={styles.cancelBtn} onPress={() => setConfirmReopen(false)} testID="cancel-reopen">
+                  <Text style={styles.cancelTxt}>Vazgeç</Text>
+                </Pressable>
+                <Pressable style={[styles.confirmBtn, reopening && { opacity: 0.6 }]} onPress={onReopen} disabled={reopening} testID="confirm-reopen">
+                  {reopening ? <ActivityIndicator color={colors.onBrand} /> : <Text style={styles.confirmBtnTxt}>Evet, geri al</Text>}
+                </Pressable>
+              </View>
+            </View>
           ) : (
             <View style={styles.confirmWrap}>
               <Text style={styles.confirmTxt}>
@@ -252,6 +313,11 @@ const styles = StyleSheet.create({
   amountPill: { backgroundColor: colors.brand, paddingHorizontal: spacing.md, paddingVertical: 6, borderRadius: radius.pill },
   amountTxt: { color: "#fff", fontWeight: font.weights.bold, fontSize: font.sizes.base },
   message: { color: colors.success, fontWeight: font.weights.semibold, textAlign: "center", marginTop: spacing.md },
+  errorMsg: { color: colors.error, fontWeight: font.weights.semibold, textAlign: "center", marginTop: spacing.md, lineHeight: 20 },
+  memberNote: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: colors.brandSoft, padding: spacing.md, borderRadius: radius.md },
+  memberNoteTxt: { flex: 1, fontSize: font.sizes.sm, color: colors.onBrandSoft },
+  undoBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: spacing.md, marginTop: spacing.sm },
+  undoTxt: { color: colors.onSurfaceSecondary, fontSize: font.sizes.sm, fontWeight: font.weights.semibold },
   footer: {
     position: "absolute", left: 0, right: 0, bottom: 0,
     padding: spacing.lg, backgroundColor: colors.surfaceAlt,

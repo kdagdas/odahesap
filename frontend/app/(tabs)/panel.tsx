@@ -20,7 +20,7 @@ type Expense = {
 
 export default function Panel() {
   const { user } = useAuth();
-  const { household, members, pendingMembers } = useHousehold();
+  const { household, members, pendingMembers, refresh: refreshHH } = useHousehold();
   const router = useRouter();
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [net, setNet] = useState<Record<string, number>>({});
@@ -30,13 +30,19 @@ export default function Panel() {
 
   const load = useCallback(async () => {
     try {
-      const [exp, bal] = await Promise.all([apiGet("/expenses"), apiGet("/balances")]);
+      // Refresh the household too: join requests arrive while the app is open,
+      // and without this the pending badge only ever updated on a cold start.
+      const [exp, bal] = await Promise.all([
+        apiGet("/expenses"),
+        apiGet("/balances"),
+        refreshHH(),
+      ]);
       setExpenses(exp.expenses || []);
       setNet(bal.net || {});
       setTotalsPaid(bal.totals_paid || {});
     } catch (e) { console.log(e); }
     finally { setLoading(false); setRefreshing(false); }
-  }, []);
+  }, [refreshHH]);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
@@ -138,10 +144,10 @@ export default function Panel() {
                     <Avatar name={author?.name || "?"} size={36} avatarId={(author as any)?.avatar_id} />
                     <View style={{ flex: 1, gap: 2 }}>
                       <Text style={styles.expTitle} numberOfLines={1}>
-                        {e.merchant || e.category || (e.source === "receipt" ? "Fiş" : "Manuel")}
+                        {author?.name || "Bilinmeyen"}
                       </Text>
                       <View style={styles.expMeta}>
-                        <Text style={styles.expSubtle}>{author?.name?.split(" ")[0]} · {targetLabel}</Text>
+                        <Text style={styles.expSubtle}>{targetLabel}</Text>
                         {e.expense_date && (
                           <>
                             <Text style={styles.expDot}>·</Text>

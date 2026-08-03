@@ -94,9 +94,13 @@ export default function MemberDetail() {
                   <View style={{ flex: 1, gap: 4 }}>
                     <View style={styles.titleRow}>
                       <Text style={styles.expTitle} numberOfLines={1}>
-                        {e.merchant || e.category || (e.source === "receipt" ? "Fiş" : "Manuel")}
+                        {member?.name || "Bilinmeyen"}
                       </Text>
-                      {e.merchant && <MerchantBadge name={e.merchant} />}
+                      {e.merchant
+                        ? <MerchantBadge name={e.merchant} />
+                        : <Text style={styles.expSubtle}>
+                            {e.category || (e.source === "receipt" ? "Fiş" : "Manuel")}
+                          </Text>}
                     </View>
                     <View style={styles.metaRow}>
                       <View style={[styles.pill, { backgroundColor: targetChip.bg }]}>

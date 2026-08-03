@@ -62,6 +62,10 @@ class HouseholdJoin(BaseModel):
     invite_code: str
 
 
+class HouseholdRename(BaseModel):
+    name: str = Field(min_length=1, max_length=60)
+
+
 class MemberActionReq(BaseModel):
     user_id: str
 
@@ -198,6 +202,25 @@ async def get_user_household(user_id: str) -> Optional[dict]:
     return await db.households.find_one({"member_ids": user_id}, {"_id": 0})
 
 
+def admin_id(hh: dict) -> str:
+    """Who runs this household.
+
+    `admin_id` was added after the first households existed, so fall back to
+    `created_by` — every household has it, and the creator is the right admin.
+    """
+    return hh.get("admin_id") or hh["created_by"]
+
+
+async def require_admin(user_id: str) -> dict:
+    """Return the caller's household, or 403 if they don't run it."""
+    hh = await get_user_household(user_id)
+    if not hh:
+        raise HTTPException(status_code=400, detail="Ev bulunamadı")
+    if admin_id(hh) != user_id:
+        raise HTTPException(status_code=403, detail="Bu işlemi sadece ev yöneticisi yapabilir")
+    return hh
+
+
 async def get_pending_household(user_id: str) -> Optional[dict]:
     return await db.households.find_one({"pending_member_ids": user_id}, {"_id": 0})
 
@@ -302,6 +325,7 @@ async def create_household(body: HouseholdCreate, user=Depends(get_current_user)
         "name": body.name,
         "invite_code": invite_code,
         "created_by": user["user_id"],
+        "admin_id": user["user_id"],
         "member_ids": [user["user_id"]],
         "pending_member_ids": [],
         "current_period_id": period_id,
@@ -341,11 +365,32 @@ async def join_household(body: HouseholdJoin, user=Depends(get_current_user)):
     return {"pending": True, "household": hh}
 
 
+@api.patch("/households")
+async def rename_household(body: HouseholdRename, user=Depends(get_current_user)):
+    hh = await require_admin(user["user_id"])
+    await db.households.update_one(
+        {"household_id": hh["household_id"]}, {"$set": {"name": body.name.strip()}}
+    )
+    updated = await db.households.find_one({"household_id": hh["household_id"]}, {"_id": 0})
+    return {"household": updated}
+
+
+@api.post("/households/transfer-admin")
+async def transfer_admin(body: MemberActionReq, user=Depends(get_current_user)):
+    hh = await require_admin(user["user_id"])
+    if body.user_id not in hh.get("member_ids", []):
+        raise HTTPException(status_code=404, detail="Bu kişi evin üyesi değil")
+    if body.user_id == user["user_id"]:
+        raise HTTPException(status_code=400, detail="Yöneticilik zaten sizde")
+    await db.households.update_one(
+        {"household_id": hh["household_id"]}, {"$set": {"admin_id": body.user_id}}
+    )
+    return {"ok": True, "admin_id": body.user_id}
+
+
 @api.post("/households/approve")
 async def approve_member(body: MemberActionReq, user=Depends(get_current_user)):
-    hh = await get_user_household(user["user_id"])
-    if not hh:
-        raise HTTPException(status_code=400, detail="Ev bulunamadı")
+    hh = await require_admin(user["user_id"])
     if body.user_id not in hh.get("pending_member_ids", []):
         raise HTTPException(status_code=404, detail="Bekleyen üye bulunamadı")
     await db.households.update_one(
@@ -360,9 +405,7 @@ async def approve_member(body: MemberActionReq, user=Depends(get_current_user)):
 
 @api.post("/households/reject")
 async def reject_member(body: MemberActionReq, user=Depends(get_current_user)):
-    hh = await get_user_household(user["user_id"])
-    if not hh:
-        raise HTTPException(status_code=400, detail="Ev bulunamadı")
+    hh = await require_admin(user["user_id"])
     await db.households.update_one(
         {"household_id": hh["household_id"]},
         {"$pull": {"pending_member_ids": body.user_id}},
@@ -387,6 +430,8 @@ async def my_household(user=Depends(get_current_user)):
             "pending_members": pending,
             "active_period": active_period,
             "pending": False,
+            "admin_id": admin_id(hh),
+            "is_admin": admin_id(hh) == user["user_id"],
         }
     # user might be pending on another household
     pending_hh = await get_pending_household(user["user_id"])
@@ -412,6 +457,15 @@ async def leave_household(user=Depends(get_current_user)):
         await db.households.update_one(
             {"household_id": hh["household_id"]}, {"$pull": {"member_ids": user["user_id"]}}
         )
+        # If the admin walks out, hand the household to whoever is left —
+        # otherwise nobody can approve joins or close periods ever again.
+        if admin_id(hh) == user["user_id"]:
+            remaining = [m for m in hh.get("member_ids", []) if m != user["user_id"]]
+            if remaining:
+                await db.households.update_one(
+                    {"household_id": hh["household_id"]},
+                    {"$set": {"admin_id": remaining[0]}},
+                )
     # also cancel any pending
     await db.households.update_many(
         {"pending_member_ids": user["user_id"]},
@@ -836,9 +890,7 @@ async def list_periods(user=Depends(get_current_user)):
 
 @api.post("/periods/close")
 async def close_period(user=Depends(get_current_user)):
-    hh = await get_user_household(user["user_id"])
-    if not hh:
-        raise HTTPException(status_code=400, detail="Ev bulunamadı")
+    hh = await require_admin(user["user_id"])
     period = await get_active_period(hh["household_id"])
     if not period:
         raise HTTPException(status_code=400, detail="Aktif dönem yok")
@@ -860,6 +912,49 @@ async def close_period(user=Depends(get_current_user)):
         {"household_id": hh["household_id"]}, {"$set": {"current_period_id": new_period_id}}
     )
     return {"closed_period_id": period["period_id"], "new_period": new_period}
+
+
+@api.post("/periods/reopen")
+async def reopen_period(user=Depends(get_current_user)):
+    """Undo the most recent close — for when it was hit by accident.
+
+    Only safe while the fresh period is still empty. Once expenses exist in it,
+    reopening would leave them sitting in a period that is no longer current,
+    invisible in every balance, so we refuse and say why.
+    """
+    hh = await require_admin(user["user_id"])
+    active = await get_active_period(hh["household_id"])
+    if not active:
+        raise HTTPException(status_code=400, detail="Aktif dönem yok")
+
+    used = await db.expenses.count_documents(
+        {"household_id": hh["household_id"], "period_id": active["period_id"]}
+    )
+    if used:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Yeni döneme {used} harcama girilmiş. Geri alınamaz, "
+                   "önce bu harcamaları silmeniz gerekir.",
+        )
+
+    closed = await db.periods.find(
+        {"household_id": hh["household_id"], "status": "closed"}, {"_id": 0}
+    ).sort("closed_at", -1).to_list(1)
+    if not closed:
+        raise HTTPException(status_code=400, detail="Geri alınacak kapatılmış dönem yok")
+    previous = closed[0]
+
+    await db.periods.delete_one({"period_id": active["period_id"]})
+    await db.periods.update_one(
+        {"period_id": previous["period_id"]},
+        {"$set": {"status": "active", "closed_at": None}, "$unset": {"final_balances": ""}},
+    )
+    await db.households.update_one(
+        {"household_id": hh["household_id"]},
+        {"$set": {"current_period_id": previous["period_id"]}},
+    )
+    reopened = await db.periods.find_one({"period_id": previous["period_id"]}, {"_id": 0})
+    return {"reopened_period": reopened}
 
 
 # ---------- Health ----------

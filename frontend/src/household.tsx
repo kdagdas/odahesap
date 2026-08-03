@@ -27,6 +27,8 @@ type Ctx = {
   pendingMembers: AppUser[];
   pendingHousehold: PendingHouseholdRef | null; // when *I* am waiting
   activePeriod: Period | null;
+  adminId: string | null;
+  isAdmin: boolean;
   loading: boolean;
   refresh: () => Promise<void>;
 };
@@ -41,15 +43,19 @@ export function HouseholdProvider({ children }: { children: React.ReactNode }) {
   const [pendingMembers, setPendingMembers] = useState<AppUser[]>([]);
   const [pendingHousehold, setPendingHousehold] = useState<PendingHouseholdRef | null>(null);
   const [activePeriod, setActivePeriod] = useState<Period | null>(null);
+  const [adminId, setAdminId] = useState<string | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
     if (!user) {
       setHousehold(null); setMembers([]); setPendingMembers([]);
-      setPendingHousehold(null); setActivePeriod(null); setLoading(false);
+      setPendingHousehold(null); setActivePeriod(null);
+      setAdminId(null); setIsAdmin(false); setLoading(false);
       return;
     }
-    setLoading(true);
+    // No setLoading(true) here: refresh() also runs on every screen focus, and
+    // flipping loading would flash the full-screen spinner over live content.
     try {
       const res = await apiGet<any>("/households/me");
       setHousehold(res.household || null);
@@ -57,6 +63,8 @@ export function HouseholdProvider({ children }: { children: React.ReactNode }) {
       setPendingMembers(res.pending_members || []);
       setPendingHousehold(res.pending_household || null);
       setActivePeriod(res.active_period || null);
+      setAdminId(res.admin_id || null);
+      setIsAdmin(!!res.is_admin);
     } catch (e) { console.log("household refresh failed", e); }
     finally { setLoading(false); }
   }, [user]);
@@ -64,7 +72,7 @@ export function HouseholdProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => { refresh(); }, [refresh]);
 
   return (
-    <HH.Provider value={{ household, members, pendingMembers, pendingHousehold, activePeriod, loading, refresh }}>
+    <HH.Provider value={{ household, members, pendingMembers, pendingHousehold, activePeriod, adminId, isAdmin, loading, refresh }}>
       {children}
     </HH.Provider>
   );

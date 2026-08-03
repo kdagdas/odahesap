@@ -1,8 +1,8 @@
 /** Settings — profile (with avatar picker), household + invite code, pending approvals, member list, leave/logout. */
-import { useState } from "react";
-import { View, Text, StyleSheet, ScrollView, Pressable, Share, Platform, ActivityIndicator } from "react-native";
+import { useCallback, useState } from "react";
+import { View, Text, StyleSheet, ScrollView, Pressable, Share, Platform, ActivityIndicator, TextInput } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
+import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@/src/auth";
 import { useHousehold } from "@/src/household";
@@ -13,9 +13,41 @@ import { colors, spacing, radius, font, AVATARS } from "@/src/theme";
 export default function Settings() {
   const router = useRouter();
   const { user, logout, refresh: refreshAuth } = useAuth();
-  const { household, members, pendingMembers, refresh } = useHousehold();
+  const { household, members, pendingMembers, isAdmin, adminId, refresh } = useHousehold();
   const [busy, setBusy] = useState<string | null>(null);
   const [savingAvatar, setSavingAvatar] = useState(false);
+  const [editingName, setEditingName] = useState(false);
+  const [nameDraft, setNameDraft] = useState("");
+  const [savingName, setSavingName] = useState(false);
+  const [transferTo, setTransferTo] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+
+  // Join requests land while the app is already open — without re-fetching on
+  // focus, the admin never sees them until a full restart.
+  useFocusEffect(useCallback(() => { refresh(); }, [refresh]));
+
+  const saveName = async () => {
+    const next = nameDraft.trim();
+    if (!next) { setMessage("Ev adı boş olamaz"); return; }
+    setSavingName(true); setMessage(null);
+    try {
+      await api("/households", { method: "PATCH", body: JSON.stringify({ name: next }) });
+      await refresh();
+      setEditingName(false);
+    } catch (e: any) { setMessage(e?.message || "Ad değiştirilemedi"); }
+    finally { setSavingName(false); }
+  };
+
+  const doTransfer = async (userId: string) => {
+    setBusy(userId); setMessage(null);
+    try {
+      await apiPost("/households/transfer-admin", { user_id: userId });
+      await refresh();
+      setTransferTo(null);
+      setMessage("Yöneticilik devredildi");
+    } catch (e: any) { setMessage(e?.message || "Devredilemedi"); }
+    finally { setBusy(null); }
+  };
 
   const setAvatar = async (id: number) => {
     if (id === user?.avatar_id || savingAvatar) return;
@@ -104,7 +136,16 @@ export default function Settings() {
           )}
         </Card>
 
-        {household && pendingMembers.length > 0 && (
+        {household && pendingMembers.length > 0 && !isAdmin && (
+          <View style={styles.infoBox}>
+            <Ionicons name="information-circle" size={16} color={colors.onBrandSoft} />
+            <Text style={styles.infoTxt}>
+              {pendingMembers.length} kişi katılmayı bekliyor. Onaylama yetkisi ev yöneticisinde.
+            </Text>
+          </View>
+        )}
+
+        {household && pendingMembers.length > 0 && isAdmin && (
           <>
             <View style={styles.sectionHead}>
               <Text style={styles.section}>Onay bekleyenler</Text>
@@ -138,7 +179,51 @@ export default function Settings() {
           <>
             <Text style={styles.section}>Ev</Text>
             <Card>
-              <Text style={styles.homeName}>{household.name}</Text>
+              {editingName ? (
+                <View style={{ gap: spacing.sm, marginBottom: spacing.md }}>
+                  <TextInput
+                    style={styles.nameInput}
+                    value={nameDraft}
+                    onChangeText={setNameDraft}
+                    placeholder="Ev adı"
+                    placeholderTextColor={colors.onSurfaceTertiary}
+                    autoFocus
+                    testID="household-name-edit"
+                  />
+                  <View style={{ flexDirection: "row", gap: spacing.sm }}>
+                    <Pressable
+                      style={styles.nameCancel}
+                      onPress={() => { setEditingName(false); setMessage(null); }}
+                      testID="cancel-rename"
+                    >
+                      <Text style={styles.nameCancelTxt}>Vazgeç</Text>
+                    </Pressable>
+                    <Pressable
+                      style={[styles.nameSave, savingName && { opacity: 0.6 }]}
+                      onPress={saveName}
+                      disabled={savingName}
+                      testID="save-rename"
+                    >
+                      {savingName
+                        ? <ActivityIndicator color={colors.onBrand} size="small" />
+                        : <Text style={styles.nameSaveTxt}>Kaydet</Text>}
+                    </Pressable>
+                  </View>
+                </View>
+              ) : (
+                <View style={styles.homeNameRow}>
+                  <Text style={styles.homeName}>{household.name}</Text>
+                  {isAdmin && (
+                    <Pressable
+                      onPress={() => { setNameDraft(household.name); setEditingName(true); }}
+                      hitSlop={10}
+                      testID="edit-household-name"
+                    >
+                      <Ionicons name="pencil" size={18} color={colors.brand} />
+                    </Pressable>
+                  )}
+                </View>
+              )}
               <Text style={styles.subtitle}>Davet kodu</Text>
               <Text style={styles.inviteCode} testID="invite-code-display">{household.invite_code}</Text>
               <Text style={styles.inviteHint}>
@@ -151,15 +236,60 @@ export default function Settings() {
             </Card>
 
             <Text style={styles.section}>Üyeler ({members.length})</Text>
-            {members.map((m) => (
-              <Card key={m.user_id} style={styles.memberRow}>
-                <Avatar name={m.name} size={40} avatarId={(m as any).avatar_id} />
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.memberName}>{m.name}{m.user_id === user?.user_id ? " (sen)" : ""}</Text>
-                  <Text style={styles.email}>{m.email}</Text>
-                </View>
-              </Card>
-            ))}
+            {members.map((m) => {
+              const memberIsAdmin = m.user_id === adminId;
+              const canHandOver = isAdmin && !memberIsAdmin;
+              return (
+                <Card key={m.user_id} style={styles.memberRow}>
+                  <Avatar name={m.name} size={40} avatarId={(m as any).avatar_id} />
+                  <View style={{ flex: 1 }}>
+                    <View style={styles.memberNameRow}>
+                      <Text style={styles.memberName}>{m.name}{m.user_id === user?.user_id ? " (sen)" : ""}</Text>
+                      {memberIsAdmin && (
+                        <View style={styles.adminBadge}>
+                          <Ionicons name="shield-checkmark" size={11} color={colors.onBrandSoft} />
+                          <Text style={styles.adminBadgeTxt}>Yönetici</Text>
+                        </View>
+                      )}
+                    </View>
+                    <Text style={styles.email}>{m.email}</Text>
+                  </View>
+                  {canHandOver && (
+                    busy === m.user_id ? (
+                      <ActivityIndicator color={colors.brand} />
+                    ) : transferTo === m.user_id ? (
+                      <View style={styles.confirmRow}>
+                        <Pressable onPress={() => setTransferTo(null)} hitSlop={8} testID={`cancel-transfer-${m.user_id}`}>
+                          <Text style={styles.cancelSmall}>Vazgeç</Text>
+                        </Pressable>
+                        <Pressable
+                          style={styles.confirmSmall}
+                          onPress={() => doTransfer(m.user_id)}
+                          testID={`confirm-transfer-${m.user_id}`}
+                        >
+                          <Text style={styles.confirmSmallTxt}>Onayla</Text>
+                        </Pressable>
+                      </View>
+                    ) : (
+                      <Pressable
+                        onPress={() => { setTransferTo(m.user_id); setMessage(null); }}
+                        hitSlop={8}
+                        testID={`transfer-admin-${m.user_id}`}
+                      >
+                        <Text style={styles.transferLink}>Yönetici yap</Text>
+                      </Pressable>
+                    )
+                  )}
+                </Card>
+              );
+            })}
+            {transferTo && (
+              <Text style={styles.warnTxt}>
+                Yöneticiliği devredersen onaylama, ev adı değiştirme ve dönem kapatma
+                yetkilerini kaybedersin.
+              </Text>
+            )}
+            {message && <Text style={styles.message}>{message}</Text>}
           </>
         )}
 
@@ -195,7 +325,7 @@ const styles = StyleSheet.create({
   pendingActions: { flexDirection: "row", gap: spacing.sm },
   approveBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.mint, alignItems: "center", justifyContent: "center" },
   rejectBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: "#FEE2E2", borderWidth: 1, borderColor: "#FCA5A5", alignItems: "center", justifyContent: "center" },
-  homeName: { fontSize: font.sizes.lg, fontWeight: font.weights.semibold, color: colors.onSurface, marginBottom: spacing.md },
+  homeName: { fontSize: font.sizes.lg, fontWeight: font.weights.semibold, color: colors.onSurface },
   subtitle: { fontSize: font.sizes.sm, color: colors.onSurfaceSecondary, textTransform: "uppercase", letterSpacing: 0.5, fontWeight: font.weights.semibold, marginBottom: spacing.xs },
   inviteCode: { fontSize: 36, fontWeight: font.weights.bold, letterSpacing: 10, color: colors.brand, marginBottom: spacing.sm },
   inviteHint: { fontSize: font.sizes.sm, color: colors.onSurfaceTertiary, marginBottom: spacing.md, lineHeight: 18 },
@@ -203,6 +333,35 @@ const styles = StyleSheet.create({
   shareTxt: { color: "#fff", fontWeight: font.weights.semibold, fontSize: font.sizes.base },
   memberRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, padding: spacing.md },
   memberName: { fontSize: font.sizes.base, fontWeight: font.weights.semibold, color: colors.onSurface },
+  memberNameRow: { flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" },
+  adminBadge: {
+    flexDirection: "row", alignItems: "center", gap: 3,
+    backgroundColor: colors.brandSoft, paddingHorizontal: 6, paddingVertical: 2,
+    borderRadius: radius.sm,
+  },
+  adminBadgeTxt: { fontSize: 10, fontWeight: font.weights.bold, color: colors.onBrandSoft },
+  transferLink: { color: colors.brand, fontSize: font.sizes.sm, fontWeight: font.weights.semibold },
+  confirmRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  cancelSmall: { color: colors.onSurfaceTertiary, fontSize: font.sizes.sm },
+  confirmSmall: { backgroundColor: colors.brand, paddingHorizontal: spacing.md, paddingVertical: 6, borderRadius: radius.pill },
+  confirmSmallTxt: { color: colors.onBrand, fontSize: font.sizes.sm, fontWeight: font.weights.semibold },
+  warnTxt: { fontSize: font.sizes.sm, color: colors.onSurfaceSecondary, lineHeight: 18, paddingHorizontal: spacing.xs },
+  message: { color: colors.success, fontWeight: font.weights.semibold, textAlign: "center", marginTop: spacing.sm },
+  infoBox: {
+    flexDirection: "row", alignItems: "center", gap: 8,
+    backgroundColor: colors.brandSoft, padding: spacing.md, borderRadius: radius.md,
+  },
+  infoTxt: { flex: 1, fontSize: font.sizes.sm, color: colors.onBrandSoft, lineHeight: 18 },
+  homeNameRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: spacing.md },
+  nameInput: {
+    borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surfaceSecondary,
+    borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
+    fontSize: font.sizes.lg, color: colors.onSurface, minHeight: 48,
+  },
+  nameCancel: { flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: spacing.sm, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border },
+  nameCancelTxt: { color: colors.onSurfaceSecondary, fontWeight: font.weights.semibold },
+  nameSave: { flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: spacing.sm, borderRadius: radius.pill, backgroundColor: colors.brand, minHeight: 40 },
+  nameSaveTxt: { color: colors.onBrand, fontWeight: font.weights.semibold },
   avatarGrid: { flexDirection: "row", flexWrap: "wrap", gap: spacing.md, justifyContent: "space-between" },
   avatarChoice: {
     width: 60, height: 60, borderRadius: 30,
