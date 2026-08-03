@@ -2,10 +2,14 @@ import { Tabs } from "expo-router";
 import { View, StyleSheet, Platform } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { colors, font, spacing } from "@/src/theme";
+import { colors, font } from "@/src/theme";
 
 type IconArg = { color: string; focused: boolean };
 
+// Five tabs, so "Fiş Tara" sits in the true centre — with four it was the
+// third of four and looked off to the right. Route file names are unchanged
+// (panel / denge) because four other screens navigate to them by path; only
+// the visible titles moved to Anasayfa / Kasa.
 export default function TabsLayout() {
   const insets = useSafeAreaInsets();
   // Raise tab bar clearly above the phone's home indicator / gesture bar
@@ -28,14 +32,14 @@ export default function TabsLayout() {
             android: { elevation: 8 },
           }),
         },
-        tabBarLabelStyle: { fontSize: 11, fontWeight: font.weights.semibold as any, marginTop: 2 },
+        tabBarLabelStyle: { fontSize: 10, fontWeight: font.weights.semibold as any, marginTop: 2 },
         tabBarItemStyle: { paddingVertical: 4 },
       }}
     >
       <Tabs.Screen
         name="panel"
         options={{
-          title: "Panel",
+          title: "Anasayfa",
           tabBarIcon: ({ color, focused }: IconArg) => (
             <Ionicons name={focused ? "home" : "home-outline"} size={22} color={color} />
           ),
@@ -54,10 +58,10 @@ export default function TabsLayout() {
         name="tara"
         options={{
           title: "Fiş Tara",
-          tabBarIcon: ({ color, focused }: IconArg) => (
+          tabBarIcon: ({ focused }: IconArg) => (
             <View style={styles.centerIconWrap}>
               <View style={[styles.centerIcon, focused && styles.centerIconFocused]}>
-                <Ionicons name="scan" size={22} color={focused ? colors.onBrand : colors.brand} />
+                <Ionicons name="scan" size={26} color={focused ? colors.onBrand : colors.brand} />
               </View>
             </View>
           ),
@@ -66,9 +70,18 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="denge"
         options={{
-          title: "Denge",
+          title: "Kasa",
           tabBarIcon: ({ color, focused }: IconArg) => (
-            <Ionicons name={focused ? "swap-horizontal" : "swap-horizontal-outline"} size={22} color={color} />
+            <Ionicons name={focused ? "wallet" : "wallet-outline"} size={22} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="profil"
+        options={{
+          title: "Profil",
+          tabBarIcon: ({ color, focused }: IconArg) => (
+            <Ionicons name={focused ? "person-circle" : "person-circle-outline"} size={23} color={color} />
           ),
         }}
       />
@@ -79,9 +92,15 @@ export default function TabsLayout() {
 const styles = StyleSheet.create({
   centerIconWrap: { alignItems: "center", justifyContent: "center" },
   centerIcon: {
-    width: 40, height: 40, borderRadius: 20,
+    width: 48, height: 48, borderRadius: 24,
     alignItems: "center", justifyContent: "center",
     backgroundColor: colors.brandSoft,
+    // Lift it above the bar so it reads as the primary action.
+    marginTop: -10,
   },
-  centerIconFocused: { backgroundColor: colors.brand },
+  centerIconFocused: {
+    backgroundColor: colors.brand,
+    shadowColor: colors.brand, shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35, shadowRadius: 8, elevation: 6,
+  },
 });

@@ -459,6 +459,15 @@ async def my_household(user=Depends(get_current_user)):
             {"user_id": {"$in": hh.get("pending_member_ids", [])}}, PUBLIC_USER_PROJECTION
         ).to_list(50)
         active_period = await get_active_period(hh["household_id"])
+        # Approving someone mid-period re-splits every expense already in it,
+        # so the UI warns when there is anything to re-split.
+        open_expense_count = 0
+        if active_period:
+            open_expense_count = await db.expenses.count_documents({
+                "household_id": hh["household_id"],
+                "period_id": active_period["period_id"],
+                "target_type": "household",
+            })
         return {
             "household": hh,
             "members": members,
@@ -467,6 +476,7 @@ async def my_household(user=Depends(get_current_user)):
             "pending": False,
             "admin_id": admin_id(hh),
             "is_admin": admin_id(hh) == user["user_id"],
+            "open_expense_count": open_expense_count,
         }
     # user might be pending on another household
     pending_hh = await get_pending_household(user["user_id"])

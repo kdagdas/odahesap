@@ -29,6 +29,9 @@ type Ctx = {
   activePeriod: Period | null;
   adminId: string | null;
   isAdmin: boolean;
+  /** Household expenses already in the open period — approving a new member
+   *  re-splits all of them, so the approval UI warns when this is non-zero. */
+  openExpenseCount: number;
   loading: boolean;
   refresh: () => Promise<void>;
 };
@@ -45,13 +48,15 @@ export function HouseholdProvider({ children }: { children: React.ReactNode }) {
   const [activePeriod, setActivePeriod] = useState<Period | null>(null);
   const [adminId, setAdminId] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [openExpenseCount, setOpenExpenseCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
     if (!user) {
       setHousehold(null); setMembers([]); setPendingMembers([]);
       setPendingHousehold(null); setActivePeriod(null);
-      setAdminId(null); setIsAdmin(false); setLoading(false);
+      setAdminId(null); setIsAdmin(false); setOpenExpenseCount(0);
+      setLoading(false);
       return;
     }
     // No setLoading(true) here: refresh() also runs on every screen focus, and
@@ -65,6 +70,7 @@ export function HouseholdProvider({ children }: { children: React.ReactNode }) {
       setActivePeriod(res.active_period || null);
       setAdminId(res.admin_id || null);
       setIsAdmin(!!res.is_admin);
+      setOpenExpenseCount(res.open_expense_count || 0);
     } catch (e) { console.log("household refresh failed", e); }
     finally { setLoading(false); }
   }, [user]);
@@ -72,7 +78,7 @@ export function HouseholdProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => { refresh(); }, [refresh]);
 
   return (
-    <HH.Provider value={{ household, members, pendingMembers, pendingHousehold, activePeriod, adminId, isAdmin, loading, refresh }}>
+    <HH.Provider value={{ household, members, pendingMembers, pendingHousehold, activePeriod, adminId, isAdmin, openExpenseCount, loading, refresh }}>
       {children}
     </HH.Provider>
   );

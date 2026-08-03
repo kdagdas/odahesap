@@ -8,6 +8,7 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { useIconFonts } from "@/src/hooks/use-icon-fonts";
 import { AuthProvider, useAuth } from "@/src/auth";
 import { HouseholdProvider, useHousehold } from "@/src/household";
+import { WakingBanner } from "@/src/WakingBanner";
 import { colors } from "@/src/theme";
 
 LogBox.ignoreAllLogs(true);
@@ -57,6 +58,9 @@ export default function RootLayout() {
         <AuthProvider>
           <HouseholdProvider>
             <Gate />
+            {/* Sits above every screen so the cold-start notice is visible
+                wherever the user happens to be when it fires. */}
+            <WakingBanner />
           </HouseholdProvider>
         </AuthProvider>
       </SafeAreaProvider>

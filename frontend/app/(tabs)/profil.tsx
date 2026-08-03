@@ -1,4 +1,6 @@
-/** Settings — profile (with avatar picker), household + invite code, pending approvals, member list, leave/logout. */
+/** Profil sekmesi — avatar, ev + davet kodu, onay bekleyenler, üye listesi, çıkış.
+ *  Eskiden /settings altında bir yığın ekranıydı ve yalnızca Panel'deki avatara
+ *  dokunarak açılıyordu — kimse bulamıyordu. Artık alt menüde kendi sekmesi var. */
 import { useCallback, useState } from "react";
 import { View, Text, StyleSheet, ScrollView, Pressable, Share, Platform, ActivityIndicator, TextInput } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -10,10 +12,10 @@ import { apiPost, api } from "@/src/api";
 import { Avatar, Card } from "@/src/ui";
 import { colors, spacing, radius, font, AVATARS } from "@/src/theme";
 
-export default function Settings() {
+export default function Profil() {
   const router = useRouter();
   const { user, logout, refresh: refreshAuth } = useAuth();
-  const { household, members, pendingMembers, isAdmin, adminId, refresh } = useHousehold();
+  const { household, members, pendingMembers, isAdmin, adminId, openExpenseCount, refresh } = useHousehold();
   const [busy, setBusy] = useState<string | null>(null);
   const [savingAvatar, setSavingAvatar] = useState(false);
   const [editingName, setEditingName] = useState(false);
@@ -102,13 +104,9 @@ export default function Settings() {
   };
 
   return (
-    <SafeAreaView style={styles.root} edges={["top", "bottom"]} testID="settings-screen">
+    <SafeAreaView style={styles.root} edges={["top"]} testID="profil-screen">
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()} testID="settings-back" hitSlop={12}>
-          <Ionicons name="chevron-back" size={26} color={colors.onSurface} />
-        </Pressable>
-        <Text style={styles.title}>Ayarlar</Text>
-        <View style={{ width: 26 }} />
+        <Text style={styles.title}>Profil</Text>
       </View>
       <ScrollView contentContainerStyle={styles.scroll}>
         <Card style={styles.profileCard}>
@@ -164,6 +162,16 @@ export default function Settings() {
               <Text style={styles.section}>Onay bekleyenler</Text>
               <View style={styles.badge}><Text style={styles.badgeTxt}>{pendingMembers.length}</Text></View>
             </View>
+            {openExpenseCount > 0 && (
+              <View style={styles.warnBox} testID="mid-period-join-warning">
+                <Ionicons name="alert-circle" size={16} color="#B45309" />
+                <Text style={styles.warnBoxTxt}>
+                  Açık dönemde {openExpenseCount} ev harcaması var. Onaylarsan yeni üye
+                  bunların da payını üstlenir. Taşınmadan önceki harcamalara karışmasın
+                  istiyorsan önce Kasa'dan dönemi kapat.
+                </Text>
+              </View>
+            )}
             {pendingMembers.map((p) => (
               <Card key={p.user_id} style={styles.pendingRow} testID={`pending-row-${p.user_id}`}>
                 <Avatar name={p.name} size={40} avatarId={(p as any).avatar_id} />
@@ -353,9 +361,10 @@ export default function Settings() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.surfaceAlt },
-  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: spacing.lg, paddingVertical: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.divider, backgroundColor: colors.surface },
-  title: { fontSize: font.sizes.xl, fontWeight: font.weights.bold, color: colors.onSurface },
-  scroll: { padding: spacing.lg, gap: spacing.md, paddingBottom: spacing.xxxl },
+  header: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.md },
+  title: { fontSize: 26, fontWeight: font.weights.bold, color: colors.onSurface, letterSpacing: -0.3 },
+  // Tab bar sits on top of the content, so leave room at the bottom.
+  scroll: { padding: spacing.lg, gap: spacing.md, paddingBottom: 120 },
   profileCard: { flexDirection: "row", alignItems: "center", gap: spacing.md },
   name: { fontSize: font.sizes.lg, fontWeight: font.weights.bold, color: colors.onSurface },
   email: { fontSize: font.sizes.sm, color: colors.onSurfaceTertiary },
@@ -398,6 +407,12 @@ const styles = StyleSheet.create({
     backgroundColor: colors.brandSoft, padding: spacing.md, borderRadius: radius.md,
   },
   infoTxt: { flex: 1, fontSize: font.sizes.sm, color: colors.onBrandSoft, lineHeight: 18 },
+  warnBox: {
+    flexDirection: "row", alignItems: "flex-start", gap: 8,
+    backgroundColor: "#FEF3C7", borderWidth: 1, borderColor: "#FDE68A",
+    padding: spacing.md, borderRadius: radius.md,
+  },
+  warnBoxTxt: { flex: 1, fontSize: font.sizes.sm, color: "#92400E", lineHeight: 18 },
   homeNameRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: spacing.md },
   nameInput: {
     borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surfaceSecondary,

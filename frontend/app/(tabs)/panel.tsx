@@ -62,7 +62,7 @@ export default function Panel() {
             <Text style={styles.hi}>Merhaba, {user?.name?.split(" ")[0]}</Text>
             <Text style={styles.homeName}>{household?.name}</Text>
           </View>
-          <Pressable onPress={() => router.push("/settings")} testID="open-settings-btn">
+          <Pressable onPress={() => router.push("/(tabs)/profil")} testID="open-settings-btn">
             <Avatar name={user?.name || "?"} size={44} avatarId={user?.avatar_id} />
             {pendingMembers.length > 0 && (
               <View style={styles.settingsBadge} testID="pending-approvals-badge">
