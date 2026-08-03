@@ -1,0 +1,39 @@
+name: Sunucuyu uyanik tut
+
+# Render'in ucretsiz katmaninda servis 15 dk istek almazsa uyur ve sonraki
+# istek ~50 sn surer. Duzenli ping atarak uygulamayi acan kisinin beklemesini
+# onler. Ayni zamanda basit bir uptime kontrolu: servis cevap vermezse bu
+# workflow kirmizi olur ve GitHub sana e-posta gonderir.
+
+on:
+  schedule:
+    # Her 10 dakikada bir. GitHub zamanlanmis islerde gecikme yapabilir,
+    # 15 dakikalik uyku esigine karsi 10 dk pay birakiyoruz.
+    - cron: "*/10 * * * *"
+  workflow_dispatch: # Actions sekmesinden elle de calistirilabilir
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Saglik ucuna istek at
+        run: |
+          URL="https://odahesap-api.onrender.com/api/"
+
+          # Uyanmasi 60 sn'yi bulabilir; 5 kez, artan bekleme ile dene.
+          for deneme in 1 2 3 4 5; do
+            kod=$(curl -s -o /tmp/cevap.json -w "%{http_code}" --max-time 90 "$URL" || echo "000")
+            echo "deneme $deneme -> HTTP $kod"
+
+            if [ "$kod" = "200" ]; then
+              echo "Sunucu ayakta: $(cat /tmp/cevap.json)"
+              exit 0
+            fi
+
+            sleep $((deneme * 15))
+          done
+
+          echo "::error::Sunucu 5 denemede cevap vermedi. Render panelini kontrol et."
+          cat /tmp/cevap.json 2>/dev/null | head -c 500
+          exit 1
