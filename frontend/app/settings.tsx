@@ -29,7 +29,7 @@ export default function Settings() {
 
   const shareInvite = async () => {
     if (!household) return;
-    const text = `OdaHesap'a katıl! Ev: "${household.name}". Davet kodu: ${household.invite_code}`;
+    const text = `KaSa'ya katıl! Ev: "${household.name}". Davet kodu: ${household.invite_code}`;
     if (Platform.OS === "web") {
       try {
         // @ts-ignore

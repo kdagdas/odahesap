@@ -73,7 +73,7 @@ export default function LoginScreen() {
               <View style={styles.logoWrap}>
                 <Ionicons name="home" size={22} color={colors.brand} />
               </View>
-              <Text style={styles.brand}>OdaHesap</Text>
+              <Text style={styles.brand}>KaSa</Text>
             </View>
 
             <View style={styles.hero}>
