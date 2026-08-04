@@ -1,17 +1,21 @@
 import { useCallback, useState } from "react";
 import {
-  View, Text, StyleSheet, ScrollView, ActivityIndicator, Pressable, RefreshControl,
+  View, Text, StyleSheet, ScrollView, ActivityIndicator, Pressable, RefreshControl, TextInput,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { apiGet, apiPost } from "@/src/api";
+import { apiGet, apiPost, apiDelete } from "@/src/api";
 import { useAuth } from "@/src/auth";
 import { useHousehold } from "@/src/household";
 import { Card, Chip, Avatar, PrimaryButton, formatEUR } from "@/src/ui";
 import { colors, spacing, radius, font } from "@/src/theme";
 
 type Transfer = { from: string; to: string; amount: number };
+type Settlement = {
+  settlement_id: string; from_user_id: string; to_user_id: string;
+  amount: number; recorded_by: string;
+};
 type Period = { period_id: string; started_at: string; closed_at: string | null; status: string };
 
 const periodLabel = (p: Period, idx: number, total: number) => {
@@ -31,6 +35,10 @@ export default function Denge() {
   const [totalsPaid, setTotalsPaid] = useState<Record<string, number>>({});
   const [roommatePaid, setRoommatePaid] = useState<Record<string, number>>({});
   const [transfers, setTransfers] = useState<Transfer[]>([]);
+  const [settlements, setSettlements] = useState<Settlement[]>([]);
+  const [payFor, setPayFor] = useState<Transfer | null>(null);
+  const [payAmount, setPayAmount] = useState("");
+  const [paying, setPaying] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [closing, setClosing] = useState(false);
@@ -51,6 +59,7 @@ export default function Denge() {
       setTotalsPaid(bal.totals_paid || {});
       setRoommatePaid(bal.roommate_paid || {});
       setTransfers(bal.transfers || []);
+      setSettlements(bal.settlements || []);
     } catch (e) { console.log(e); }
     finally { setLoading(false); setRefreshing(false); }
   }, [selectedPeriod]);
@@ -78,6 +87,39 @@ export default function Denge() {
       setConfirmClose(false);
     } catch (e: any) { setError(e.message || "İşlem başarısız"); }
     finally { setClosing(false); }
+  };
+
+  // Only the two people involved may record a payment, so a transfer between
+  // two other housemates has no button — they settle it themselves.
+  const canRecord = (t: Transfer) =>
+    !isArchived && (t.from === user?.user_id || t.to === user?.user_id);
+
+  const openPay = (t: Transfer) => {
+    setPayFor(t);
+    setPayAmount(String(t.amount).replace(".", ","));
+    setError(null); setMessage(null);
+  };
+
+  const recordPayment = async () => {
+    if (!payFor) return;
+    const amount = parseFloat(payAmount.replace(",", ".")) || 0;
+    if (amount <= 0) { setError("Geçerli bir tutar girin"); return; }
+    setPaying(true); setError(null);
+    try {
+      await apiPost("/settlements", {
+        from_user_id: payFor.from, to_user_id: payFor.to, amount,
+      });
+      setPayFor(null);
+      await load();
+      setMessage("Ödeme kaydedildi");
+    } catch (e: any) { setError(e?.message || "Kaydedilemedi"); }
+    finally { setPaying(false); }
+  };
+
+  const undoSettlement = async (id: string) => {
+    setError(null);
+    try { await apiDelete(`/settlements/${id}`); await load(); }
+    catch (e: any) { setError(e?.message || "Geri alınamadı"); }
   };
 
   const onReopen = async () => {
@@ -193,7 +235,7 @@ export default function Denge() {
             <Card key={i} style={styles.transferCard} testID={`transfer-row-${i}`}>
               <View style={styles.transferRow}>
                 <View style={styles.avatarBlock}>
-                  <Avatar name={memberName(t.from)} size={44} avatarId={(members.find((m) => m.user_id === t.from) as any)?.avatar_id} />
+                  <Avatar name={memberName(t.from)} size={44} avatarId={(members.find((m) => m.user_id === t.from) as any)?.avatar_id} userId={t.from} photoVersion={(members.find((m) => m.user_id === t.from) as any)?.photo_version} />
                   <Text style={styles.avatarName}>{short(t.from)}</Text>
                 </View>
                 <View style={styles.arrowWrap}>
@@ -203,12 +245,76 @@ export default function Denge() {
                   </View>
                 </View>
                 <View style={styles.avatarBlock}>
-                  <Avatar name={memberName(t.to)} size={44} avatarId={(members.find((m) => m.user_id === t.to) as any)?.avatar_id} />
+                  <Avatar name={memberName(t.to)} size={44} avatarId={(members.find((m) => m.user_id === t.to) as any)?.avatar_id} userId={t.to} photoVersion={(members.find((m) => m.user_id === t.to) as any)?.photo_version} />
                   <Text style={styles.avatarName}>{short(t.to)}</Text>
                 </View>
               </View>
+
+              {canRecord(t) && payFor !== t && (
+                <Pressable style={styles.payBtn} onPress={() => openPay(t)} testID={`mark-paid-${i}`}>
+                  <Ionicons name="checkmark-circle-outline" size={17} color={colors.brand} />
+                  <Text style={styles.payTxt}>
+                    {t.from === user?.user_id ? "Ödedim" : "Ödemeyi aldım"}
+                  </Text>
+                </Pressable>
+              )}
+
+              {payFor === t && (
+                <View style={styles.payForm}>
+                  <Text style={styles.payHint}>
+                    Ne kadar ödendi? Tamamı değilse tutarı değiştir — kalan borç durur.
+                  </Text>
+                  <View style={styles.payRow}>
+                    <Text style={styles.payCurrency}>€</Text>
+                    <TextInput
+                      style={styles.payInput}
+                      value={payAmount}
+                      onChangeText={(v) => setPayAmount(v.replace(/[^\d.,]/g, ""))}
+                      keyboardType="decimal-pad"
+                      autoFocus
+                      testID="pay-amount"
+                    />
+                  </View>
+                  <View style={styles.confirmRow}>
+                    <Pressable style={styles.cancelBtn} onPress={() => setPayFor(null)} testID="cancel-pay">
+                      <Text style={styles.cancelTxt}>Vazgeç</Text>
+                    </Pressable>
+                    <Pressable style={[styles.confirmBtn, paying && { opacity: 0.6 }]}
+                               onPress={recordPayment} disabled={paying} testID="confirm-pay">
+                      {paying ? <ActivityIndicator color={colors.onBrand} />
+                              : <Text style={styles.confirmBtnTxt}>Kaydet</Text>}
+                    </Pressable>
+                  </View>
+                </View>
+              )}
             </Card>
           ))
+        )}
+
+        {settlements.length > 0 && (
+          <>
+            <Text style={styles.section}>Kaydedilen ödemeler</Text>
+            {settlements.map((s) => {
+              const mine = s.from_user_id === user?.user_id || s.to_user_id === user?.user_id;
+              return (
+                <Card key={s.settlement_id} style={styles.settleCard} testID={`settlement-${s.settlement_id}`}>
+                  <Ionicons name="checkmark-circle" size={20} color={colors.mint} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.settleTxt}>
+                      {short(s.from_user_id)} → {short(s.to_user_id)} · {formatEUR(s.amount)}
+                    </Text>
+                    <Text style={styles.settleMeta}>{short(s.recorded_by)} işaretledi</Text>
+                  </View>
+                  {mine && !isArchived && (
+                    <Pressable onPress={() => undoSettlement(s.settlement_id)} hitSlop={10}
+                               testID={`undo-settlement-${s.settlement_id}`}>
+                      <Text style={styles.undoLink}>Geri al</Text>
+                    </Pressable>
+                  )}
+                </Card>
+              );
+            })}
+          </>
         )}
 
         {message && <Text style={styles.message}>{message}</Text>}
@@ -312,6 +418,25 @@ const styles = StyleSheet.create({
   arrowWrap: { flex: 1, alignItems: "center", gap: 6 },
   amountPill: { backgroundColor: colors.brand, paddingHorizontal: spacing.md, paddingVertical: 6, borderRadius: radius.pill },
   amountTxt: { color: "#fff", fontWeight: font.weights.bold, fontSize: font.sizes.base },
+  payBtn: {
+    flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6,
+    marginTop: spacing.md, paddingVertical: spacing.sm, borderRadius: radius.pill,
+    borderWidth: 1, borderColor: colors.brand,
+  },
+  payTxt: { color: colors.brand, fontWeight: font.weights.semibold, fontSize: font.sizes.base },
+  payForm: { marginTop: spacing.md, gap: spacing.sm },
+  payHint: { fontSize: font.sizes.sm, color: colors.onSurfaceSecondary, lineHeight: 17 },
+  payRow: {
+    flexDirection: "row", alignItems: "center", gap: spacing.sm,
+    backgroundColor: colors.surfaceSecondary, borderRadius: radius.md,
+    paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
+  },
+  payCurrency: { fontSize: 22, color: colors.brand, fontWeight: font.weights.bold },
+  payInput: { flex: 1, fontSize: 24, fontWeight: font.weights.bold, color: colors.onSurface, padding: 0 },
+  settleCard: { flexDirection: "row", alignItems: "center", gap: spacing.md, padding: spacing.md },
+  settleTxt: { fontSize: font.sizes.base, fontWeight: font.weights.semibold, color: colors.onSurface },
+  settleMeta: { fontSize: font.sizes.sm, color: colors.onSurfaceTertiary, marginTop: 1 },
+  undoLink: { color: colors.onSurfaceTertiary, fontSize: font.sizes.sm, fontWeight: font.weights.semibold },
   message: { color: colors.success, fontWeight: font.weights.semibold, textAlign: "center", marginTop: spacing.md },
   errorMsg: { color: colors.error, fontWeight: font.weights.semibold, textAlign: "center", marginTop: spacing.md, lineHeight: 20 },
   memberNote: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: colors.brandSoft, padding: spacing.md, borderRadius: radius.md },

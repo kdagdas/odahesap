@@ -135,6 +135,25 @@ class ExpenseCreate(BaseModel):
     expense_date: Optional[str] = None  # ISO YYYY-MM-DD
 
 
+class ExpenseUpdate(BaseModel):
+    target_type: Optional[Literal["self", "household", "roommate"]] = None
+    target_user_id: Optional[str] = None
+    items: Optional[List[ExpenseItem]] = None
+    total: Optional[float] = None
+    category: Optional[str] = None
+    merchant: Optional[str] = None
+    notes: Optional[str] = None
+    expense_date: Optional[str] = None
+
+
+class SettlementCreate(BaseModel):
+    """A real-world payment between two housemates."""
+    from_user_id: str
+    to_user_id: str
+    amount: float = Field(gt=0)
+    note: Optional[str] = Field(default=None, max_length=200)
+
+
 class OCRRequest(BaseModel):
     image_base64: str
 
@@ -1077,13 +1096,78 @@ async def member_expenses(
     return {"expenses": exps, "household_total": round(total, 2), "roommate_total": round(total_roommate, 2)}
 
 
-@api.delete("/expenses/{expense_id}")
-async def delete_expense(expense_id: str, user=Depends(get_current_user)):
+async def _get_editable_expense(expense_id: str, user: dict) -> dict:
+    """Fetch an expense the caller is allowed to change.
+
+    Closed periods are off limits. Their balances are what everyone settled
+    on; editing or deleting inside one rewrites history after the fact and the
+    numbers people already paid against would silently stop matching. To fix
+    something in a closed period, reopen it first.
+    """
     doc = await db.expenses.find_one({"expense_id": expense_id}, {"_id": 0})
     if not doc:
         raise HTTPException(status_code=404, detail="Harcama bulunamadı")
     if doc["added_by"] != user["user_id"]:
-        raise HTTPException(status_code=403, detail="Sadece sahibi silebilir")
+        raise HTTPException(status_code=403, detail="Sadece ekleyen kişi değiştirebilir")
+
+    period = await db.periods.find_one({"period_id": doc["period_id"]}, {"_id": 0})
+    if period and period.get("status") == "closed":
+        raise HTTPException(
+            status_code=400,
+            detail="Bu harcama kapatılmış bir döneme ait. Değiştirmek için önce dönemi yeniden açın.",
+        )
+    return doc
+
+
+@api.patch("/expenses/{expense_id}")
+async def update_expense(expense_id: str, body: ExpenseUpdate, user=Depends(get_current_user)):
+    doc = await _get_editable_expense(expense_id, user)
+    hh = await get_user_household(user["user_id"])
+    if not hh:
+        raise HTTPException(status_code=400, detail="Ev bulunamadı")
+
+    patch: dict = {}
+    target_type = body.target_type or doc["target_type"]
+    if body.target_type is not None or body.target_user_id is not None:
+        target_user = body.target_user_id if body.target_user_id is not None else doc.get("target_user_id")
+        if target_type == "roommate":
+            if not target_user or target_user not in hh["member_ids"]:
+                raise HTTPException(status_code=400, detail="Geçersiz oda arkadaşı")
+            if target_user == user["user_id"]:
+                raise HTTPException(status_code=400, detail="Kendinize atayamazsınız")
+        else:
+            target_user = None
+        patch["target_type"] = target_type
+        patch["target_user_id"] = target_user
+
+    if body.items is not None:
+        patch["items"] = [i.model_dump() for i in body.items]
+    if body.total is not None:
+        if body.total <= 0:
+            raise HTTPException(status_code=400, detail="Tutar sıfırdan büyük olmalı")
+        patch["total"] = round(body.total, 2)
+    if body.merchant is not None:
+        patch["merchant"] = body.merchant.strip() or None
+    if body.category is not None:
+        patch["category"] = body.category.strip() or None
+    if body.notes is not None:
+        patch["notes"] = body.notes.strip() or None
+    if body.expense_date is not None:
+        parsed = parse_date(body.expense_date)
+        if not parsed:
+            raise HTTPException(status_code=400, detail="Tarih formatı geçersiz")
+        patch["expense_date"] = parsed
+
+    if patch:
+        patch["updated_at"] = now_utc()
+        await db.expenses.update_one({"expense_id": expense_id}, {"$set": patch})
+    updated = await db.expenses.find_one({"expense_id": expense_id}, {"_id": 0})
+    return {"expense": updated}
+
+
+@api.delete("/expenses/{expense_id}")
+async def delete_expense(expense_id: str, user=Depends(get_current_user)):
+    await _get_editable_expense(expense_id, user)
     await db.expenses.delete_one({"expense_id": expense_id})
     return {"ok": True}
 
@@ -1193,6 +1277,92 @@ async def clear_done_shopping(scope: str = "household", user=Depends(get_current
     return {"deleted": res.deleted_count}
 
 
+# ---------- Settlements ----------
+# Marking a payment records that money actually changed hands. It feeds the
+# balance maths exactly like a roommate expense in reverse: paying off what
+# you owe moves your net back towards zero. Without this, "Dönemi Kapat" is
+# all-or-nothing — it assumes everyone squared up at the same moment.
+@api.get("/settlements")
+async def list_settlements(period_id: Optional[str] = None, user=Depends(get_current_user)):
+    hh = await get_user_household(user["user_id"])
+    if not hh:
+        return {"settlements": []}
+    pid = period_id
+    if not pid:
+        active = await get_active_period(hh["household_id"])
+        pid = active["period_id"] if active else None
+    if not pid:
+        return {"settlements": []}
+    rows = await db.settlements.find(
+        {"household_id": hh["household_id"], "period_id": pid}, {"_id": 0}
+    ).sort("created_at", -1).to_list(500)
+    return {"settlements": rows}
+
+
+@api.post("/settlements")
+async def create_settlement(body: SettlementCreate, user=Depends(get_current_user)):
+    hh = await get_user_household(user["user_id"])
+    if not hh:
+        raise HTTPException(status_code=400, detail="Ev bulunamadı")
+    period = await get_active_period(hh["household_id"])
+    if not period:
+        raise HTTPException(status_code=400, detail="Aktif dönem bulunamadı")
+
+    members = hh["member_ids"]
+    if body.from_user_id not in members or body.to_user_id not in members:
+        raise HTTPException(status_code=400, detail="Geçersiz üye")
+    if body.from_user_id == body.to_user_id:
+        raise HTTPException(status_code=400, detail="Ödeme aynı kişiye olamaz")
+    # Either side may record it — the payer knows they sent it, the receiver
+    # knows it arrived. A bystander marking other people's debts settled is
+    # not something anyone asked for.
+    if user["user_id"] not in (body.from_user_id, body.to_user_id):
+        raise HTTPException(status_code=403, detail="Sadece ödemenin taraflarından biri işaretleyebilir")
+
+    doc = {
+        "settlement_id": new_id("stl"),
+        "household_id": hh["household_id"],
+        "period_id": period["period_id"],
+        "from_user_id": body.from_user_id,
+        "to_user_id": body.to_user_id,
+        "amount": round(body.amount, 2),
+        "note": (body.note or "").strip() or None,
+        "recorded_by": user["user_id"],
+        "created_at": now_utc(),
+    }
+    await db.settlements.insert_one(doc.copy())
+
+    other = body.to_user_id if user["user_id"] == body.from_user_id else body.from_user_id
+    amount = f"{doc['amount']:.2f}".replace(".", ",")
+    await notify(
+        [other],
+        "Ödeme kaydedildi",
+        f"{user['name']} {amount} € tutarında bir ödeme işaretledi.",
+        "new_expense",
+        {"settlement_id": doc["settlement_id"]},
+    )
+    return {"settlement": doc}
+
+
+@api.delete("/settlements/{settlement_id}")
+async def delete_settlement(settlement_id: str, user=Depends(get_current_user)):
+    row = await db.settlements.find_one({"settlement_id": settlement_id}, {"_id": 0})
+    if not row:
+        raise HTTPException(status_code=404, detail="Kayıt bulunamadı")
+    hh = await get_user_household(user["user_id"])
+    if not hh or hh["household_id"] != row["household_id"]:
+        raise HTTPException(status_code=404, detail="Kayıt bulunamadı")
+    if user["user_id"] not in (row["from_user_id"], row["to_user_id"]):
+        raise HTTPException(status_code=403, detail="Sadece ödemenin taraflarından biri kaldırabilir")
+
+    period = await db.periods.find_one({"period_id": row["period_id"]}, {"_id": 0})
+    if period and period.get("status") == "closed":
+        raise HTTPException(status_code=400, detail="Kapatılmış dönemdeki ödeme kaydı değiştirilemez")
+
+    await db.settlements.delete_one({"settlement_id": settlement_id})
+    return {"ok": True}
+
+
 # ---------- Balances (Debt Simplification) ----------
 def simplify_debts(net: Dict[str, float]) -> List[dict]:
     creditors = [(u, round(a, 2)) for u, a in net.items() if a > 0.01]
@@ -1234,6 +1404,14 @@ async def period_participants(household_id: str, period_id: str, member_ids: Lis
         extra.add(r["added_by"])
         if r.get("target_user_id"):
             extra.add(r["target_user_id"])
+    # Someone can settle up and only then be removed from the household; their
+    # payment still has to count in that period's maths.
+    for s in await db.settlements.find(
+        {"household_id": household_id, "period_id": period_id},
+        {"_id": 0, "from_user_id": 1, "to_user_id": 1},
+    ).to_list(1000):
+        extra.add(s["from_user_id"])
+        extra.add(s["to_user_id"])
     return list(member_ids) + [u for u in sorted(extra) if u not in member_ids]
 
 
@@ -1275,11 +1453,31 @@ async def _compute_balances(household_id: str, period_id: str) -> dict:
             net[payer] = net.get(payer, 0) + total
             net[other] = net.get(other, 0) - total
 
+    # Recorded payments move the payer back towards zero and the receiver away
+    # from it — the exact inverse of a roommate expense. Applied after the
+    # expenses so the suggested transfers only cover what is still outstanding.
+    settlements = await db.settlements.find(
+        {"household_id": household_id, "period_id": period_id}, {"_id": 0}
+    ).to_list(1000)
+    settled_paid: Dict[str, float] = {m: 0.0 for m in members}
+    for s in settlements:
+        payer, receiver, amount = s["from_user_id"], s["to_user_id"], float(s["amount"])
+        if payer not in net or receiver not in net:
+            continue
+        net[payer] = net.get(payer, 0) + amount
+        net[receiver] = net.get(receiver, 0) - amount
+        settled_paid[payer] = settled_paid.get(payer, 0) + amount
+
     net = {k: round(v, 2) for k, v in net.items()}
     totals_paid = {k: round(v, 2) for k, v in totals_paid.items()}
     roommate_paid = {k: round(v, 2) for k, v in roommate_paid.items()}
+    settled_paid = {k: round(v, 2) for k, v in settled_paid.items()}
     transfers = simplify_debts(dict(net))
-    return {"net": net, "transfers": transfers, "totals_paid": totals_paid, "roommate_paid": roommate_paid}
+    return {
+        "net": net, "transfers": transfers, "totals_paid": totals_paid,
+        "roommate_paid": roommate_paid, "settled_paid": settled_paid,
+        "settlements": settlements,
+    }
 
 
 @api.get("/balances")
@@ -1435,6 +1633,8 @@ async def on_startup():
     await db.devices.create_index("token", unique=True)
     await db.devices.create_index("user_id")
     await db.avatars.create_index("user_id", unique=True)
+    await db.settlements.create_index("settlement_id", unique=True)
+    await db.settlements.create_index([("household_id", 1), ("period_id", 1)])
     await db.shopping_items.create_index("item_id", unique=True)
     await db.shopping_items.create_index([("household_id", 1), ("scope", 1)])
     await db.shopping_items.create_index([("added_by", 1), ("scope", 1)])

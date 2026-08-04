@@ -182,10 +182,20 @@ export default function Harcamalar() {
                       ))}
                       {e.notes && <Text style={styles.notes}>💬 {e.notes}</Text>}
                       {e.added_by === user?.user_id && (
-                        <Pressable style={styles.deleteBtn} onPress={() => onDelete(e.expense_id)} testID={`delete-expense-${e.expense_id}`}>
-                          <Ionicons name="trash-outline" size={14} color={colors.error} />
-                          <Text style={styles.deleteTxt}>Sil</Text>
-                        </Pressable>
+                        <View style={styles.ownerActions}>
+                          <Pressable
+                            style={styles.editBtn}
+                            onPress={() => router.push({ pathname: "/expense-edit", params: { expenseId: e.expense_id } })}
+                            testID={`edit-expense-${e.expense_id}`}
+                          >
+                            <Ionicons name="create-outline" size={14} color={colors.brand} />
+                            <Text style={styles.editTxt}>Düzenle</Text>
+                          </Pressable>
+                          <Pressable style={styles.deleteBtn} onPress={() => onDelete(e.expense_id)} testID={`delete-expense-${e.expense_id}`}>
+                            <Ionicons name="trash-outline" size={14} color={colors.error} />
+                            <Text style={styles.deleteTxt}>Sil</Text>
+                          </Pressable>
+                        </View>
                       )}
                     </View>
                   )}
@@ -227,6 +237,9 @@ const styles = StyleSheet.create({
   itemQty: { fontSize: font.sizes.sm, color: colors.onSurfaceTertiary, marginTop: 1 },
   itemPrice: { fontSize: font.sizes.base, color: colors.onSurface, fontWeight: font.weights.semibold },
   notes: { fontSize: font.sizes.sm, color: colors.onSurfaceSecondary, fontStyle: "italic" },
+  ownerActions: { flexDirection: "row", gap: spacing.sm },
+  editBtn: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: spacing.md, paddingVertical: 6, borderRadius: radius.pill, backgroundColor: colors.brandSoft },
+  editTxt: { color: colors.onBrandSoft, fontWeight: font.weights.semibold, fontSize: font.sizes.sm },
   deleteBtn: { flexDirection: "row", alignItems: "center", gap: 4, alignSelf: "flex-start", paddingHorizontal: spacing.md, paddingVertical: 6, borderRadius: radius.pill, backgroundColor: "#FEE2E2" },
   deleteTxt: { color: colors.error, fontWeight: font.weights.semibold, fontSize: font.sizes.sm },
 });
