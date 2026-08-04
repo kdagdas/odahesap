@@ -28,6 +28,8 @@ export default function Profil() {
   const [error, setError] = useState<string | null>(null);
   const [photoMenu, setPhotoMenu] = useState(false);
   const [photoBusy, setPhotoBusy] = useState(false);
+  const [regenConfirm, setRegenConfirm] = useState(false);
+  const [regenBusy, setRegenBusy] = useState(false);
   const [accountMode, setAccountMode] = useState<"none" | "name" | "email" | "password">("none");
   const [form, setForm] = useState({ name: "", email: "", pw: "", newPw: "" });
   const [savingAccount, setSavingAccount] = useState(false);
@@ -82,6 +84,17 @@ export default function Profil() {
       setMessage(`${name} evden çıkarıldı`);
     } catch (e: any) { setError(e?.message || "Çıkarılamadı"); }
     finally { setBusy(null); }
+  };
+
+  const regenerateInvite = async () => {
+    setRegenBusy(true); setError(null); setMessage(null);
+    try {
+      await apiPost("/households/regenerate-invite", {});
+      await refresh();
+      setRegenConfirm(false);
+      setMessage("Yeni davet kodu oluşturuldu");
+    } catch (e: any) { setError(e?.message || "Kod yenilenemedi"); }
+    finally { setRegenBusy(false); }
   };
 
   const doPhoto = async (run: () => Promise<{ ok: boolean; error?: string }>) => {
@@ -358,10 +371,37 @@ export default function Profil() {
               <Text style={styles.inviteHint}>
                 Bu kodu paylaştığın kişiler önce onayına gelir, sonra eve katılır.
               </Text>
-              <Pressable style={styles.shareBtn} onPress={shareInvite} testID="share-invite-btn">
-                <Ionicons name="share-social" size={16} color="#fff" />
-                <Text style={styles.shareTxt}>Paylaş</Text>
-              </Pressable>
+              <View style={styles.inviteActions}>
+                <Pressable style={styles.shareBtn} onPress={shareInvite} testID="share-invite-btn">
+                  <Ionicons name="share-social" size={16} color="#fff" />
+                  <Text style={styles.shareTxt}>Paylaş</Text>
+                </Pressable>
+                {isAdmin && (
+                  regenConfirm ? (
+                    <View style={styles.confirmRow}>
+                      <Pressable onPress={() => setRegenConfirm(false)} hitSlop={8} testID="cancel-regen">
+                        <Text style={styles.cancelSmall}>Vazgeç</Text>
+                      </Pressable>
+                      <Pressable style={styles.confirmSmall} onPress={regenerateInvite}
+                                 disabled={regenBusy} testID="confirm-regen">
+                        {regenBusy ? <ActivityIndicator size="small" color={colors.onBrand} />
+                                   : <Text style={styles.confirmSmallTxt}>Yenile</Text>}
+                      </Pressable>
+                    </View>
+                  ) : (
+                    <Pressable onPress={() => { setRegenConfirm(true); setMessage(null); setError(null); }}
+                               hitSlop={8} testID="regen-invite-btn">
+                      <Text style={styles.transferLink}>Kodu yenile</Text>
+                    </Pressable>
+                  )
+                )}
+              </View>
+              {regenConfirm && (
+                <Text style={styles.warnTxt}>
+                  Eski kod geçersiz olur. Evden ayrılan biri kodu hâlâ biliyorsa
+                  bir daha katılma isteği gönderemez.
+                </Text>
+              )}
             </Card>
 
             <Text style={styles.section}>Üyeler ({members.length})</Text>
@@ -622,7 +662,8 @@ const styles = StyleSheet.create({
   subtitle: { fontSize: font.sizes.sm, color: colors.onSurfaceSecondary, textTransform: "uppercase", letterSpacing: 0.5, fontWeight: font.weights.semibold, marginBottom: spacing.xs },
   inviteCode: { fontSize: 36, fontWeight: font.weights.bold, letterSpacing: 10, color: colors.brand, marginBottom: spacing.sm },
   inviteHint: { fontSize: font.sizes.sm, color: colors.onSurfaceTertiary, marginBottom: spacing.md, lineHeight: 18 },
-  shareBtn: { flexDirection: "row", alignItems: "center", gap: 6, alignSelf: "flex-start", backgroundColor: colors.brand, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm + 2, borderRadius: radius.pill },
+  inviteActions: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.md },
+  shareBtn: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: colors.brand, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm + 2, borderRadius: radius.pill },
   shareTxt: { color: "#fff", fontWeight: font.weights.semibold, fontSize: font.sizes.base },
   memberRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, padding: spacing.md },
   memberName: { fontSize: font.sizes.base, fontWeight: font.weights.semibold, color: colors.onSurface },

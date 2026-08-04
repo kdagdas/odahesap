@@ -119,6 +119,30 @@ Tek dosyada birleşik APK ~98 MB olur ve WhatsApp'ın sınırını aşar.
 
 ---
 
+## Yedekleme
+
+Atlas'ın ücretsiz M0 katmanında otomatik yedek yok. Tüm veritabanını tek bir
+JSON'a alır (profil fotoğrafları hariç, son 10 yedeği tutar):
+
+```bash
+cd backend
+.venv/Scripts/python.exe ../tests/yedekle.py
+```
+
+Çıktı `D:\SettleUp\yedekler` altına, yani **depo dışına** yazılır — içinde
+herkesin e-postası ve tüm harcama geçmişi var, paylaşılmamalı.
+
+Test takımları çalıştıktan sonra biriken hesapları temizlemek için:
+
+```bash
+.venv/Scripts/python.exe ../tests/test-verisi-temizle.py        # sadece gösterir
+.venv/Scripts/python.exe ../tests/test-verisi-temizle.py --sil
+```
+
+Gerçek kullanıcılara asla dokunmaz; test hesapları `@odahesap-e2e.com`
+uzantısından ayırt edilir. Kurucusu silinmiş, üyesi kalmamış yetim evleri de
+toplar.
+
 ## Testler
 
 Sekiz takım, hepsi çalışan bir API'ye HTTP ile bağlanır. Yerel sunucuya da

@@ -192,8 +192,10 @@ export default function Liste() {
                     )}
                   </View>
                   {scope === "household" && (
-                    <Avatar name={memberName(item.added_by) || "?"} size={24}
-                            avatarId={(members.find((m) => m.user_id === item.added_by) as any)?.avatar_id} />
+                    <Avatar name={memberName(item.added_by) || "?"} size={26}
+                            avatarId={(members.find((m) => m.user_id === item.added_by) as any)?.avatar_id}
+                            userId={item.added_by}
+                            photoVersion={(members.find((m) => m.user_id === item.added_by) as any)?.photo_version} />
                   )}
                   <Pressable onPress={() => remove(item)} hitSlop={10} testID={`liste-del-${item.item_id}`}>
                     <Ionicons name="close" size={18} color={colors.onSurfaceTertiary} />

@@ -16,7 +16,6 @@ export type AppUser = {
   user_id: string;
   email: string;
   name: string;
-  picture?: string | null;
   avatar_id?: number;
 };
 

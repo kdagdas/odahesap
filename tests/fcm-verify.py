@@ -71,9 +71,15 @@ else:
     sonuc = 1
 
 print("\ntemizlik...")
+hh_id = c.get(f"{API}/households/me", headers=hdr(alice)).json()["household"]["household_id"]
 for t in (bob, alice):
     c.post(f"{API}/households/leave", headers=hdr(t))
     c.post(f"{API}/auth/logout", headers=hdr(t))
 db.devices.delete_many({"token": fake})
 db.users.delete_many({"email": {"$regex": f"fcmv_.*_{TAG}@"}})
+# Ev ve icerigini de goturmezsek, kullanicilari silinmis yetim bir ev kaliyor
+# ve e-postaya bakan temizleme betigi onu bir daha hic bulamiyor.
+db.expenses.delete_many({"household_id": hh_id})
+db.periods.delete_many({"household_id": hh_id})
+db.households.delete_one({"household_id": hh_id})
 sys.exit(sonuc)

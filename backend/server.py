@@ -168,7 +168,9 @@ def new_id(prefix: str) -> str:
 
 
 def gen_invite_code() -> str:
-    return "".join(random.choices(string.digits, k=6))
+    # secrets, not random: this is the only thing standing between a stranger
+    # and a request to join your household.
+    return "".join(secrets.choice(string.digits) for _ in range(6))
 
 
 def hash_password(plain: str) -> str:
@@ -200,7 +202,6 @@ def public_user(user: dict) -> dict:
         "user_id": user["user_id"],
         "email": user["email"],
         "name": user["name"],
-        "picture": user.get("picture"),
         "avatar_id": user.get("avatar_id", 0),
         "photo_version": user.get("photo_version"),
     }
@@ -276,7 +277,7 @@ async def get_current_user(authorization: Optional[str] = Header(None)) -> dict:
 
 # Fields safe to return for *other* users (never password_hash).
 PUBLIC_USER_PROJECTION = {
-    "_id": 0, "user_id": 1, "email": 1, "name": 1, "picture": 1, "avatar_id": 1,
+    "_id": 0, "user_id": 1, "email": 1, "name": 1, "avatar_id": 1,
     "photo_version": 1,
 }
 
@@ -365,7 +366,6 @@ async def auth_register(body: RegisterReq):
         "email": email,
         "name": body.name.strip(),
         "password_hash": hash_password(body.password),
-        "picture": None,
         "avatar_id": 0,
         "created_at": now_utc(),
     }
@@ -631,6 +631,21 @@ async def rename_household(body: HouseholdRename, user=Depends(get_current_user)
     )
     updated = await db.households.find_one({"household_id": hh["household_id"]}, {"_id": 0})
     return {"household": updated}
+
+
+@api.post("/households/regenerate-invite")
+async def regenerate_invite(user=Depends(get_current_user)):
+    """Mint a fresh invite code.
+
+    The old one never expires on its own, so anyone who has ever seen it —
+    including someone who has since moved out — can keep asking to join.
+    """
+    hh = await require_admin(user["user_id"])
+    code = await _generate_unique_invite()
+    await db.households.update_one(
+        {"household_id": hh["household_id"]}, {"$set": {"invite_code": code}}
+    )
+    return {"invite_code": code}
 
 
 @api.post("/households/transfer-admin")
