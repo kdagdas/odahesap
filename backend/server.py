@@ -7,6 +7,7 @@ from pydantic import BaseModel, EmailStr, Field
 from typing import Iterable, List, Literal, Optional, Dict
 from datetime import datetime, timezone, timedelta, date
 from pathlib import Path
+import asyncio
 import os
 import uuid
 import random
@@ -1281,7 +1282,15 @@ async def reopen_period(user=Depends(get_current_user)):
 # ---------- Health ----------
 @api.get("/")
 async def root():
-    return {"service": "odahesap", "ok": True}
+    # push_ready surfaces the boot-time check so a broken notification setup is
+    # visible from outside instead of only in the logs.
+    check = getattr(app.state, "push_check", None) or {}
+    return {
+        "service": "odahesap",
+        "ok": True,
+        "push_ready": bool(check.get("token")),
+        "push_detail": check.get("detail"),
+    }
 
 
 # ---------- App ----------
@@ -1312,10 +1321,12 @@ async def on_startup():
     await db.shopping_items.create_index("item_id", unique=True)
     await db.shopping_items.create_index([("household_id", 1), ("scope", 1)])
     await db.shopping_items.create_index([("added_by", 1), ("scope", 1)])
-    logger.info(
-        "OdaHesap backend started (push: %s)",
-        "acik" if push.is_configured() else "kapali",
-    )
+    check = await asyncio.to_thread(push.self_check)
+    if check["token"]:
+        logger.info("OdaHesap backend started (bildirimler: hazir)")
+    else:
+        logger.warning("OdaHesap backend started (BILDIRIMLER CALISMIYOR: %s)", check["detail"])
+    app.state.push_check = check
 
 
 @app.on_event("shutdown")

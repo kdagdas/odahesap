@@ -38,6 +38,28 @@ def is_configured() -> bool:
     return _service_account is not None
 
 
+def self_check() -> dict:
+    """Prove at boot that a token can actually be minted.
+
+    Silently swallowing send failures is right at request time but it hid a
+    missing dependency for a whole release: every push no-opped and nothing
+    said so. Failing loudly in the startup log costs one token exchange.
+    """
+    if not is_configured():
+        return {"configured": False, "token": False, "detail": "FIREBASE_SERVICE_ACCOUNT tanimli degil"}
+    try:
+        from google.auth.transport.requests import Request  # noqa: F401
+    except ImportError as e:
+        return {"configured": True, "token": False,
+                "detail": f"google-auth[requests] eksik: {e}"}
+    token = _access_token()
+    return {
+        "configured": True,
+        "token": bool(token),
+        "detail": "hazir" if token else "erisim jetonu alinamadi (anahtar reddedilmis olabilir)",
+    }
+
+
 def _fcm_url() -> str:
     return f"https://fcm.googleapis.com/v1/projects/{_service_account['project_id']}/messages:send"
 

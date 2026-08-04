@@ -14,4 +14,8 @@ tzdata>=2024.2
 # Firebase Cloud Messaging HTTP v1 needs an OAuth2 access token signed with
 # the service-account key; this mints it. No Firebase Admin SDK — that pulls
 # in far more than we need for "send one push".
-google-auth>=2.35.0
+#
+# The [requests] extra is required, not optional: google.auth.transport.requests
+# imports `requests`, which google-auth does NOT pull in on its own. Without it
+# the token exchange raises ImportError and every push silently no-ops.
+google-auth[requests]>=2.35.0

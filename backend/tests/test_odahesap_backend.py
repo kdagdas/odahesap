@@ -7,7 +7,10 @@ def test_health_root(base_url, api):
     r = api.get(f"{base_url}/api/")
     assert r.status_code == 200
     body = r.json()
-    assert body == {"service": "odahesap", "ok": True}
+    assert body["service"] == "odahesap"
+    assert body["ok"] is True
+    # push_ready is diagnostic; presence matters, value depends on deployment
+    assert "push_ready" in body
 
 
 # ---------- Auth ----------
