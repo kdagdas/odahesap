@@ -1,0 +1,522 @@
+# KaSa — Tam Proje Dokümanı
+
+> Bu dosya, projeyi hiç bilmeyen bir kişiye veya araca devretmek için yazıldı.
+> Tek başına yeterlidir; başka bir konuşmaya, sohbet geçmişine veya kişiye
+> ihtiyaç duymaz. Günlük operasyon için [DEVAM.md](DEVAM.md), kurulum için
+> [README.md](README.md).
+>
+> Son güncelleme: 4 Ağustos 2026 · Uygulama sürümü 1.0.0 (versionCode 11)
+
+---
+
+## 1. Uygulama nedir
+
+**KaSa**, birlikte yaşayan insanların ortak harcamalarını paylaşması için
+yazılmış bir Android uygulamasıdır. Türkçe arayüzlüdür ve Almanya'daki
+paylaşımlı ev senaryosu için tasarlanmıştır.
+
+Ayırt edici özelliği: **Almanca market fişini kamerayla okuyup kalem kalem
+ayrıştırması.** Fişteki her ürünü adı, adedi ve fiyatıyla çıkarır, kategorilere
+böler, indirim satırlarını tanır. Splitwise gibi genel bölüşme uygulamaları bunu
+yapmaz.
+
+Şu anda üç kişilik bir ev tarafından gerçek kullanımdadır ve **hiçbir ücret
+ödenmemektedir** — tüm servisler ücretsiz katmanlarda çalışır.
+
+### Temel akış
+
+1. Kullanıcı e-posta ve şifreyle kayıt olur
+2. Ya yeni bir ev kurar (6 haneli davet kodu üretilir) ya da koda katılır
+3. Ev yöneticisi katılma isteğini onaylar
+4. Herkes harcama ekler — fiş tarayarak veya elle
+5. Her harcama üç türden biridir: **ev** (herkese bölünür), **kendim** (özel,
+   dengeye girmez), **arkadaşıma** (tamamı o kişiye yazılır)
+6. Kasa ekranı kimin kime ne kadar borçlu olduğunu en az sayıda transferle gösterir
+7. Ödemeler gerçekleştikçe işaretlenir
+8. Dönem sonunda yönetici dönemi kapatır, bakiyeler arşivlenir ve sıfırlanır
+
+---
+
+## 2. Bu proje nereden geldi — devralma hikâyesi
+
+Proje, **Emergent** adlı bir yapay zekâ uygulama platformunda üretilmiş bir iş
+alanı (`app_workspace.zip`) olarak devralındı. Çalışıyordu, ancak tamamen
+Emergent'in altyapısına bağımlıydı:
+
+| Bağımlılık | Nasıl çözüldü |
+|---|---|
+| Emergent Google OAuth (`auth.emergentagent.com`) | Kendi e-posta/şifre sistemimiz (bcrypt + opak oturum jetonu) |
+| `emergentintegrations` LLM paketi + Emergent LLM anahtarı | Doğrudan Google Gemini REST API |
+| Emergent önizleme sunucusu | Render.com ücretsiz servisi |
+| Emergent MongoDB | MongoDB Atlas M0 |
+| Emergent derleme araçları (`cmd-guard` vb.) | Silindi; yerel Gradle derlemesi |
+
+### Devralırken bulunan ve düzeltilen hatalar
+
+Bunlar tarihsel kayıt olarak burada; hepsi düzeltildi.
+
+**Güvenlik**
+
+1. **API her kullanıcı alanını döndürüyordu.** `/auth/me`, `/households/me` ve
+   `/balances` uçları `password_hash` dahil her şeyi gönderiyordu. Ev
+   arkadaşları birbirinin şifre özetini görebiliyordu. → Beyaz liste
+   projeksiyonu (`PUBLIC_USER_PROJECTION`, `public_user()`).
+2. **`.gitignore`'da `.env` deseni yoktu.** Dosyada "Environment files
+   (comprehensive coverage)" başlığı vardı ama altı boştu. GitHub'a push
+   edilseydi Gemini anahtarı ve MongoDB şifresi herkese açık olacaktı.
+3. **Keystore şifresi dokümana yazılmıştı** ve commit'lenmişti. Push öncesi
+   yakalandı, geçmiş temiz tek commit olarak yeniden kuruldu.
+
+**Çalışmayı engelleyen**
+
+4. **`httpx` ve `Pillow` bağımlılıkları eksikti.** `emergentintegrations`
+   üzerinden dolaylı geliyorlardı; o paket kalkınca sunucu hiç açılmayacaktı.
+5. **Windows'ta `npm install` çalışmıyordu** — `preinstall` kancası bir Linux
+   kabuk betiği çağırıyordu.
+6. **`gemini-2.5-flash` yeni API anahtarlarına kapatılmış** (404). Model
+   `gemini-3.5-flash` olarak güncellendi.
+
+**Doğruluk**
+
+7. **Almanca umlaut çevriyazımı karşılanmıyordu.** Fişlerde çok yaygın olan
+   `Broetchen`, `Spuelmittel`, `Kaese` yazımları hiçbir kategoriye eşleşmiyor,
+   hepsi "diğer" oluyordu. → `_fold_german()` ile `ö/oe`, `ü/ue`, `ä/ae` aynı
+   sonuca katlanıyor.
+8. **Kategoriler sözlük sırasına göre deneniyordu**, bu yüzden `Fleischsalat`
+   "salat" kelimesine takılıp meyve/sebze oluyordu. → En uzun (en özgül)
+   anahtar kelime kazanıyor.
+9. **Denge hesabı bugünkü üye listesine göre yapılıyordu.** Biri evden
+   çıkarıldığında geçmiş kapalı dönemler yeniden bölünüyor ve o kişinin borcu
+   kayıtlardan siliniyordu. → `period_participants()` o dönemde yer alan
+   herkesi kapsıyor.
+10. **Kapatılmış dönemdeki harcama silinebiliyordu**, ödeşilmiş geçmişi
+    sessizce değiştiriyordu. → Kapalı dönemler dokunulmaz hâle getirildi.
+
+**Arayüz**
+
+11. **Ayarlar ekranına ulaşmanın tek yolu Panel'deki avatara dokunmaktı** —
+    dişli simgesi yoktu, yazı yoktu. Kullanıcı ev adını değiştiremediğini
+    bildirdi. → Ayarlar, alt menüde kendi **Profil** sekmesi oldu.
+12. **Katılma istekleri görünmüyordu.** Sunucu isteği alıyordu ama arayüz ev
+    bilgisini yalnızca uygulama ilk açıldığında bir kez çekiyordu. → Ekranlar
+    her odaklanmada tazeleniyor. *(Bu hata, sunucu testlerinin arayüz
+    hatalarını yakalayamayacağının en net örneğidir.)*
+13. **Her 401 yanıtı "oturumun düştü" sayılıyordu.** `api.ts` jetonu siliyor ve
+    sunucunun Türkçe mesajını atıp "Unauthorized" koyuyordu. Sonuç: şifre
+    değiştirirken mevcut şifreyi yanlış yazan kullanıcı **sessizce dışarı
+    atılıyordu**, giriş ekranında da anlamsız hata görünüyordu. → Sunucu gerçek
+    oturum hatalarına `X-Session-Invalid` başlığı koyuyor; uygulama jetonu
+    yalnızca o zaman siliyor.
+14. **Fiş tarama ekranında rehber çerçevesi düğmelerle çakışıyordu**; alt menü
+    ortadaki dairesel ikon etikete değiyordu.
+15. **Bildirimler bir sürüm boyunca sessizce hiç gönderilmedi.** Sebep aşağıda
+    ayrı başlıkta.
+
+---
+
+## 3. Mimari
+
+```
+Android APK  ──HTTPS──>  FastAPI (Render)  ──>  MongoDB Atlas
+   Expo 54                                  ──>  Gemini API (fiş okuma)
+   RN 0.81                                  ──>  Firebase FCM (bildirim)
+```
+
+| Katman | Teknoloji |
+|---|---|
+| Uygulama | Expo SDK 54, React Native 0.81, Expo Router, TypeScript |
+| Sunucu | FastAPI + Motor (async MongoDB), Python 3.12 |
+| Veritabanı | MongoDB Atlas M0 (ücretsiz, 512 MB) |
+| Kimlik | Kendi sistemimiz: bcrypt + opak oturum jetonu, 90 gün, kayan süre |
+| Fiş okuma | Google Gemini `gemini-3.5-flash` (görüntü → yapılandırılmış JSON) |
+| Bildirim | Firebase Cloud Messaging HTTP v1 |
+| Barındırma | Render.com ücretsiz web servisi |
+| Uyanık tutma | GitHub Actions, 10 dakikada bir ping |
+
+**Sunucu tek dosyadır:** `backend/server.py` (~1.680 satır, 42 uç). Bildirim
+gönderimi ayrıdır: `backend/push.py`.
+
+### Canlı adresler
+
+| Ne | Nerede |
+|---|---|
+| API | https://odahesap-api.onrender.com |
+| Kod | https://github.com/kdagdas/odahesap |
+| Firebase projesi | `love-quiz-8d0b8` (mevcut bir projeye eklendi) |
+| Android paket adı | `com.odahesap.app` |
+
+Sağlık kontrolü her şeyi tek satırda söyler:
+
+```bash
+curl https://odahesap-api.onrender.com/api/
+# {"service":"odahesap","ok":true,"push_ready":true,"push_detail":"hazir"}
+```
+
+### Sırlar
+
+Hiçbiri depoda değildir. Render panelinde `odahesap-api` → **Environment**
+altında: `MONGO_URL`, `GEMINI_API_KEY`, `FIREBASE_SERVICE_ACCOUNT`.
+
+`render.yaml` bunları `sync: false` ile bildirir. **Yeni bir ortam değişkeni
+eklerken `render.yaml`'a da yazılmalıdır**, yoksa Blueprint deploy'u sırasında
+silinebilir.
+
+---
+
+## 4. Veri modeli (MongoDB)
+
+| Koleksiyon | Alanlar |
+|---|---|
+| `users` | `user_id`, `email` (tekil), `name`, `password_hash` (bcrypt, asla dönmez), `avatar_id`, `photo_version`, `notif_prefs`, `created_at` |
+| `user_sessions` | `session_token` (tekil), `user_id`, `expires_at` (TTL indeksi), `created_at` |
+| `households` | `household_id`, `name`, `invite_code` (tekil, 6 hane), `created_by`, `admin_id`, `member_ids[]`, `pending_member_ids[]`, `current_period_id` |
+| `periods` | `period_id`, `household_id`, `started_at`, `closed_at`, `status` (`active`/`closed`), `final_balances` |
+| `expenses` | `expense_id`, `household_id`, `period_id`, `added_by`, `target_type`, `target_user_id`, `items[]`, `total`, `source`, `category`, `merchant`, `notes`, `expense_date`, `created_at` |
+| `settlements` | `settlement_id`, `household_id`, `period_id`, `from_user_id`, `to_user_id`, `amount`, `recorded_by`, `created_at` |
+| `shopping_items` | `item_id`, `household_id`, `scope` (`household`/`self`), `text`, `added_by`, `done`, `done_by`, `created_at` |
+| `avatars` | `user_id` (tekil), `data` (ham JPEG), `mime`, `updated_at` |
+| `devices` | `token` (tekil, FCM), `user_id`, `platform`, `updated_at` |
+
+---
+
+## 5. İş kuralları — para matematiği
+
+Bu bölüm uygulamanın kalbidir. Değiştirilmeden önce
+`tests/e2e-test.py`, `tests/privacy-test.py` ve `tests/settle-edit-test.py`
+okunmalıdır.
+
+### Harcama türleri
+
+| Tür | Bölüşüm | Kim görür |
+|---|---|---|
+| **household** (Ev) | Dönem katılımcı sayısına bölünür | Evdeki herkes |
+| **self** (Kendim) | Dengeye **hiç girmez** | Sadece ekleyen |
+| **roommate** (→ Arkadaşım) | **Bölünmez**, tamamı hedef kişiye yazılır | Ekleyen + hedef kişi |
+
+**Örnek.** 3 kişilik ev, Alice 90 € ev alışverişi yapar:
+- Kişi başı pay 30 €
+- Alice: `+90 − 30 = +60` (alacaklı)
+- Bob: `−30`, Carol: `−30`
+
+Alice ayrıca Bob için 18 €'luk şampuan alırsa:
+- Alice `+18`, Bob `−18`. Carol'ın hesabında **hiç görünmez**.
+
+### Borç sadeleştirme
+
+`simplify_debts()` açgözlü eşleştirme yapar: en büyük alacaklı ile en büyük
+borçlu eşleştirilir. Amaç transfer sayısını en aza indirmektir.
+
+### Ödeme işaretleme
+
+Kaydedilen ödeme, oda arkadaşı harcamasının tam tersidir: ödeyenin dengesini
+sıfıra yaklaştırır, alanınkini uzaklaştırır. **Harcamalardan sonra uygulanır**,
+böylece önerilen transferler yalnızca kalan borcu gösterir. Kısmi ödeme
+desteklenir. Ödemeyi yalnızca **tarafları** kaydedebilir veya geri alabilir.
+
+### Dönem yaşam döngüsü
+
+- Ev kurulduğunda ilk dönem açılır
+- Yönetici dönemi kapatır → bakiyeler `final_balances` olarak arşivlenir, yeni
+  boş dönem başlar
+- Kapatma **geri alınabilir**, ancak yalnızca yeni döneme henüz harcama
+  girilmemişse (girilmişse o harcamalar sahipsiz kalırdı)
+- **Kapalı dönemler dokunulmazdır:** harcama düzenlenemez, silinemez, ödeme
+  kaydı kaldırılamaz
+
+### Üyelik ve pay
+
+`period_participants()` bir dönemin hesabına, o dönemde harcaması **veya
+ödemesi** olan herkesi katar — sadece bugünkü üyeleri değil. Böylece biri
+evden çıkarıldığında geçmiş dönemlerin payları bozulmaz.
+
+**Bilinen sınır:** dönem ortasında eve katılan kişi, o dönemin **tüm geçmiş**
+harcamalarının payını üstlenir. Tam çözüm üyelik tarihlerini saklamayı
+gerektirir (~2,5 sa). Şimdilik onay ekranında uyarı gösterilir: *"Açık dönemde
+N ev harcaması var. Onaylarsan yeni üye bunların da payını üstlenir."*
+
+### Yönetici rolü
+
+Ev kurucusu yöneticidir (`admin_id`, eski kayıtlarda `created_by`'a düşer).
+Yalnızca yönetici: katılma isteğini onaylar/reddeder, ev adını değiştirir, üye
+çıkarır, yöneticiliği devreder, davet kodunu yeniler, dönem kapatır/geri açar.
+
+Yönetici evden ayrılırsa yöneticilik kalan bir üyeye **otomatik geçer** —
+aksi hâlde kimse onay veremez hâle gelirdi.
+
+Üye çıkarma, o kişinin açık dönemde harcaması varsa **engellenir**; doğru sıra
+ödeş → dönemi kapat → çıkar.
+
+---
+
+## 6. Ekranlar
+
+Alt menü beş sekmelidir; "Fiş Tara" gerçek ortada ve dairesel vurguludur
+(Instagram düzeni):
+
+```
+Anasayfa · Alınacaklar · [Fiş Tara] · Kasa · Profil
+```
+
+> Rota dosya adları `panel` ve `denge` olarak kaldı (başka ekranlar bu yollara
+> gidiyor); yalnızca görünen başlıklar Anasayfa ve Kasa oldu.
+
+| Dosya | Ekran |
+|---|---|
+| `app/login.tsx` | Giriş / kayıt (sekmeli) |
+| `app/onboarding.tsx` | Ev kur veya davet koduyla katıl; onay bekleme |
+| `app/(tabs)/panel.tsx` | Anasayfa: net durum, ev arkadaşları, son harcamalar |
+| `app/(tabs)/liste.tsx` | Alınacaklar: Ev / Kendim sekmeli |
+| `app/(tabs)/tara.tsx` | Kamera + galeri, çoklu fiş desteği |
+| `app/(tabs)/denge.tsx` | Kasa: bakiyeler, önerilen transferler, ödeme işaretleme, dönem kapatma/geri alma |
+| `app/(tabs)/profil.tsx` | Profil, fotoğraf, hesap ayarları, bildirimler, ev yönetimi, üyeler |
+| `app/harcamalar.tsx` | Harcama geçmişi, süzgeçlerle (Anasayfa'daki "Tümü"nden) |
+| `app/review.tsx` | Fiş okuma sonucu: kalem kalem düzenleme ve dağıtım |
+| `app/manual.tsx` | Elle harcama girişi |
+| `app/expense-edit.tsx` | Harcama düzenleme, kalem bazlı |
+| `app/member-detail.tsx` | Bir üyenin dönem içindeki harcama dökümü |
+
+Paylaşılan modüller `frontend/src/`: `api.ts` (istemci + yeniden deneme +
+uyanma sinyali), `auth.tsx`, `household.tsx`, `notifications.ts`, `photo.ts`,
+`theme.ts`, `ui.tsx`, `WakingBanner.tsx`.
+
+---
+
+## 7. API (42 uç)
+
+Tümü `/api` önekiyle. Sağlık ucu dışında hepsi `Authorization: Bearer <jeton>` ister.
+
+**Kimlik**
+`POST /auth/register` · `POST /auth/login` · `GET /auth/me` · `POST /auth/logout`
+`PATCH /auth/profile` · `POST /auth/change-email` · `POST /auth/change-password`
+`PUT /auth/photo` · `DELETE /auth/photo` · `GET /users/{id}/photo`
+`PATCH /auth/notifications`
+
+**Ev**
+`POST /households` · `PATCH /households` · `GET /households/me` · `POST /households/join`
+`POST /households/approve` · `POST /households/reject` · `POST /households/leave`
+`POST /households/remove-member` · `POST /households/transfer-admin`
+`POST /households/regenerate-invite`
+
+**Harcama**
+`POST /expenses` · `GET /expenses` · `PATCH /expenses/{id}` · `DELETE /expenses/{id}`
+`GET /members/{id}/expenses` · `POST /ocr/receipt`
+
+**Denge ve dönem**
+`GET /balances` · `GET /periods` · `POST /periods/close` · `POST /periods/reopen`
+`GET /settlements` · `POST /settlements` · `DELETE /settlements/{id}`
+
+**Alınacaklar**
+`GET /shopping` · `POST /shopping` · `PATCH /shopping/{id}` · `DELETE /shopping/{id}`
+`POST /shopping/clear-done`
+
+**Cihaz**
+`POST /devices/register` · `POST /devices/unregister`
+
+---
+
+## 8. Kolay gözden kaçan tasarım kararları
+
+Bunlar bilinçli tercihlerdir; sebebini bilmeden değiştirilirse hata gibi
+görünürler.
+
+**Bildirim hataları yutulur.** `notify()` asla istisna fırlatmaz — bildirim
+gönderilememesi harcamanın kaydedilmesini engellememelidir. Bunun bedeli
+ödendi: bir sürüm boyunca bildirimler sessizce hiç gitmedi, çünkü
+`google-auth` paketi `requests`'i **zorunlu bağımlılık olarak getirmiyor**;
+`google.auth.transport.requests` import edilirken `ImportError` fırlıyor ve
+`try/except` bunu yutuyordu. Yerelde fark edilmedi çünkü `requests` test
+bağımlılığı olarak kuruluydu — yani kodun çalıştırıldığı yer, çalışacağı
+yerden farklıydı. → `google-auth[requests]` ve açılışta `push.self_check()`.
+**Bu erken uyarı kaldırılmamalıdır.**
+
+**401'in iki anlamı vardır.** Gerçek oturum hatası `X-Session-Invalid` başlığı
+taşır; yanlış şifre taşımaz. Uygulama jetonu yalnızca başlık varsa siler.
+
+**Fotoğraflar ayrı koleksiyonda ve ayrı uçtan servis edilir.** Kullanıcı
+nesnesine gömülseydi, ev bilgisi her ekran odaklanmasında yenilendiği için tüm
+üyelerin fotoğrafı sürekli yeniden inecekti. `photo_version` yalnızca önbellek
+kırıcıdır; adres sonsuza kadar önbelleklenebilir ama yeni yüklemede değişir.
+
+**Fotoğraf telefonda küçültülür.** Ham telefon fotoğrafı base64'e çevrilince
+7 MB'ı aşar. 256 piksele indirilince ~15 KB olur ve avatar boyutunda fark
+görünmez.
+
+**Alınacaklar listesine ekleme iyimserdir** — ağ cevabı beklenmez. Art arda
+madde girerken her birinde beklemek uygulamayı bozuk hissettiriyordu.
+
+**Uyanma şeridi ve otomatik yeniden deneme.** Render ücretsiz katmanı 15 dk
+boşta kalınca uyur; ilk istek ~50 sn sürer ve boot sırasında 502 dönebilir.
+`api.ts` 502/503/504 ve ağ hatalarında 3 kez yeniden dener; istek 3 saniyeyi
+aşarsa ekranın üstünde açıklayıcı bir şerit çıkar.
+
+**E-posta değiştirmek şifre sorar.** Masada açık kalan bir telefon, hesabı
+sahibinin erişemediği bir adrese taşıyamamalıdır.
+
+**Şifre değişince diğer cihazların oturumu düşer**, mevcut telefon açık kalır.
+Şifre değiştirmenin amacı başkasını dışarıda bırakmaksa, eski oturumların
+ayakta kalması o amacı boşa çıkarır.
+
+**Kişisel ("Kendim") harcamalar hiçbir bildirim üretmez** — gizli olmaları
+gereken şeyler varlıklarını bile duyurmamalıdır.
+
+---
+
+## 9. Derleme ve dağıtım
+
+Araç zinciri `D:\SettleUp\build-tools` altındadır, **sisteme kurulu değildir**:
+taşınabilir JDK 17, Android SDK 35+36, NDK 27, Gradle önbelleği.
+
+```bash
+cd frontend
+npx expo prebuild --platform android --no-install
+cd android && gradlew.bat assembleRelease
+```
+
+Öncesinde `JAVA_HOME`, `ANDROID_HOME`, `GRADLE_USER_HOME`, `TEMP`, `TMP`
+ayarlanmalıdır. Çıktı: `app/build/outputs/apk/release/app-arm64-v8a-release.apk`
+(~38 MB). Üç mimari üretilir; dağıtılan `arm64-v8a`, 2016 sonrası tüm
+telefonları kapsar. Birleşik tek APK ~98 MB olur ve WhatsApp sınırını aşar.
+
+### Bu ortama özgü dört tuzak
+
+1. **`gradlew clean` çalıştırmayın.** `clean` CMake'i yeniden yapılandırır,
+   NDK 27 ise CMake 3.22'nin istediği `gold` bağlayıcısını desteklemez.
+   Temiz derleme için `app/build`, `app/.cxx`, `android/build` klasörlerini
+   **elle** silip doğrudan `assembleRelease` çalıştırın.
+2. **Windows kullanıcı adında Türkçe karakter var** (`Kadir Dağdaş`), bu yüzden
+   JVM geçici dizinde soket açamıyor ve Gradle daemon hiç başlamıyor.
+   `gradle.properties` içindeki `-Djava.io.tmpdir=D:/SettleUp/build-tools/tmp`
+   **silinmemelidir.**
+3. **PowerShell `Set-Content -Encoding utf8` BOM ekler**, Groovy bunu
+   ayrıştıramaz ve `build.gradle` bozulur. BOM'suz yazın:
+   `[System.IO.File]::WriteAllText($p, $t, (New-Object System.Text.UTF8Encoding($false)))`
+4. **`versionCode` `app.json`'dan gelir.** `build.gradle`'da elle değiştirmek
+   işe yaramaz; bir sonraki `prebuild` üzerine yazar.
+
+### İmzalama
+
+Keystore: `D:\SettleUp\build-tools\odahesap-release.keystore`, alias
+`odahesap`, şifre `odahesap2026`. **Bu dosya kaybedilirse bir daha güncelleme
+APK'sı üretilemez** — kullanıcıların uygulamayı silip yeniden kurması gerekir.
+Yedeklenmelidir. Ayrıntı: [IMZALAMA.md](IMZALAMA.md).
+
+### Sunucu deploy'u
+
+`main` dalına push → Render otomatik deploy eder (2-5 dk). Deploy'un gerçekten
+geçtiğini yeni bir ucun varlığıyla doğrulayın; Render "live" dese de eski sürüm
+ayakta kalabiliyor (bu projede yaşandı).
+
+---
+
+## 10. Testler
+
+Sekiz takım, toplam **172 kontrol**, hepsi çalışan bir API'ye HTTP ile bağlanır.
+Yerelde de canlıda da aynı şekilde çalışır:
+
+```bash
+cd backend
+.venv/Scripts/python.exe ../tests/e2e-test.py https://odahesap-api.onrender.com
+```
+
+| Dosya | Kapsam | Sayı |
+|---|---|---|
+| `e2e-test.py` | kayıt, giriş, ev, gizlilik, denge, dönem | 32 |
+| `admin-test.py` | yönetici rolü, devir, dönem geri alma | 25 |
+| `privacy-test.py` | kişisel/ikili harcama görünürlüğü | 12 |
+| `remove-member-test.py` | üye çıkarma, geçmiş dönem doğruluğu | 17 |
+| `shopping-test.py` | alınacaklar listesi, iki kapsam | 18 |
+| `profile-test.py` | ad/e-posta/şifre, fotoğraf yetkisi | 27 |
+| `settle-edit-test.py` | ödeme işaretleme, harcama düzenleme | 25 |
+| `session-401-test.py` | oturum hatası ile şifre hatası ayrımı | 16 |
+
+Hepsi kendi test hesaplarını oluşturup sonunda temizler; üretim verisine
+dokunmaz. Yardımcılar: `fcm-verify.py` (Firebase kimlik bilgisi gerçekten
+çalışıyor mu), `yedekle.py`, `test-verisi-temizle.py`.
+
+> **Kritik uyarı:** Bu testlerin tamamı **sunucuyu** korur. Arayüz hiçbir
+> cihazda otomatik çalıştırılmaz. Bu projede bulunan arayüz hatalarının hepsi
+> elle kullanım sırasında ortaya çıktı — özellikle 12 ve 13 numaralı hatalar
+> sunucu testlerinden geçtikleri hâlde kullanıcıyı engelliyorlardı.
+
+---
+
+## 11. Bilinen sınırlar
+
+- **Şifre sıfırlama yok.** Kullanıcı şifresini unutursa veritabanından elle
+  müdahale gerekir.
+- **E-posta doğrulaması yok.** Adresin gerçek olup olmadığı kontrol edilmez;
+  yazım hatası yapan kullanıcı o adresle kalır. (Bu fiilen yaşandı.)
+- **Hiçbir uçta hız sınırlaması yok.** Üç kişilik kullanımda sorun değil, ama
+  genele açılırsa: davet kodu 6 hanedir (bir milyon ihtimal) ve `/households/join`
+  sınırsız denenebilir; `/ocr/receipt` de döngüye sokularak Gemini kotası
+  tüketilebilir.
+- **Atlas M0'da otomatik yedek yok.** `tests/yedekle.py` elle çalıştırılmalıdır.
+- **Render ücretsiz katmanı uyur.** GitHub Actions 10 dakikada bir ping atar.
+  Aylık 750 saatlik kota tek servisi 7/24 ayakta tutmaya ancak yeter —
+  **aynı hesapta ikinci bir ücretsiz servis açılmamalıdır.**
+- **iOS sürümü yok.** Mac ve yıllık geliştirici hesabı gerekir.
+- **Dönem ortasında katılan üye** o dönemin tüm geçmiş harcamalarının payını
+  üstlenir (uyarı gösterilir).
+
+---
+
+## 12. Yapılmadan bırakılanlar
+
+Konuşulmuş, tahmini çıkarılmış, henüz yapılmamış:
+
+| İş | Tahmin | Not |
+|---|---|---|
+| Düzenli harcamalar (kira, fatura) | ~2 sa | Ev sahibi kendi eklemeyi tercih etti |
+| Harcama dağılımı grafiği (ev + kişisel) | ~3 sa | "Kendim" verisi kaydediliyor ama hiç gösterilmiyor |
+| Çevrimdışı kuyruk | ~2 sa | Uyanma ekranı riskin çoğunu azalttı |
+| Karanlık tema | ~4-5 sa | Renkler `theme.ts`'te sabit; her ekran `StyleSheet.create` ile modül yüklenirken stilini üretiyor. Dinamik tema ~600 satır stilin bileşen içine taşınmasını gerektirir |
+| Google ile giriş | ~4 sa | Firebase projesi zaten var. Doğrulanmış e-posta getirir: şifre sıfırlama ve yazım hatası sorunlarını bitirir |
+| Hız sınırlaması | ~2 sa | Genele açmadan **önce** şart |
+| Hesap silme + veri dışa aktarma | ~3 sa | GDPR asgarisi |
+| Çoklu ev/grup üyeliği | ~8-12 sa | `get_user_household()` 20 yerde çağrılıyor; tek ev varsayımı derine işlemiş |
+| Ev içi sohbet | ~4-5 sa | **Önerilmedi** — WhatsApp zaten var, alınacaklar listesi ihtiyacı daha iyi karşılıyor |
+
+---
+
+## 13. Genele açma senaryosu — maliyet notları
+
+Bugün üç kişi için hiçbir ücret ödenmiyor. Genele açılırsa:
+
+| Kalem | Render + Atlas | Kendi VPS'i (ör. Hetzner) |
+|---|---|---|
+| Sunucu | ~7-25 €/ay | ~5 €/ay |
+| Veritabanı | ~10-60 €/ay | 0 (aynı makinede) |
+| OCR (Gemini) | ~10-15 €/ay (1.000 kullanıcı, ayda 20 fiş) | aynı |
+| Bildirim (FCM) | 0 | 0 |
+| Play Store | 25 € tek seferlik | aynı |
+
+**OCR sanıldığı kadar pahalı değildir.** Flash sınıfı bir görüntü modelinde fiş
+başına maliyet binde birkaç kuruştur; birkaç bin kullanıcıya kadar baskın kalem
+sabit altyapıdır. Ücretsiz katmanda sorun maliyet değil, dakikalık istek
+limitidir.
+
+**Açık kaynak "bedava" demek değildir.** Tesseract/PaddleOCR ücretsizdir ama
+düz metin verir, kalem listesi vermez; termal fiş üzerinde doğruluğu düşüktür
+ve üstüne ayrıştırma katmanı yazmak gerekir. Açık ağırlıklı görüntü modelleri
+kaliteyi yakalayabilir ama GPU ister (aylık 50-200 €), yani **API'den
+pahalıdır** — çok yüksek hacme çıkana kadar.
+
+Gerçek tasarruf barındırmadadır: kendi VPS'inde sunucu + veritabanı ~5 €/ay.
+
+**Fiyatlama.** Splitwise ücretli sürümü aylık 3-4 € bandındadır, çıpa budur.
+Doğal model: ücretsizde fiş taramayı sınırlamak (örn. ayda 10), ücretlide
+sınırsız — çünkü kullanım başına para yakan tek şey odur.
+
+---
+
+## 14. İlk yapılacaklar (yeni devralan için)
+
+1. `curl https://odahesap-api.onrender.com/api/` — `push_ready: true` mü?
+2. `DEVAM.md` oku (günlük operasyon, tuzaklar)
+3. `backend/server.py` oku — sunucunun tamamı orada
+4. Testleri canlıya karşı çalıştır, 172'sinin de geçtiğini gör
+5. Kod değiştirmeden önce ilgili test takımını oku; iş kuralları oraya yazılı
+
+**Değiştirmeden önce iki kez düşünülecek yerler:** `_compute_balances()` ve
+`period_participants()` (para matematiği), `get_current_user()` (401 ayrımı),
+`push.self_check()` (sessiz hata koruması), kapalı dönem kontrolleri.
