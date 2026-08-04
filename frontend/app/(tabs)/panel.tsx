@@ -103,8 +103,9 @@ export default function Panel() {
             <Card key={m.user_id} style={styles.memberRow} testID={`member-row-${m.user_id}`}>
               <Avatar name={m.name} size={40} avatarId={(m as any).avatar_id} />
               <View style={{ flex: 1 }}>
+                {/* No e-mail here: on the home screen the name and what they
+                    spent is the whole story, and addresses just crowd it. */}
                 <Text style={styles.memberName}>{m.name}{m.user_id === user?.user_id ? " (sen)" : ""}</Text>
-                <Text style={styles.memberEmail}>{m.email}</Text>
               </View>
               <View style={{ alignItems: "flex-end" }}>
                 <Text style={styles.memberPaid}>{formatEUR(totalsPaid[m.user_id] || 0)}</Text>
@@ -117,7 +118,7 @@ export default function Panel() {
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Son harcamalar</Text>
-            <Pressable onPress={() => router.push("/(tabs)/harcamalar")} testID="see-all-expenses">
+            <Pressable onPress={() => router.push("/harcamalar")} testID="see-all-expenses">
               <Text style={styles.link}>Tümü</Text>
             </Pressable>
           </View>
@@ -195,7 +196,6 @@ const styles = StyleSheet.create({
   link: { color: colors.brand, fontWeight: font.weights.semibold },
   memberRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, padding: spacing.md },
   memberName: { fontSize: font.sizes.base, fontWeight: font.weights.semibold, color: colors.onSurface },
-  memberEmail: { fontSize: font.sizes.sm, color: colors.onSurfaceTertiary },
   memberPaid: { fontSize: font.sizes.base, fontWeight: font.weights.semibold, color: colors.onSurface },
   memberSubtle: { fontSize: font.sizes.sm, color: colors.onSurfaceTertiary },
   expCard: { padding: spacing.md },

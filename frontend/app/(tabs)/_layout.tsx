@@ -6,10 +6,11 @@ import { colors, font } from "@/src/theme";
 
 type IconArg = { color: string; focused: boolean };
 
-// Five tabs, so "Fiş Tara" sits in the true centre — with four it was the
-// third of four and looked off to the right. Route file names are unchanged
-// (panel / denge) because four other screens navigate to them by path; only
-// the visible titles moved to Anasayfa / Kasa.
+// Five tabs, so "Fiş Tara" sits in the true centre. Slots go to what gets
+// used daily: the shopping list took the one the expense history had, since
+// that history is browsed occasionally and is one tap away from the home
+// screen's "Tümü" link. Route file names are unchanged (panel / denge)
+// because other screens navigate to them by path; only the titles moved.
 export default function TabsLayout() {
   const insets = useSafeAreaInsets();
   // Raise tab bar clearly above the phone's home indicator / gesture bar
@@ -46,11 +47,11 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
-        name="harcamalar"
+        name="liste"
         options={{
-          title: "Harcamalar",
+          title: "Alınacaklar",
           tabBarIcon: ({ color, focused }: IconArg) => (
-            <Ionicons name={focused ? "receipt" : "receipt-outline"} size={22} color={color} />
+            <Ionicons name={focused ? "cart" : "cart-outline"} size={22} color={color} />
           ),
         }}
       />

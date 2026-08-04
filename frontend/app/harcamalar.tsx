@@ -3,7 +3,7 @@ import {
   View, Text, StyleSheet, ScrollView, RefreshControl, Pressable, ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { apiGet, apiDelete } from "@/src/api";
 import { useAuth } from "@/src/auth";
@@ -27,8 +27,11 @@ const periodLabel = (p: Period, idx: number, total: number) => {
   return `${p.status === "active" ? "Aktif · " : ""}Dönem #${total - idx} (${m}.${y})`;
 };
 
+// Was a tab; the shopping list earns that slot because it is used daily while
+// this history is opened occasionally. Reached from "Tümü" on the home screen.
 export default function Harcamalar() {
   const { user } = useAuth();
+  const router = useRouter();
   const { members, activePeriod } = useHousehold();
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [periods, setPeriods] = useState<Period[]>([]);
@@ -64,8 +67,13 @@ export default function Harcamalar() {
   return (
     <SafeAreaView style={styles.root} edges={["top"]} testID="harcamalar-screen">
       <View style={styles.header}>
-        <Text style={styles.title}>Harcamalar</Text>
-        <Text style={styles.subtitle}>Süzgeçler ile geçmişe göz at</Text>
+        <Pressable onPress={() => router.back()} hitSlop={12} testID="harcamalar-back">
+          <Ionicons name="chevron-back" size={26} color={colors.onSurface} />
+        </Pressable>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.title}>Harcamalar</Text>
+          <Text style={styles.subtitle}>Süzgeçler ile geçmişe göz at</Text>
+        </View>
       </View>
 
       <View style={styles.chipRowWrap}>
@@ -193,7 +201,7 @@ export default function Harcamalar() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.surfaceAlt },
-  header: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm },
+  header: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingHorizontal: spacing.lg, paddingTop: spacing.sm },
   title: { fontSize: 26, fontWeight: font.weights.bold, color: colors.onSurface, letterSpacing: -0.3 },
   subtitle: { fontSize: font.sizes.sm, color: colors.onSurfaceSecondary, marginTop: 2 },
   chipRowWrap: { height: 56, justifyContent: "center", marginTop: spacing.sm },

@@ -68,6 +68,18 @@ class HouseholdRename(BaseModel):
     name: str = Field(min_length=1, max_length=60)
 
 
+class ShoppingItemCreate(BaseModel):
+    text: str = Field(min_length=1, max_length=120)
+    scope: Literal["household", "self"] = "household"
+    note: Optional[str] = Field(default=None, max_length=200)
+
+
+class ShoppingItemUpdate(BaseModel):
+    text: Optional[str] = Field(default=None, min_length=1, max_length=120)
+    done: Optional[bool] = None
+    note: Optional[str] = Field(default=None, max_length=200)
+
+
 class DeviceRegisterReq(BaseModel):
     token: str = Field(min_length=10, max_length=4096)
     platform: str = "android"
@@ -959,6 +971,111 @@ async def delete_expense(expense_id: str, user=Depends(get_current_user)):
     return {"ok": True}
 
 
+# ---------- Shopping list ----------
+# Two scopes, mirroring how expenses already work so there is nothing new to
+# learn: "household" is shared with everyone in the house, "self" is private
+# to whoever wrote it and never leaves their own list.
+def _shopping_filter(user_id: str, household_id: Optional[str], scope: Optional[str]) -> dict:
+    visible = [{"scope": "self", "added_by": user_id}]
+    if household_id:
+        visible.append({"scope": "household", "household_id": household_id})
+    q: dict = {"$or": visible}
+    if scope == "self":
+        q = {"scope": "self", "added_by": user_id}
+    elif scope == "household":
+        if not household_id:
+            return {"_id": None}  # no household -> nothing to show
+        q = {"scope": "household", "household_id": household_id}
+    return q
+
+
+@api.get("/shopping")
+async def list_shopping(scope: Optional[str] = None, user=Depends(get_current_user)):
+    hh = await get_user_household(user["user_id"])
+    hh_id = hh["household_id"] if hh else None
+    q = _shopping_filter(user["user_id"], hh_id, scope)
+    items = await db.shopping_items.find(q, {"_id": 0}).to_list(500)
+    # Outstanding first, then newest — the point of the screen is what is
+    # still missing, not a history of what was bought.
+    items.sort(key=lambda i: (bool(i.get("done")), -(i.get("created_at").timestamp() if i.get("created_at") else 0)))
+    return {"items": items}
+
+
+@api.post("/shopping")
+async def add_shopping(body: ShoppingItemCreate, user=Depends(get_current_user)):
+    hh = await get_user_household(user["user_id"])
+    if body.scope == "household" and not hh:
+        raise HTTPException(status_code=400, detail="Önce bir eve katılın")
+
+    doc = {
+        "item_id": new_id("itm"),
+        "household_id": hh["household_id"] if hh else None,
+        "scope": body.scope,
+        "text": body.text.strip(),
+        "note": (body.note or "").strip() or None,
+        "added_by": user["user_id"],
+        "done": False,
+        "done_by": None,
+        "done_at": None,
+        "created_at": now_utc(),
+    }
+    await db.shopping_items.insert_one(doc.copy())
+    return {"item": doc}
+
+
+async def _get_writable_item(item_id: str, user: dict) -> dict:
+    item = await db.shopping_items.find_one({"item_id": item_id}, {"_id": 0})
+    if not item:
+        raise HTTPException(status_code=404, detail="Kayıt bulunamadı")
+    if item["scope"] == "self":
+        if item["added_by"] != user["user_id"]:
+            raise HTTPException(status_code=404, detail="Kayıt bulunamadı")
+    else:
+        hh = await get_user_household(user["user_id"])
+        if not hh or hh["household_id"] != item.get("household_id"):
+            raise HTTPException(status_code=404, detail="Kayıt bulunamadı")
+    return item
+
+
+@api.patch("/shopping/{item_id}")
+async def update_shopping(item_id: str, body: ShoppingItemUpdate, user=Depends(get_current_user)):
+    item = await _get_writable_item(item_id, user)
+    patch: dict = {}
+    if body.text is not None and body.text.strip():
+        patch["text"] = body.text.strip()
+    if body.note is not None:
+        patch["note"] = body.note.strip() or None
+    if body.done is not None:
+        patch["done"] = bool(body.done)
+        patch["done_by"] = user["user_id"] if body.done else None
+        patch["done_at"] = now_utc() if body.done else None
+    if patch:
+        await db.shopping_items.update_one({"item_id": item_id}, {"$set": patch})
+    updated = await db.shopping_items.find_one({"item_id": item_id}, {"_id": 0})
+    return {"item": updated}
+
+
+@api.delete("/shopping/{item_id}")
+async def delete_shopping(item_id: str, user=Depends(get_current_user)):
+    await _get_writable_item(item_id, user)
+    await db.shopping_items.delete_one({"item_id": item_id})
+    return {"ok": True}
+
+
+@api.post("/shopping/clear-done")
+async def clear_done_shopping(scope: str = "household", user=Depends(get_current_user)):
+    """Sweep the ticked-off items away in one go."""
+    hh = await get_user_household(user["user_id"])
+    if scope == "self":
+        q = {"scope": "self", "added_by": user["user_id"], "done": True}
+    else:
+        if not hh:
+            return {"deleted": 0}
+        q = {"scope": "household", "household_id": hh["household_id"], "done": True}
+    res = await db.shopping_items.delete_many(q)
+    return {"deleted": res.deleted_count}
+
+
 # ---------- Balances (Debt Simplification) ----------
 def simplify_debts(net: Dict[str, float]) -> List[dict]:
     creditors = [(u, round(a, 2)) for u, a in net.items() if a > 0.01]
@@ -1192,6 +1309,9 @@ async def on_startup():
     await db.expenses.create_index([("household_id", 1), ("period_id", 1)])
     await db.devices.create_index("token", unique=True)
     await db.devices.create_index("user_id")
+    await db.shopping_items.create_index("item_id", unique=True)
+    await db.shopping_items.create_index([("household_id", 1), ("scope", 1)])
+    await db.shopping_items.create_index([("added_by", 1), ("scope", 1)])
     logger.info(
         "OdaHesap backend started (push: %s)",
         "acik" if push.is_configured() else "kapali",
