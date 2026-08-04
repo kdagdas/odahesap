@@ -1,5 +1,7 @@
-/** Harcama düzenleme — tutar, tarih, market, kategori, kime ait ve not. */
-import { useCallback, useEffect, useState } from "react";
+/** Harcama düzenleme — kalem kalem. Yanlış yazılan domates düzeltilir,
+ *  unutulan kalem eklenir, fazladan girilen silinir; toplam kalemlerden
+ *  hesaplanır, elle girilmez. */
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   View, Text, StyleSheet, ScrollView, TextInput, Pressable,
   KeyboardAvoidingView, Platform, ActivityIndicator,
@@ -11,9 +13,10 @@ import { api, apiGet } from "@/src/api";
 import { useAuth } from "@/src/auth";
 import { useHousehold } from "@/src/household";
 import { Chip, MerchantBadge, CategoryIcon, formatEUR } from "@/src/ui";
-import { colors, spacing, radius, font, CATEGORY_LABEL_TR } from "@/src/theme";
+import { colors, spacing, radius, font, CATEGORY_ICONS, CATEGORY_LABEL_TR } from "@/src/theme";
 
 type Target = { type: "self" | "household" | "roommate"; user_id?: string };
+type Row = { name: string; price: string; quantity: string; category: string };
 type Item = { name: string; price: number; quantity?: number; category: string };
 type Expense = {
   expense_id: string; added_by: string; target_type: string; target_user_id?: string;
@@ -21,11 +24,18 @@ type Expense = {
   source: string; expense_date?: string; items?: Item[];
 };
 
+const CAT_KEYS = Object.keys(CATEGORY_ICONS);
+const nextCategory = (c: string) => CAT_KEYS[(CAT_KEYS.indexOf(c) + 1) % CAT_KEYS.length];
 const SUGGESTED = ["Kira", "Elektrik", "Su", "İnternet", "Isınma", "Tamir", "Temizlik", "Yiyecek", "Ulaşım", "Eğlence", "Diğer"];
+
 const toDDMMYYYY = (iso: string) => { const [y, m, d] = iso.split("-"); return `${d}.${m}.${y}`; };
 const fromDDMMYYYY = (s: string): string | null => {
   const m = s.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/);
   return m ? `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}` : null;
+};
+const num = (s: string, fallback = 0) => {
+  const v = parseFloat(s.replace(",", "."));
+  return Number.isFinite(v) ? v : fallback;
 };
 
 export default function ExpenseEdit() {
@@ -35,7 +45,7 @@ export default function ExpenseEdit() {
   const { members } = useHousehold();
 
   const [expense, setExpense] = useState<Expense | null>(null);
-  const [amount, setAmount] = useState("");
+  const [rows, setRows] = useState<Row[]>([]);
   const [dateInput, setDateInput] = useState("");
   const [merchant, setMerchant] = useState("");
   const [category, setCategory] = useState("");
@@ -51,7 +61,20 @@ export default function ExpenseEdit() {
       const found = (res.expenses || []).find((e) => e.expense_id === expenseId);
       if (!found) { setError("Harcama bulunamadı ya da artık görünmüyor"); return; }
       setExpense(found);
-      setAmount(String(found.total).replace(".", ","));
+      const items = found.items || [];
+      setRows(
+        items.length
+          ? items.map((it) => ({
+              name: it.name || "",
+              price: String(it.price ?? 0).replace(".", ","),
+              quantity: String(it.quantity ?? 1),
+              category: it.category || "diger",
+            }))
+          // Older entries saved before item tracking: seed one line from the
+          // total so there is something to edit instead of an empty screen.
+          : [{ name: found.merchant || "Harcama", price: String(found.total).replace(".", ","),
+               quantity: "1", category: "diger" }]
+      );
       setDateInput(toDDMMYYYY(found.expense_date || ""));
       setMerchant(found.merchant || "");
       setCategory(found.category || "");
@@ -66,38 +89,45 @@ export default function ExpenseEdit() {
 
   useEffect(() => { load(); }, [load]);
 
-  const parsedAmount = parseFloat(amount.replace(",", ".")) || 0;
+  const rowTotal = (r: Row) => num(r.price) * num(r.quantity, 1);
+  const total = useMemo(() => rows.reduce((s, r) => s + rowTotal(r), 0), [rows]);
   const otherMembers = members.filter((m) => m.user_id !== user?.user_id);
-  const items = expense?.items || [];
-  // A receipt carries a per-item breakdown. Editing the total by hand would
-  // leave that breakdown disagreeing with it, so say so rather than silently
-  // producing a receipt whose lines no longer add up.
-  const breakdownWillDrift = items.length > 1 && Math.abs(
-    items.reduce((s, i) => s + (i.quantity || 1) * i.price, 0) - parsedAmount
-  ) > 0.01;
+
+  const updateRow = (i: number, patch: Partial<Row>) =>
+    setRows((rs) => rs.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
+  const removeRow = (i: number) => setRows((rs) => rs.filter((_, idx) => idx !== i));
+  const addRow = () =>
+    setRows((rs) => [...rs, { name: "", price: "0,00", quantity: "1", category: "diger" }]);
 
   const save = async () => {
     setError(null);
-    if (parsedAmount <= 0) { setError("Geçerli bir tutar girin"); return; }
+    const valid = rows.filter((r) => r.name.trim() && num(r.price) !== 0);
+    if (valid.length === 0) { setError("En az bir geçerli kalem gerekli"); return; }
     const iso = fromDDMMYYYY(dateInput);
     if (!iso) { setError("Tarih formatı: GG.AA.YYYY"); return; }
+    const newTotal = valid.reduce((s, r) => s + rowTotal(r), 0);
+    if (newTotal <= 0) { setError("Toplam sıfırdan büyük olmalı"); return; }
 
     setSaving(true);
     try {
-      const body: any = {
-        total: parsedAmount,
-        expense_date: iso,
-        merchant: merchant.trim(),
-        category: category.trim(),
-        notes: notes.trim(),
-        target_type: target.type,
-        target_user_id: target.type === "roommate" ? target.user_id : null,
-      };
-      // Single-item manual entries keep their one line in step with the total.
-      if (items.length === 1) {
-        body.items = [{ ...items[0], price: parsedAmount, quantity: 1 }];
-      }
-      await api(`/expenses/${expenseId}`, { method: "PATCH", body: JSON.stringify(body) });
+      await api(`/expenses/${expenseId}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          items: valid.map((r) => ({
+            name: r.name.trim(),
+            price: num(r.price),
+            quantity: num(r.quantity, 1),
+            category: r.category,
+          })),
+          total: newTotal,
+          expense_date: iso,
+          merchant: merchant.trim(),
+          category: category.trim(),
+          notes: notes.trim(),
+          target_type: target.type,
+          target_user_id: target.type === "roommate" ? target.user_id : null,
+        }),
+      });
       router.back();
     } catch (e: any) { setError(e?.message || "Kaydedilemedi"); }
     finally { setSaving(false); }
@@ -118,8 +148,11 @@ export default function ExpenseEdit() {
           <Pressable onPress={() => router.back()} hitSlop={12} testID="edit-back">
             <Ionicons name="chevron-back" size={26} color={colors.onSurface} />
           </Pressable>
-          <Text style={styles.title}>Harcamayı düzenle</Text>
-          <View style={{ width: 26 }} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.title}>Harcamayı düzenle</Text>
+            <Text style={styles.headerSub}>Kalem ekle, düzelt veya sil</Text>
+          </View>
+          <Text style={styles.headerTotal}>{formatEUR(total)}</Text>
         </View>
 
         <ScrollView contentContainerStyle={styles.form} keyboardShouldPersistTaps="handled">
@@ -127,41 +160,61 @@ export default function ExpenseEdit() {
             <Text style={styles.error}>{error}</Text>
           ) : (
             <>
-              <View style={styles.amountCard}>
-                <Text style={styles.amountLabel}>Tutar</Text>
-                <View style={styles.amountWrap}>
-                  <Text style={styles.currency}>€</Text>
-                  <TextInput
-                    style={styles.amountInput}
-                    value={amount}
-                    onChangeText={(t) => setAmount(t.replace(/[^\d.,]/g, ""))}
-                    keyboardType="decimal-pad"
-                    testID="edit-amount"
-                  />
+              {rows.map((r, i) => (
+                <View key={i} style={styles.itemCard} testID={`edit-item-${i}`}>
+                  <View style={styles.itemHeader}>
+                    <Pressable
+                      onPress={() => updateRow(i, { category: nextCategory(r.category) })}
+                      testID={`edit-item-${i}-category`}
+                    >
+                      <CategoryIcon category={r.category} size={22} />
+                    </Pressable>
+                    <TextInput
+                      style={styles.nameInput}
+                      value={r.name}
+                      onChangeText={(t) => updateRow(i, { name: t })}
+                      placeholder="Ürün adı"
+                      placeholderTextColor={colors.onSurfaceTertiary}
+                      testID={`edit-item-${i}-name`}
+                    />
+                    <Pressable onPress={() => removeRow(i)} hitSlop={8} testID={`edit-item-${i}-delete`}>
+                      <Ionicons name="close-circle" size={22} color={colors.onSurfaceTertiary} />
+                    </Pressable>
+                  </View>
+                  <View style={styles.itemBody}>
+                    <View style={styles.qtyBox}>
+                      <Text style={styles.subLabel}>Adet</Text>
+                      <TextInput
+                        style={styles.qtyInput}
+                        value={r.quantity}
+                        onChangeText={(t) => updateRow(i, { quantity: t.replace(/[^\d.,]/g, "") })}
+                        keyboardType="decimal-pad"
+                        testID={`edit-item-${i}-qty`}
+                      />
+                    </View>
+                    <View style={styles.priceBox}>
+                      <Text style={styles.subLabel}>Birim fiyat</Text>
+                      <TextInput
+                        style={styles.priceInput}
+                        value={r.price}
+                        onChangeText={(t) => updateRow(i, { price: t.replace(/[^\d.,-]/g, "") })}
+                        keyboardType="decimal-pad"
+                        testID={`edit-item-${i}-price`}
+                      />
+                    </View>
+                    <View style={styles.totalBox}>
+                      <Text style={styles.subLabel}>Toplam</Text>
+                      <Text style={styles.rowTotal}>{formatEUR(rowTotal(r))}</Text>
+                    </View>
+                  </View>
+                  <Text style={styles.catLabel}>{CATEGORY_LABEL_TR[r.category]}</Text>
                 </View>
-              </View>
+              ))}
 
-              {items.length > 1 && (
-                <View style={styles.itemsBox}>
-                  <Text style={styles.label}>Fiş kalemleri ({items.length})</Text>
-                  {items.map((it, i) => (
-                    <View key={i} style={styles.itemRow}>
-                      <CategoryIcon category={it.category} size={14} />
-                      <Text style={styles.itemName} numberOfLines={1}>{it.name}</Text>
-                      <Text style={styles.itemPrice}>{formatEUR((it.quantity || 1) * it.price)}</Text>
-                    </View>
-                  ))}
-                  {breakdownWillDrift && (
-                    <View style={styles.driftWarn}>
-                      <Ionicons name="alert-circle" size={15} color="#B45309" />
-                      <Text style={styles.driftTxt}>
-                        Kalemlerin toplamı girdiğin tutarla uyuşmuyor. Hesaplarda bu
-                        tutar kullanılır, kalem listesi olduğu gibi kalır.
-                      </Text>
-                    </View>
-                  )}
-                </View>
-              )}
+              <Pressable style={styles.addBtn} onPress={addRow} testID="edit-add-item">
+                <Ionicons name="add-circle-outline" size={20} color={colors.brand} />
+                <Text style={styles.addTxt}>Kalem ekle</Text>
+              </Pressable>
 
               <Text style={styles.label}>Tarih</Text>
               <TextInput
@@ -228,12 +281,16 @@ export default function ExpenseEdit() {
 
         {expense && (
           <View style={styles.footer}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.footerLabel}>Yeni toplam</Text>
+              <Text style={styles.footerTotal}>{formatEUR(total)}</Text>
+            </View>
             <Pressable style={[styles.saveBtn, saving && { opacity: 0.6 }]} onPress={save}
                        disabled={saving} testID="edit-save">
               {saving ? <ActivityIndicator color={colors.onBrand} /> : (
                 <>
                   <Ionicons name="checkmark" size={18} color={colors.onBrand} />
-                  <Text style={styles.saveTxt}>Kaydet · {formatEUR(parsedAmount)}</Text>
+                  <Text style={styles.saveTxt}>Kaydet</Text>
                 </>
               )}
             </Pressable>
@@ -246,27 +303,34 @@ export default function ExpenseEdit() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.surfaceAlt },
-  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: spacing.lg, paddingVertical: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.divider, backgroundColor: colors.surface },
+  header: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingHorizontal: spacing.lg, paddingVertical: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.divider, backgroundColor: colors.surface },
   title: { fontSize: font.sizes.xl, fontWeight: font.weights.bold, color: colors.onSurface },
-  form: { padding: spacing.lg, gap: spacing.sm, paddingBottom: spacing.xxxl },
-  amountCard: { backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.lg, gap: spacing.xs, borderWidth: 1, borderColor: colors.border, alignItems: "center" },
-  amountLabel: { fontSize: font.sizes.sm, color: colors.onSurfaceSecondary, textTransform: "uppercase", letterSpacing: 0.6, fontWeight: font.weights.semibold },
-  amountWrap: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  currency: { fontSize: 36, color: colors.brand, fontWeight: font.weights.bold },
-  amountInput: { fontSize: 46, fontWeight: font.weights.bold, color: colors.onSurface, minWidth: 130, textAlign: "center", padding: 0 },
-  itemsBox: { backgroundColor: colors.surface, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, padding: spacing.md, gap: spacing.sm },
-  itemRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  itemName: { flex: 1, fontSize: font.sizes.base, color: colors.onSurface },
-  itemPrice: { fontSize: font.sizes.base, color: colors.onSurfaceSecondary, fontWeight: font.weights.semibold },
-  driftWarn: { flexDirection: "row", gap: 8, alignItems: "flex-start", backgroundColor: "#FEF3C7", borderRadius: radius.sm, padding: spacing.sm },
-  driftTxt: { flex: 1, fontSize: font.sizes.sm, color: "#92400E", lineHeight: 17 },
-  label: { fontSize: font.sizes.sm, fontWeight: font.weights.semibold, color: colors.onSurfaceSecondary, textTransform: "uppercase", letterSpacing: 0.5, marginTop: spacing.md },
+  headerSub: { fontSize: font.sizes.sm, color: colors.onSurfaceTertiary },
+  headerTotal: { fontSize: font.sizes.xl, fontWeight: font.weights.bold, color: colors.brand },
+  form: { padding: spacing.lg, gap: spacing.md, paddingBottom: spacing.xxxl },
+  itemCard: { backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.md, gap: spacing.md, borderWidth: 1, borderColor: colors.border },
+  itemHeader: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  nameInput: { flex: 1, backgroundColor: colors.surfaceSecondary, borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, fontSize: font.sizes.base, color: colors.onSurface, minHeight: 40 },
+  itemBody: { flexDirection: "row", gap: spacing.sm },
+  qtyBox: { width: 72 },
+  priceBox: { flex: 1 },
+  totalBox: { width: 90, alignItems: "flex-end" },
+  subLabel: { fontSize: 11, color: colors.onSurfaceTertiary, textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 4, fontWeight: font.weights.semibold },
+  qtyInput: { backgroundColor: colors.surfaceSecondary, borderRadius: radius.md, paddingHorizontal: spacing.sm, paddingVertical: spacing.sm, fontSize: font.sizes.base, color: colors.onSurface, textAlign: "center", fontWeight: font.weights.semibold },
+  priceInput: { backgroundColor: colors.surfaceSecondary, borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, fontSize: font.sizes.base, color: colors.onSurface, textAlign: "right", fontWeight: font.weights.semibold },
+  rowTotal: { fontSize: font.sizes.lg, fontWeight: font.weights.bold, color: colors.brand, marginTop: spacing.sm },
+  catLabel: { fontSize: font.sizes.sm, color: colors.onSurfaceTertiary, marginLeft: 46 },
+  addBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderStyle: "dashed", borderColor: colors.borderStrong },
+  addTxt: { color: colors.brand, fontWeight: font.weights.semibold, fontSize: font.sizes.base },
+  label: { fontSize: font.sizes.sm, fontWeight: font.weights.semibold, color: colors.onSurfaceSecondary, textTransform: "uppercase", letterSpacing: 0.5, marginTop: spacing.sm },
   input: { borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: spacing.md, fontSize: font.sizes.lg, color: colors.onSurface, minHeight: 52 },
   merchantRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   notesInput: { minHeight: 88, textAlignVertical: "top" },
   chipRow: { gap: spacing.sm, alignItems: "center", paddingRight: spacing.lg },
   error: { color: colors.error, fontWeight: font.weights.semibold, marginTop: spacing.sm },
-  footer: { padding: spacing.lg, borderTopWidth: 1, borderTopColor: colors.divider, backgroundColor: colors.surface },
-  saveBtn: { backgroundColor: colors.brand, borderRadius: radius.pill, minHeight: 52, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 6 },
+  footer: { flexDirection: "row", alignItems: "center", gap: spacing.md, padding: spacing.lg, borderTopWidth: 1, borderTopColor: colors.divider, backgroundColor: colors.surface },
+  footerLabel: { fontSize: font.sizes.sm, color: colors.onSurfaceSecondary, fontWeight: font.weights.semibold },
+  footerTotal: { fontSize: 24, fontWeight: font.weights.bold, color: colors.onSurface, letterSpacing: -0.5 },
+  saveBtn: { backgroundColor: colors.brand, borderRadius: radius.pill, paddingHorizontal: spacing.xl, minHeight: 52, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 6 },
   saveTxt: { color: colors.onBrand, fontWeight: font.weights.semibold, fontSize: font.sizes.lg },
 });

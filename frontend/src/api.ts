@@ -114,12 +114,6 @@ export async function api<T = any>(
 
   if (!res) throw lastError ?? new Error("Sunucuya ulaşılamadı");
 
-  if (res.status === 401) {
-    await setToken(null);
-    const err: any = new Error("Unauthorized");
-    err.status = 401;
-    throw err;
-  }
   const text = await res.text();
   let body: any = null;
   try {
@@ -127,6 +121,19 @@ export async function api<T = any>(
   } catch {
     body = text;
   }
+
+  // A 401 means one of two very different things. Only the server-marked
+  // "session is dead" kind may clear the stored token; the other kind is a
+  // rejected credential (wrong password on login or when changing it) and
+  // must surface as an ordinary error the screen can show.
+  if (res.status === 401 && res.headers.get("x-session-invalid")) {
+    await setToken(null);
+    const err: any = new Error((body && body.detail) || "Oturum sona erdi");
+    err.status = 401;
+    err.sessionExpired = true;
+    throw err;
+  }
+
   if (!res.ok) {
     const err: any = new Error(
       (body && (body.detail || body.message)) || `HTTP ${res.status}`

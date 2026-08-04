@@ -238,19 +238,30 @@ def parse_date(s: Optional[str]) -> Optional[str]:
     return None
 
 
+# Marks the 401s that actually mean "this session is dead, sign in again", as
+# opposed to "the password you just typed is wrong". The app clears its stored
+# token only on the former — without the distinction, mistyping your current
+# password while changing it silently logged you out.
+SESSION_INVALID = {"X-Session-Invalid": "1"}
+
+
 async def get_current_user(authorization: Optional[str] = Header(None)) -> dict:
     if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Missing or invalid authorization header")
+        raise HTTPException(status_code=401, detail="Oturum bulunamadı",
+                            headers=SESSION_INVALID)
     token = authorization.replace("Bearer ", "", 1).strip()
     sess = await db.user_sessions.find_one({"session_token": token}, {"_id": 0})
     if not sess:
-        raise HTTPException(status_code=401, detail="Invalid session")
+        raise HTTPException(status_code=401, detail="Oturum geçersiz",
+                            headers=SESSION_INVALID)
     expires_at = make_aware(sess["expires_at"])
     if expires_at < now_utc():
-        raise HTTPException(status_code=401, detail="Session expired")
+        raise HTTPException(status_code=401, detail="Oturum süresi doldu",
+                            headers=SESSION_INVALID)
     user = await db.users.find_one({"user_id": sess["user_id"]}, {"_id": 0})
     if not user:
-        raise HTTPException(status_code=401, detail="User not found")
+        raise HTTPException(status_code=401, detail="Kullanıcı bulunamadı",
+                            headers=SESSION_INVALID)
 
     # Sliding expiry: someone who keeps using the app is never logged out.
     # Only written once the session is past its halfway point, so normal
