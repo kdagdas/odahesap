@@ -10,6 +10,7 @@ import { useAuth } from "@/src/auth";
 import { useHousehold } from "@/src/household";
 import { apiPost, api } from "@/src/api";
 import { Avatar, Card } from "@/src/ui";
+import { pickPhotoFromLibrary, takePhotoWithCamera, removePhoto } from "@/src/photo";
 import { colors, spacing, radius, font, AVATARS } from "@/src/theme";
 
 export default function Profil() {
@@ -25,6 +26,11 @@ export default function Profil() {
   const [removeTarget, setRemoveTarget] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [photoMenu, setPhotoMenu] = useState(false);
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const [accountMode, setAccountMode] = useState<"none" | "name" | "email" | "password">("none");
+  const [form, setForm] = useState({ name: "", email: "", pw: "", newPw: "" });
+  const [savingAccount, setSavingAccount] = useState(false);
 
   // Join requests land while the app is already open — without re-fetching on
   // focus, the admin never sees them until a full restart.
@@ -78,6 +84,50 @@ export default function Profil() {
     finally { setBusy(null); }
   };
 
+  const doPhoto = async (run: () => Promise<{ ok: boolean; error?: string }>) => {
+    setPhotoBusy(true); setError(null); setMessage(null);
+    try {
+      const res = await run();
+      if (res.error) setError(res.error);
+      else if (res.ok) {
+        await refreshAuth();
+        await refresh();
+        setPhotoMenu(false);
+        setMessage("Fotoğraf güncellendi");
+      }
+    } catch (e: any) { setError(e?.message || "Fotoğraf yüklenemedi"); }
+    finally { setPhotoBusy(false); }
+  };
+
+  const openAccount = (mode: "name" | "email" | "password") => {
+    setAccountMode(accountMode === mode ? "none" : mode);
+    setForm({ name: user?.name || "", email: "", pw: "", newPw: "" });
+    setError(null); setMessage(null);
+  };
+
+  const saveAccount = async () => {
+    setSavingAccount(true); setError(null); setMessage(null);
+    try {
+      if (accountMode === "name") {
+        if (!form.name.trim()) { setError("Ad boş olamaz"); return; }
+        await api("/auth/profile", { method: "PATCH", body: JSON.stringify({ name: form.name.trim() }) });
+        setMessage("Adın güncellendi");
+      } else if (accountMode === "email") {
+        await apiPost("/auth/change-email", { new_email: form.email.trim(), password: form.pw });
+        setMessage("E-postan güncellendi");
+      } else if (accountMode === "password") {
+        if (form.newPw.length < 6) { setError("Yeni şifre en az 6 karakter olmalı"); return; }
+        await apiPost("/auth/change-password", { current_password: form.pw, new_password: form.newPw });
+        setMessage("Şifren değiştirildi. Diğer cihazlardaki oturumlar kapatıldı.");
+      }
+      await refreshAuth();
+      await refresh();
+      setAccountMode("none");
+      setForm({ name: "", email: "", pw: "", newPw: "" });
+    } catch (e: any) { setError(e?.message || "Kaydedilemedi"); }
+    finally { setSavingAccount(false); }
+  };
+
   const setAvatar = async (id: number) => {
     if (id === user?.avatar_id || savingAvatar) return;
     setSavingAvatar(true);
@@ -124,12 +174,56 @@ export default function Profil() {
       </View>
       <ScrollView contentContainerStyle={styles.scroll}>
         <Card style={styles.profileCard}>
-          <Avatar name={user?.name || "?"} size={64} avatarId={user?.avatar_id} />
+          <Pressable onPress={() => setPhotoMenu((v) => !v)} testID="profile-photo-btn">
+            <Avatar
+              name={user?.name || "?"}
+              size={64}
+              avatarId={user?.avatar_id}
+              userId={user?.user_id}
+              photoVersion={(user as any)?.photo_version}
+            />
+            <View style={styles.cameraBadge}>
+              {photoBusy
+                ? <ActivityIndicator size="small" color="#fff" />
+                : <Ionicons name="camera" size={13} color="#fff" />}
+            </View>
+          </Pressable>
           <View style={{ flex: 1 }}>
             <Text style={styles.name}>{user?.name}</Text>
             <Text style={styles.email}>{user?.email}</Text>
           </View>
         </Card>
+
+        {photoMenu && (
+          <Card style={{ padding: spacing.sm }}>
+            {[
+              { label: "Fotoğraf çek", icon: "camera-outline", run: takePhotoWithCamera },
+              { label: "Galeriden seç", icon: "images-outline", run: pickPhotoFromLibrary },
+            ].map((opt) => (
+              <Pressable
+                key={opt.label}
+                style={styles.photoOpt}
+                onPress={() => doPhoto(opt.run)}
+                disabled={photoBusy}
+                testID={`photo-${opt.icon}`}
+              >
+                <Ionicons name={opt.icon as any} size={19} color={colors.brand} />
+                <Text style={styles.photoOptTxt}>{opt.label}</Text>
+              </Pressable>
+            ))}
+            {(user as any)?.photo_version && (
+              <Pressable
+                style={styles.photoOpt}
+                onPress={() => doPhoto(async () => { await removePhoto(); return { ok: true }; })}
+                disabled={photoBusy}
+                testID="photo-remove"
+              >
+                <Ionicons name="trash-outline" size={19} color={colors.error} />
+                <Text style={[styles.photoOptTxt, { color: colors.error }]}>Fotoğrafı kaldır</Text>
+              </Pressable>
+            )}
+          </Card>
+        )}
 
         <Text style={styles.section}>Avatarını seç</Text>
         <Card style={{ padding: spacing.md }}>
@@ -188,7 +282,7 @@ export default function Profil() {
             )}
             {pendingMembers.map((p) => (
               <Card key={p.user_id} style={styles.pendingRow} testID={`pending-row-${p.user_id}`}>
-                <Avatar name={p.name} size={40} avatarId={(p as any).avatar_id} />
+                <Avatar name={p.name} size={40} avatarId={(p as any).avatar_id} userId={p.user_id} photoVersion={(p as any).photo_version} />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.memberName}>{p.name}</Text>
                   <Text style={styles.email}>{p.email}</Text>
@@ -276,7 +370,7 @@ export default function Profil() {
               const canHandOver = isAdmin && !memberIsAdmin;
               return (
                 <Card key={m.user_id} style={styles.memberRow}>
-                  <Avatar name={m.name} size={40} avatarId={(m as any).avatar_id} />
+                  <Avatar name={m.name} size={40} avatarId={(m as any).avatar_id} userId={m.user_id} photoVersion={(m as any).photo_version} />
                   <View style={{ flex: 1 }}>
                     <View style={styles.memberNameRow}>
                       <Text style={styles.memberName}>{m.name}{m.user_id === user?.user_id ? " (sen)" : ""}</Text>
@@ -356,6 +450,117 @@ export default function Profil() {
             {error && <Text style={styles.errorMsg} testID="settings-error">{error}</Text>}
           </>
         )}
+
+        <Text style={styles.section}>Hesap</Text>
+        <Card style={{ padding: spacing.md, gap: spacing.xs }}>
+          {([
+            { key: "name", label: "Adını değiştir", value: user?.name, icon: "person-outline" },
+            { key: "email", label: "E-postanı değiştir", value: user?.email, icon: "mail-outline" },
+            { key: "password", label: "Şifreni değiştir", value: "••••••••", icon: "lock-closed-outline" },
+          ] as const).map((row) => (
+            <View key={row.key}>
+              <Pressable
+                style={styles.accountRow}
+                onPress={() => openAccount(row.key)}
+                testID={`account-${row.key}`}
+              >
+                <Ionicons name={row.icon as any} size={19} color={colors.onSurfaceSecondary} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.accountLabel}>{row.label}</Text>
+                  <Text style={styles.accountValue} numberOfLines={1}>{row.value}</Text>
+                </View>
+                <Ionicons
+                  name={accountMode === row.key ? "chevron-up" : "chevron-forward"}
+                  size={18}
+                  color={colors.onSurfaceTertiary}
+                />
+              </Pressable>
+
+              {accountMode === row.key && (
+                <View style={styles.accountForm}>
+                  {row.key === "name" && (
+                    <TextInput
+                      style={styles.accountInput}
+                      value={form.name}
+                      onChangeText={(v) => setForm({ ...form, name: v })}
+                      placeholder="Adın"
+                      placeholderTextColor={colors.onSurfaceTertiary}
+                      autoCapitalize="words"
+                      testID="input-name"
+                    />
+                  )}
+                  {row.key === "email" && (
+                    <>
+                      <TextInput
+                        style={styles.accountInput}
+                        value={form.email}
+                        onChangeText={(v) => setForm({ ...form, email: v })}
+                        placeholder="Yeni e-posta"
+                        placeholderTextColor={colors.onSurfaceTertiary}
+                        keyboardType="email-address"
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                        testID="input-new-email"
+                      />
+                      <TextInput
+                        style={styles.accountInput}
+                        value={form.pw}
+                        onChangeText={(v) => setForm({ ...form, pw: v })}
+                        placeholder="Mevcut şifren"
+                        placeholderTextColor={colors.onSurfaceTertiary}
+                        secureTextEntry
+                        autoCapitalize="none"
+                        testID="input-email-pw"
+                      />
+                      <Text style={styles.accountHint}>
+                        Şifre soruluyor çünkü açık kalan bir telefonun hesabını başka
+                        bir adrese taşımasını istemiyoruz.
+                      </Text>
+                    </>
+                  )}
+                  {row.key === "password" && (
+                    <>
+                      <TextInput
+                        style={styles.accountInput}
+                        value={form.pw}
+                        onChangeText={(v) => setForm({ ...form, pw: v })}
+                        placeholder="Mevcut şifren"
+                        placeholderTextColor={colors.onSurfaceTertiary}
+                        secureTextEntry
+                        autoCapitalize="none"
+                        testID="input-current-pw"
+                      />
+                      <TextInput
+                        style={styles.accountInput}
+                        value={form.newPw}
+                        onChangeText={(v) => setForm({ ...form, newPw: v })}
+                        placeholder="Yeni şifre (en az 6 karakter)"
+                        placeholderTextColor={colors.onSurfaceTertiary}
+                        secureTextEntry
+                        autoCapitalize="none"
+                        testID="input-new-pw"
+                      />
+                      <Text style={styles.accountHint}>
+                        Şifreni değiştirince diğer cihazlardaki oturumlar kapanır,
+                        bu telefon açık kalır.
+                      </Text>
+                    </>
+                  )}
+                  <Pressable
+                    style={[styles.accountSave, savingAccount && { opacity: 0.6 }]}
+                    onPress={saveAccount}
+                    disabled={savingAccount}
+                    testID={`save-${row.key}`}
+                  >
+                    {savingAccount
+                      ? <ActivityIndicator color={colors.onBrand} size="small" />
+                      : <Text style={styles.accountSaveTxt}>Kaydet</Text>}
+                  </Pressable>
+                </View>
+              )}
+            </View>
+          ))}
+        </Card>
 
         <Text style={styles.section}>Bildirimler</Text>
         <Card style={{ padding: spacing.md, gap: spacing.xs }}>
@@ -450,6 +655,29 @@ const styles = StyleSheet.create({
     padding: spacing.md, borderRadius: radius.md,
   },
   warnBoxTxt: { flex: 1, fontSize: font.sizes.sm, color: "#92400E", lineHeight: 18 },
+  cameraBadge: {
+    position: "absolute", right: -2, bottom: -2,
+    width: 24, height: 24, borderRadius: 12, backgroundColor: colors.brand,
+    alignItems: "center", justifyContent: "center",
+    borderWidth: 2, borderColor: colors.surface,
+  },
+  photoOpt: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.md, paddingHorizontal: spacing.sm },
+  photoOptTxt: { fontSize: font.sizes.base, fontWeight: font.weights.semibold, color: colors.onSurface },
+  accountRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.md },
+  accountLabel: { fontSize: font.sizes.base, fontWeight: font.weights.semibold, color: colors.onSurface },
+  accountValue: { fontSize: font.sizes.sm, color: colors.onSurfaceTertiary, marginTop: 1 },
+  accountForm: { gap: spacing.sm, paddingBottom: spacing.md, paddingTop: spacing.xs },
+  accountInput: {
+    borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surfaceSecondary,
+    borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
+    fontSize: font.sizes.base, color: colors.onSurface, minHeight: 46,
+  },
+  accountHint: { fontSize: font.sizes.sm, color: colors.onSurfaceTertiary, lineHeight: 17 },
+  accountSave: {
+    backgroundColor: colors.brand, borderRadius: radius.pill, minHeight: 44,
+    alignItems: "center", justifyContent: "center", marginTop: spacing.xs,
+  },
+  accountSaveTxt: { color: colors.onBrand, fontWeight: font.weights.semibold, fontSize: font.sizes.base },
   prefRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.sm },
   prefLabel: { fontSize: font.sizes.base, fontWeight: font.weights.semibold, color: colors.onSurface },
   prefDesc: { fontSize: font.sizes.sm, color: colors.onSurfaceTertiary, marginTop: 1 },

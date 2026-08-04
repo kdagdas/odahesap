@@ -1,6 +1,6 @@
 /** Shared UI helpers for OdaHesap. */
 import React from "react";
-import { View, Text, Pressable, StyleSheet, ViewStyle, StyleProp } from "react-native";
+import { View, Text, Pressable, StyleSheet, ViewStyle, StyleProp, Image } from "react-native";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { colors, spacing, radius, font, merchantColor } from "./theme";
 
@@ -35,10 +35,51 @@ export function PrimaryButton({
   );
 }
 
-export function Avatar({ name, size = 32, avatarId }: { name: string; size?: number; avatarId?: number | null }) {
+/**
+ * Avatar — uploaded photo when there is one, otherwise the chosen icon preset.
+ *
+ * The photo is fetched from an authenticated endpoint, so the bearer token
+ * has to ride along on the image request. `photoVersion` is part of the URL:
+ * the response is cached forever, and a new upload mints a new version, so a
+ * changed picture appears immediately without ever serving a stale one.
+ */
+export function Avatar({
+  name, size = 32, avatarId, userId, photoVersion,
+}: {
+  name: string; size?: number; avatarId?: number | null;
+  userId?: string | null; photoVersion?: string | null;
+}) {
   const preset = require("./theme").getAvatar(avatarId);
+  const [token, setToken] = React.useState<string | null>(null);
+  const [failed, setFailed] = React.useState(false);
+  const wantsPhoto = !!(userId && photoVersion);
+
+  React.useEffect(() => {
+    let alive = true;
+    if (!wantsPhoto) return;
+    setFailed(false);
+    require("./api").getToken().then((t: string | null) => { if (alive) setToken(t); });
+    return () => { alive = false; };
+  }, [wantsPhoto, photoVersion]);
+
+  const box = { width: size, height: size, borderRadius: size / 2 };
+
+  if (wantsPhoto && token && !failed) {
+    const base = process.env.EXPO_PUBLIC_BACKEND_URL;
+    return (
+      <Image
+        source={{
+          uri: `${base}/api/users/${userId}/photo?v=${photoVersion}`,
+          headers: { Authorization: `Bearer ${token}` },
+        }}
+        style={[styles.avatar, box, { backgroundColor: preset.color }]}
+        onError={() => setFailed(true)}
+      />
+    );
+  }
+
   return (
-    <View style={[styles.avatar, { width: size, height: size, borderRadius: size / 2, backgroundColor: preset.color }]}>
+    <View style={[styles.avatar, box, { backgroundColor: preset.color }]}>
       <Ionicons name={preset.icon as any} size={Math.floor(size * 0.55)} color="#fff" />
     </View>
   );

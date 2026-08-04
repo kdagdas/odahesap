@@ -146,7 +146,7 @@ export default function Denge() {
                 testID={`member-detail-${m.user_id}`}
               >
                 <Card style={styles.memberCard}>
-                  <Avatar name={m.name} size={44} avatarId={(m as any).avatar_id} />
+                  <Avatar name={m.name} size={44} avatarId={(m as any).avatar_id} userId={m.user_id} photoVersion={(m as any).photo_version} />
                   <View style={{ flex: 1 }}>
                     <Text style={styles.mName}>{m.name}{m.user_id === user?.user_id ? " (sen)" : ""}</Text>
                     <View style={styles.mMeta}>

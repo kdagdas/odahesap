@@ -48,7 +48,7 @@ export default function MemberDetail() {
           <Ionicons name="chevron-back" size={26} color={colors.onSurface} />
         </Pressable>
         <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
-          <Avatar name={member?.name || "?"} size={36} avatarId={(member as any)?.avatar_id} />
+          <Avatar name={member?.name || "?"} size={36} avatarId={(member as any)?.avatar_id} userId={member?.user_id} photoVersion={(member as any)?.photo_version} />
           <View>
             <Text style={styles.title}>{member?.name}</Text>
             <Text style={styles.subtitle}>Ev katkısı ve harcamaları</Text>

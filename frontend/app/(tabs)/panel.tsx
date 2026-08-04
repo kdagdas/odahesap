@@ -63,7 +63,7 @@ export default function Panel() {
             <Text style={styles.homeName}>{household?.name}</Text>
           </View>
           <Pressable onPress={() => router.push("/(tabs)/profil")} testID="open-settings-btn">
-            <Avatar name={user?.name || "?"} size={44} avatarId={user?.avatar_id} />
+            <Avatar name={user?.name || "?"} size={44} avatarId={user?.avatar_id} userId={user?.user_id} photoVersion={(user as any)?.photo_version} />
             {pendingMembers.length > 0 && (
               <View style={styles.settingsBadge} testID="pending-approvals-badge">
                 <Text style={styles.settingsBadgeTxt}>{pendingMembers.length}</Text>
@@ -101,7 +101,7 @@ export default function Panel() {
           <Text style={styles.sectionTitle}>Ev arkadaşları</Text>
           {members.map((m) => (
             <Card key={m.user_id} style={styles.memberRow} testID={`member-row-${m.user_id}`}>
-              <Avatar name={m.name} size={40} avatarId={(m as any).avatar_id} />
+              <Avatar name={m.name} size={40} avatarId={(m as any).avatar_id} userId={m.user_id} photoVersion={(m as any).photo_version} />
               <View style={{ flex: 1 }}>
                 {/* No e-mail here: on the home screen the name and what they
                     spent is the whole story, and addresses just crowd it. */}
@@ -142,7 +142,7 @@ export default function Panel() {
               return (
                 <Card key={e.expense_id} style={styles.expCard} testID={`expense-row-${e.expense_id}`}>
                   <View style={styles.expTop}>
-                    <Avatar name={author?.name || "?"} size={36} avatarId={(author as any)?.avatar_id} />
+                    <Avatar name={author?.name || "?"} size={36} avatarId={(author as any)?.avatar_id} userId={author?.user_id} photoVersion={(author as any)?.photo_version} />
                     <View style={{ flex: 1, gap: 2 }}>
                       <Text style={styles.expTitle} numberOfLines={1}>
                         {author?.name || "Bilinmeyen"}

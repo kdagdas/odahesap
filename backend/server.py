@@ -1,5 +1,5 @@
 """OdaHesap — Roommate Household Expense Splitter Backend."""
-from fastapi import FastAPI, APIRouter, Header, HTTPException, Depends
+from fastapi import FastAPI, APIRouter, Header, HTTPException, Depends, Response
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -8,6 +8,7 @@ from typing import Iterable, List, Literal, Optional, Dict
 from datetime import datetime, timezone, timedelta, date
 from pathlib import Path
 import asyncio
+import base64
 import os
 import uuid
 import random
@@ -55,6 +56,22 @@ class LoginReq(BaseModel):
 class ProfileUpdate(BaseModel):
     avatar_id: Optional[int] = None
     name: Optional[str] = None
+
+
+class ChangeEmailReq(BaseModel):
+    new_email: EmailStr
+    password: str
+
+
+class ChangePasswordReq(BaseModel):
+    current_password: str
+    new_password: str = Field(min_length=6, max_length=128)
+
+
+class PhotoUploadReq(BaseModel):
+    # ~400 KB of base64 is a generous ceiling for a 256px avatar; the app
+    # downscales before sending, this only stops a malformed upload.
+    image_base64: str = Field(min_length=16, max_length=400_000)
 
 
 class HouseholdCreate(BaseModel):
@@ -153,13 +170,20 @@ def norm_email(email: str) -> str:
 
 
 def public_user(user: dict) -> dict:
-    """Strip internal/sensitive fields before returning a user to the client."""
+    """Strip internal/sensitive fields before returning a user to the client.
+
+    `photo_version` is a cache-buster, not the photo itself. Avatars live in
+    their own collection behind GET /users/{id}/photo — inlining them here
+    would re-download every member's image on every household refresh, and
+    that refresh now runs each time a screen gains focus.
+    """
     return {
         "user_id": user["user_id"],
         "email": user["email"],
         "name": user["name"],
         "picture": user.get("picture"),
         "avatar_id": user.get("avatar_id", 0),
+        "photo_version": user.get("photo_version"),
     }
 
 
@@ -223,6 +247,7 @@ async def get_current_user(authorization: Optional[str] = Header(None)) -> dict:
 # Fields safe to return for *other* users (never password_hash).
 PUBLIC_USER_PROJECTION = {
     "_id": 0, "user_id": 1, "email": 1, "name": 1, "picture": 1, "avatar_id": 1,
+    "photo_version": 1,
 }
 
 
@@ -355,6 +380,97 @@ async def auth_me(user=Depends(get_current_user)):
     u = public_user(user)
     u["notif_prefs"] = {**DEFAULT_PREFS, **(user.get("notif_prefs") or {})}
     return {"user": u, "push_enabled": push.is_configured()}
+
+
+@api.post("/auth/change-email")
+async def change_email(body: ChangeEmailReq, user=Depends(get_current_user)):
+    """Requires the password: an unattended phone must not be enough to move
+    the account to an address the owner does not control."""
+    if not verify_password(body.password, user.get("password_hash")):
+        raise HTTPException(status_code=401, detail="Şifre hatalı")
+    new_email = norm_email(body.new_email)
+    if new_email == user["email"]:
+        raise HTTPException(status_code=400, detail="Bu zaten mevcut e-postanız")
+    if await db.users.find_one({"email": new_email}, {"_id": 0}):
+        raise HTTPException(status_code=409, detail="Bu e-posta başka bir hesapta kayıtlı")
+    await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"email": new_email}})
+    updated = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0})
+    return {"user": public_user(updated)}
+
+
+@api.post("/auth/change-password")
+async def change_password(
+    body: ChangePasswordReq,
+    authorization: Optional[str] = Header(None),
+    user=Depends(get_current_user),
+):
+    if not verify_password(body.current_password, user.get("password_hash")):
+        raise HTTPException(status_code=401, detail="Mevcut şifre hatalı")
+    if body.current_password == body.new_password:
+        raise HTTPException(status_code=400, detail="Yeni şifre eskisiyle aynı olamaz")
+
+    await db.users.update_one(
+        {"user_id": user["user_id"]},
+        {"$set": {"password_hash": hash_password(body.new_password)}},
+    )
+    # Changing a password should evict anyone else who was signed in — that is
+    # the whole point if the old one leaked. The current phone keeps its session.
+    keep = authorization.replace("Bearer ", "", 1).strip() if authorization else ""
+    await db.user_sessions.delete_many(
+        {"user_id": user["user_id"], "session_token": {"$ne": keep}}
+    )
+    return {"ok": True}
+
+
+@api.put("/auth/photo")
+async def upload_photo(body: PhotoUploadReq, user=Depends(get_current_user)):
+    b64 = body.image_base64
+    mime = "image/jpeg"
+    if b64.startswith("data:"):
+        header, b64 = b64.split(",", 1)
+        if ";" in header and ":" in header:
+            mime = header.split(":", 1)[1].split(";", 1)[0] or mime
+    try:
+        raw = base64.b64decode(b64, validate=True)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Görsel çözümlenemedi")
+    if len(raw) > 300_000:
+        raise HTTPException(status_code=413, detail="Görsel çok büyük")
+
+    version = uuid.uuid4().hex[:12]
+    await db.avatars.update_one(
+        {"user_id": user["user_id"]},
+        {"$set": {"user_id": user["user_id"], "data": raw, "mime": mime, "updated_at": now_utc()}},
+        upsert=True,
+    )
+    await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"photo_version": version}})
+    return {"photo_version": version}
+
+
+@api.delete("/auth/photo")
+async def delete_photo(user=Depends(get_current_user)):
+    await db.avatars.delete_one({"user_id": user["user_id"]})
+    await db.users.update_one({"user_id": user["user_id"]}, {"$unset": {"photo_version": ""}})
+    return {"ok": True}
+
+
+@api.get("/users/{user_id}/photo")
+async def get_photo(user_id: str, user=Depends(get_current_user)):
+    """Only yourself and people you actually share a household with."""
+    if user_id != user["user_id"]:
+        hh = await get_user_household(user["user_id"])
+        if not hh or user_id not in hh.get("member_ids", []):
+            raise HTTPException(status_code=404, detail="Bulunamadı")
+
+    row = await db.avatars.find_one({"user_id": user_id}, {"_id": 0})
+    if not row:
+        raise HTTPException(status_code=404, detail="Fotoğraf yok")
+    return Response(
+        content=row["data"],
+        media_type=row.get("mime", "image/jpeg"),
+        # Immutable: the URL carries a version that changes on every upload.
+        headers={"Cache-Control": "public, max-age=31536000, immutable"},
+    )
 
 
 @api.post("/devices/register")
@@ -1318,6 +1434,7 @@ async def on_startup():
     await db.expenses.create_index([("household_id", 1), ("period_id", 1)])
     await db.devices.create_index("token", unique=True)
     await db.devices.create_index("user_id")
+    await db.avatars.create_index("user_id", unique=True)
     await db.shopping_items.create_index("item_id", unique=True)
     await db.shopping_items.create_index([("household_id", 1), ("scope", 1)])
     await db.shopping_items.create_index([("added_by", 1), ("scope", 1)])

@@ -138,7 +138,7 @@ export default function Harcamalar() {
               >
                 <Card style={styles.expCard}>
                   <View style={styles.expTop}>
-                    <Avatar name={author?.name || "?"} size={40} avatarId={(author as any)?.avatar_id} />
+                    <Avatar name={author?.name || "?"} size={40} avatarId={(author as any)?.avatar_id} userId={author?.user_id} photoVersion={(author as any)?.photo_version} />
                     <View style={{ flex: 1, gap: 4 }}>
                       <View style={styles.titleRow}>
                         {/* Who paid goes in the title; the merchant lives in the
