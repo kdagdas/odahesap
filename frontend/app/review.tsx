@@ -155,6 +155,9 @@ export default function Review() {
   return (
     <View style={styles.root} testID="review-screen">
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
+        {/* Başlık kaydırma alanının içinde; alttaki Kaydet çubuğu sabit kalıyor. */}
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.page}
+                    keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         <ScreenHeader
           right={batchN > 1 ? (
             <View style={styles.batchPill} testID="batch-progress-pill">
@@ -177,7 +180,7 @@ export default function Review() {
           <Text style={styles.headHint}>{rows.length} kalem · fiyat, adet ve kategoriyi düzenleyebilirsin</Text>
         </ScreenHeader>
 
-        <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.list} keyboardShouldPersistTaps="handled">
+        <View style={styles.list}>
           <View style={styles.metaCard}>
             <View style={styles.metaField}>
               <View style={styles.metaLabelRow}>
@@ -235,7 +238,7 @@ export default function Review() {
                     onPress={() => updateRow(i, { category: nextCategory(r.category) })}
                     testID={`review-item-${i}-category`}
                   >
-                    <CategoryIcon category={r.category} size={40} />
+                    <CategoryIcon category={r.category} size={36} />
                   </Pressable>
                   <TextInput
                     style={styles.nameInput}
@@ -284,6 +287,7 @@ export default function Review() {
             <Ionicons name="add-circle-outline" size={20} color={colors.brand} />
             <Text style={styles.addTxt}>Kalem ekle</Text>
           </Pressable>
+        </View>
         </ScrollView>
 
         <View style={styles.footer}>
@@ -316,6 +320,7 @@ export default function Review() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.dark },
+  page: { backgroundColor: colors.bg, flexGrow: 1 },
   headRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, marginBottom: spacing.lg },
   backBtn: {
     width: 36, height: 36, borderRadius: 18, backgroundColor: colors.darkSurface,

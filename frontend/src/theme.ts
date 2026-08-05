@@ -99,14 +99,29 @@ export const fontFamily = {
  * bağırtıyordu; büyük punto + 600 + sıkı harf aralığı premium okunuyor.
  */
 export const type = {
-  caption:   { fontSize: 12, lineHeight: 16, fontFamily: fontFamily.regular },
-  captionSb: { fontSize: 12, lineHeight: 16, fontFamily: fontFamily.medium },
-  body:      { fontSize: 15, lineHeight: 21, fontFamily: fontFamily.regular },
-  bodySb:    { fontSize: 15, lineHeight: 21, fontFamily: fontFamily.medium },
-  emph:      { fontSize: 17, lineHeight: 23, fontFamily: fontFamily.semibold, letterSpacing: -0.2 },
-  title:     { fontSize: 18, lineHeight: 24, fontFamily: fontFamily.semibold, letterSpacing: -0.3 },
-  screen:    { fontSize: 23, lineHeight: 29, fontFamily: fontFamily.semibold, letterSpacing: -0.5 },
-  hero:      { fontSize: 38, lineHeight: 45, fontFamily: fontFamily.semibold, letterSpacing: -1.4 },
+  caption:   { fontSize: 12, lineHeight: 17, fontFamily: fontFamily.regular },
+  captionSb: { fontSize: 12, lineHeight: 17, fontFamily: fontFamily.medium },
+  body:      { fontSize: 14, lineHeight: 20, fontFamily: fontFamily.regular },
+  bodySb:    { fontSize: 14, lineHeight: 20, fontFamily: fontFamily.medium },
+  emph:      { fontSize: 16, lineHeight: 22, fontFamily: fontFamily.semibold, letterSpacing: -0.2 },
+  title:     { fontSize: 16, lineHeight: 22, fontFamily: fontFamily.semibold, letterSpacing: -0.2 },
+  screen:    { fontSize: 22, lineHeight: 28, fontFamily: fontFamily.semibold, letterSpacing: -0.5 },
+  hero:      { fontSize: 34, lineHeight: 41, fontFamily: fontFamily.semibold, letterSpacing: -1.2 },
+} as const;
+
+/**
+ * Liste ölçüleri. Yoğunluk buradan yönetiliyor: satır ve ikon küçülürken
+ * gruplar arası boşluk büyüyor. "Sayfada daha çok veri ama veriler birbirine
+ * yapışmasın" isteği tek bir küçültme değil, bu iki yönlü ayar.
+ */
+export const metrics = {
+  rowHeight: 54,      // liste satırı
+  rowHeightLg: 64,    // iki katlı satır
+  leading: 36,        // satır başındaki ikon yuvası
+  icon: 34,           // avatar ve kategori ikonu
+  iconSm: 30,
+  dividerInset: 64,   // spacing.lg + leading + spacing.md
+  cardGap: 20,        // kartlar arası — satır içinden bilerek geniş
 } as const;
 
 /** Bölüm etiketi: küçük, harf aralıklı, sessiz — finans arayüzlerinin imzası. */

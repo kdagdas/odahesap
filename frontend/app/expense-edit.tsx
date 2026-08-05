@@ -151,6 +151,9 @@ export default function ExpenseEdit() {
   return (
     <View style={styles.root} testID="expense-edit-screen">
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
+        {/* Başlık kaydırma alanının içinde; alttaki Kaydet çubuğu sabit kalıyor. */}
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.page}
+                    keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         <ScreenHeader
           overline="DÜZENLE"
           title="Harcamayı Düzenle"
@@ -165,7 +168,7 @@ export default function ExpenseEdit() {
         </ScreenHeader>
 
         <Sheet>
-          <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.form} keyboardShouldPersistTaps="handled">
+          <View style={styles.form}>
             {!expense ? (
               <Text style={styles.error}>{error}</Text>
             ) : (
@@ -181,7 +184,7 @@ export default function ExpenseEdit() {
                             onPress={() => updateRow(i, { category: nextCategory(r.category) })}
                             testID={`edit-item-${i}-category`}
                           >
-                            <CategoryIcon category={r.category} size={40} />
+                            <CategoryIcon category={r.category} size={36} />
                           </Pressable>
                           <View style={{ flex: 1, gap: 2 }}>
                             <TextInput
@@ -295,10 +298,12 @@ export default function ExpenseEdit() {
                 {error && <Text style={styles.error} testID="edit-error">{error}</Text>}
               </>
             )}
-          </ScrollView>
+          </View>
+        </Sheet>
+        </ScrollView>
 
-          {expense && (
-            <View style={[styles.footer, { paddingBottom: spacing.lg + insets.bottom }]}>
+        {expense && (
+          <View style={[styles.footer, { paddingBottom: spacing.lg + insets.bottom }]}>
               <View style={{ flex: 1 }}>
                 <Text style={styles.footerLabel}>YENİ TOPLAM</Text>
                 <Text style={styles.footerTotal}>{formatEUR(total)}</Text>
@@ -312,9 +317,8 @@ export default function ExpenseEdit() {
                   </>
                 )}
               </Pressable>
-            </View>
-          )}
-        </Sheet>
+          </View>
+        )}
       </KeyboardAvoidingView>
     </View>
   );
@@ -322,13 +326,14 @@ export default function ExpenseEdit() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.dark },
+  page: { backgroundColor: colors.bg, flexGrow: 1 },
   headBtn: {
     width: 36, height: 36, borderRadius: 18, backgroundColor: colors.darkSurface,
     alignItems: "center", justifyContent: "center",
   },
   heroLabel: { ...T.caption, color: colors.onDarkMuted },
   heroTotal: {
-    fontSize: 36, lineHeight: 44, fontFamily: fontFamily.bold, color: colors.onDark,
+    fontSize: 32, lineHeight: 40, fontFamily: fontFamily.semibold, color: colors.onDark,
     letterSpacing: -0.8, fontVariant: ["tabular-nums"],
   },
   form: { padding: spacing.lg, paddingTop: spacing.sm, gap: spacing.sm, paddingBottom: spacing.xxl },

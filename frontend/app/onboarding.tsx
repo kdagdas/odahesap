@@ -90,6 +90,9 @@ export default function Onboarding() {
   return (
     <View style={styles.root} testID="onboarding-screen">
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
+        {/* Başlık kaydırma alanının içinde — aşağı inerken beyaz yüzey örtüyor. */}
+        <ScrollView contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled"
+                    showsVerticalScrollIndicator={false}>
         <ScreenHeader overline={`MERHABA, ${(user?.name?.split(" ")[0] || "").toLocaleUpperCase("tr-TR")}`} title="Ev Seç veya Oluştur">
           <Text style={styles.heroSub}>
             Oda arkadaşlarınla harcamaları paylaşmak için bir ev bağla.
@@ -97,7 +100,7 @@ export default function Onboarding() {
         </ScreenHeader>
 
         <Sheet>
-          <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+          <View style={styles.content}>
             {mode === "menu" && (
               <Card>
                 <Pressable
@@ -177,8 +180,9 @@ export default function Onboarding() {
             <Pressable style={styles.logout} onPress={logout} testID="onboarding-logout">
               <Text style={styles.logoutTxt}>Çıkış yap</Text>
             </Pressable>
-          </ScrollView>
+          </View>
         </Sheet>
+        </ScrollView>
       </KeyboardAvoidingView>
     </View>
   );
@@ -187,6 +191,7 @@ export default function Onboarding() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.dark },
   heroSub: { ...T.body, color: colors.onDarkMuted, marginTop: spacing.xs },
+  page: { backgroundColor: colors.bg, flexGrow: 1 },
   content: { padding: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.xxxl, gap: spacing.lg },
   optRow: {
     flexDirection: "row", gap: spacing.md, alignItems: "center",

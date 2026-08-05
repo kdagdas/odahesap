@@ -10,7 +10,7 @@ import { useHousehold } from "@/src/household";
 import { apiPost, api } from "@/src/api";
 import { Avatar, Card, Divider, ScreenHeader, Sheet, Tag } from "@/src/ui";
 import { pickPhotoFromLibrary, takePhotoWithCamera, removePhoto } from "@/src/photo";
-import { colors, spacing, radius, type as T, overline, AVATARS, fontFamily } from "@/src/theme";
+import { colors, spacing, radius, type as T, overline, metrics, AVATARS, fontFamily } from "@/src/theme";
 
 export default function Profil() {
   const router = useRouter();
@@ -181,7 +181,9 @@ export default function Profil() {
 
   return (
     <View style={styles.root} testID="profil-screen">
-      {/* Profil kartı yok: kişi doğrudan koyu başlığın kendisi. */}
+      {/* Başlık kaydırma alanının içinde — aşağı inerken beyaz yüzey örtüyor.
+          Profil kartı yok: kişi doğrudan koyu başlığın kendisi. */}
+      <ScrollView contentContainerStyle={styles.page} showsVerticalScrollIndicator={false}>
       <ScreenHeader overline="PROFİL" title={user?.name || "—"}>
         <View style={styles.heroRow}>
           <Pressable onPress={() => setPhotoMenu((v) => !v)} testID="profile-photo-btn">
@@ -206,7 +208,7 @@ export default function Profil() {
       </ScreenHeader>
 
       <Sheet>
-        <ScrollView contentContainerStyle={styles.scroll}>
+        <View style={styles.scroll}>
           {photoMenu && (
             <Card>
               {[
@@ -297,7 +299,7 @@ export default function Profil() {
                 <View key={p.user_id} testID={`pending-row-${p.user_id}`}>
                   {i > 0 && <Divider />}
                   <View style={styles.personRow}>
-                    <Avatar name={p.name} size={40} avatarId={(p as any).avatar_id} userId={p.user_id} photoVersion={(p as any).photo_version} />
+                    <Avatar name={p.name} size={38} avatarId={(p as any).avatar_id} userId={p.user_id} photoVersion={(p as any).photo_version} />
                     <View style={{ flex: 1 }}>
                       <Text style={styles.memberName}>{p.name}</Text>
                       <Text style={styles.email}>{p.email}</Text>
@@ -419,7 +421,7 @@ export default function Profil() {
                     <View key={m.user_id}>
                       {i > 0 && <Divider />}
                       <View style={styles.personRow}>
-                        <Avatar name={m.name} size={40} avatarId={(m as any).avatar_id} userId={m.user_id} photoVersion={(m as any).photo_version} />
+                        <Avatar name={m.name} size={38} avatarId={(m as any).avatar_id} userId={m.user_id} photoVersion={(m as any).photo_version} />
                         <View style={{ flex: 1 }}>
                           <View style={styles.memberNameRow}>
                             <Text style={styles.memberName}>{m.name}{m.user_id === user?.user_id ? " (sen)" : ""}</Text>
@@ -650,8 +652,9 @@ export default function Profil() {
               <Text style={styles.logoutTxt}>Çıkış yap</Text>
             </Pressable>
           </View>
-        </ScrollView>
+        </View>
       </Sheet>
+      </ScrollView>
     </View>
   );
 }
@@ -661,8 +664,9 @@ const styles = StyleSheet.create({
   heroRow: { flexDirection: "row", alignItems: "center", gap: spacing.lg, marginTop: spacing.xs },
   heroEmail: { ...T.body, color: colors.onDarkMuted },
   heroHome: { ...T.captionSb, color: colors.accentOnDark, marginTop: 2 },
+  page: { backgroundColor: colors.bg, flexGrow: 1 },
   // Tab bar sits on top of the content, so leave room at the bottom.
-  scroll: { padding: spacing.lg, paddingTop: spacing.sm, gap: spacing.md, paddingBottom: 120 },
+  scroll: { padding: spacing.lg, paddingTop: spacing.sm, gap: metrics.cardGap, paddingBottom: 120 },
   email: { ...T.caption, color: colors.inkTertiary },
 
   photoOpt: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.md, paddingHorizontal: spacing.lg },

@@ -19,7 +19,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 
 import {
-  colors, spacing, radius, type as T, overline, fontFamily, merchantColor,
+  colors, spacing, radius, type as T, overline, fontFamily, metrics, merchantColor,
   CATEGORY_ICONS, CATEGORY_LABEL_TR, getAvatar,
 } from "./theme";
 
@@ -29,12 +29,18 @@ export function Overline({ children, style }: { children: React.ReactNode; style
   return <Text style={[overline, style]}>{children}</Text>;
 }
 
-/** Para. Rakamlar eşit genişlikte, böylece alt alta tutarlar hizalanır. */
+/**
+ * Para. Rakamlar eşit genişlikte, böylece alt alta tutarlar hizalanır.
+ *
+ * `numberOfLines` ve `flexShrink: 0` şart: satırın ortasındaki metin esnek
+ * olduğu için market rozeti uzayınca tutar sıkışıp "€" işaretini alt satıra
+ * atıyordu — tek haneli tutarlarda gözle görülür şekilde bozuluyordu.
+ */
 export function Money({
   value, style, sign = false, color,
 }: { value?: number | null; style?: StyleProp<TextStyle>; sign?: boolean; color?: string }) {
   return (
-    <Text style={[styles.money, color ? { color } : null, style]}>
+    <Text numberOfLines={1} style={[styles.money, color ? { color } : null, style]}>
       {formatEUR(value, sign)}
     </Text>
   );
@@ -94,15 +100,39 @@ export function HeaderSplit({ items }: { items: { label: string; value: string; 
   );
 }
 
-/** Koyu başlıkta yüzde değişimi rozeti. */
-export function TrendBadge({ pct }: { pct: number }) {
-  const up = pct >= 0;
-  return (
-    <View style={styles.trend}>
-      <Ionicons name={up ? "trending-up" : "trending-down"} size={13} color={colors.accentOnDark} />
-      <Text style={styles.trendTxt}>%{Math.abs(pct)} {up ? "artış" : "azalış"}</Text>
-    </View>
+/**
+ * Koyu başlıkta yüzde değişimi rozeti.
+ *
+ * `onPress` verilirse rozetin kendisi istatistiklere giden düğme olur — yan
+ * yana iki hap koymak yerine tek ve daha büyük bir dokunma hedefi.
+ */
+export function TrendBadge({
+  pct, onPress, testID,
+}: { pct?: number | null; onPress?: () => void; testID?: string }) {
+  const up = (pct ?? 0) >= 0;
+  // İlk dönemde kıyaslanacak bir şey yok; "%0 artış" yazmak yanlış olurdu.
+  const hasTrend = pct !== null && pct !== undefined;
+  const inner = (
+    <>
+      {hasTrend && (
+        <>
+          <Ionicons name={up ? "trending-up" : "trending-down"} size={13} color={colors.accentOnDark} />
+          <Text style={styles.trendTxt}>%{Math.abs(pct as number)} {up ? "artış" : "azalış"}</Text>
+        </>
+      )}
+      {onPress && (
+        <>
+          {hasTrend && <View style={styles.trendSep} />}
+          <Ionicons name="stats-chart" size={12} color={colors.accentOnDark} />
+          <Text style={styles.trendTxt}>İstatistikler</Text>
+          <Ionicons name="chevron-forward" size={12} color={colors.accentOnDark} />
+        </>
+      )}
+    </>
   );
+  return onPress
+    ? <Pressable onPress={onPress} testID={testID} style={styles.trend} hitSlop={6}>{inner}</Pressable>
+    : <View style={styles.trend}>{inner}</View>;
 }
 
 /** İçerik yüzeyi — koyu başlığın üzerine kavisle biner. */
@@ -113,13 +143,19 @@ export function Sheet({ children, style }: { children: React.ReactNode; style?: 
 /* ---------------------------------------------------------------- kartlar */
 
 export function Card({
-  children, title, action, onAction, style, testID, padded = false,
+  children, title, action, onAction, style, testID, padded = false, onLayout,
 }: {
   children?: React.ReactNode; title?: string; action?: string; onAction?: () => void;
   style?: StyleProp<ViewStyle>; testID?: string; padded?: boolean;
+  /** Kartın kaydırma alanı içindeki y konumu — bir bölüme atlamak için. */
+  onLayout?: (y: number) => void;
 }) {
   return (
-    <View style={[styles.card, style]} testID={testID}>
+    <View
+      style={[styles.card, style]}
+      testID={testID}
+      onLayout={onLayout ? (e) => onLayout(e.nativeEvent.layout.y) : undefined}
+    >
       {title ? (
         <View style={styles.cardHead}>
           <Text style={styles.cardTitle}>{title}</Text>
@@ -137,7 +173,7 @@ export function Card({
 
 /** Kap içindeki tek satır. Sol yuva 40, ortada metin, sağda değer. */
 export function Row({
-  leading, title, subtitle, right, onPress, testID, minHeight = 60,
+  leading, title, subtitle, right, onPress, testID, minHeight = metrics.rowHeight,
 }: {
   leading?: React.ReactNode; title?: React.ReactNode; subtitle?: React.ReactNode;
   right?: React.ReactNode; onPress?: () => void; testID?: string; minHeight?: number;
@@ -161,9 +197,9 @@ export function Row({
 
 /**
  * Satır arası saç teli. Varsayılan girinti metin başlangıcına denk gelir:
- * kenar boşluğu 16 + 40'lık ikon yuvası + 12 boşluk = 68.
+ * kenar boşluğu 16 + ikon yuvası 36 + boşluk 12 = 64.
  */
-export function Divider({ inset = 68 }: { inset?: number }) {
+export function Divider({ inset = metrics.dividerInset }: { inset?: number }) {
   return <View style={[styles.divider, { marginLeft: inset }]} />;
 }
 
@@ -171,7 +207,7 @@ export function Divider({ inset = 68 }: { inset?: number }) {
 
 /** Dairesel renkli ikon kabı — referans finans uygulamalarındaki gibi. */
 export function IconPill({
-  name, color, tint, size = 40, mci = false,
+  name, color, tint, size = metrics.icon, mci = false,
 }: { name: string; color: string; tint: string; size?: number; mci?: boolean }) {
   const Icon: any = mci ? MaterialCommunityIcons : Ionicons;
   return (
@@ -181,7 +217,7 @@ export function IconPill({
   );
 }
 
-export function CategoryIcon({ category, size = 40 }: { category: string; size?: number }) {
+export function CategoryIcon({ category, size = metrics.icon }: { category: string; size?: number }) {
   const c = CATEGORY_ICONS[category] || CATEGORY_ICONS.diger;
   return <IconPill name={c.icon} color={c.color} tint={c.bg} size={size} mci />;
 }
@@ -191,7 +227,7 @@ export function categoryLabel(key: string) {
 }
 
 export function Avatar({
-  name, size = 36, avatarId, userId, photoVersion,
+  name, size = metrics.icon, avatarId, userId, photoVersion,
 }: {
   name?: string; size?: number; avatarId?: number | null;
   userId?: string | null; photoVersion?: string | null;
@@ -323,6 +359,7 @@ const styles = StyleSheet.create({
     paddingVertical: 5, borderRadius: radius.pill, marginTop: spacing.md,
   },
   trendTxt: { ...T.captionSb, color: colors.accentOnDark },
+  trendSep: { width: StyleSheet.hairlineWidth, height: 12, backgroundColor: colors.accentOnDark, opacity: 0.4, marginHorizontal: 2 },
   sheet: {
     flex: 1, backgroundColor: colors.bg,
     borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl,
@@ -335,7 +372,9 @@ const styles = StyleSheet.create({
   cardBody: { padding: spacing.lg, paddingTop: 0 },
   cardHead: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-    paddingHorizontal: spacing.lg, paddingTop: spacing.lg, paddingBottom: spacing.sm,
+    // Başlık ile veri arası bilerek geniş: başlık listeye yapışınca ikisi tek
+    // blok gibi okunuyor, ayrılınca başlık gerçekten başlık oluyor.
+    paddingHorizontal: spacing.lg, paddingTop: spacing.lg, paddingBottom: spacing.md + 2,
   },
   cardTitle: { ...T.title, color: colors.ink },
   cardAction: { ...T.captionSb, color: colors.accent },
@@ -343,11 +382,11 @@ const styles = StyleSheet.create({
     flexDirection: "row", alignItems: "center", gap: spacing.md,
     paddingHorizontal: spacing.lg, paddingVertical: spacing.sm,
   },
-  rowLeading: { width: 40, alignItems: "center" },
+  rowLeading: { width: metrics.leading, alignItems: "center" },
   rowTitle: { ...T.bodySb, color: colors.ink },
   rowSub: { ...T.caption, color: colors.inkTertiary, marginTop: 1 },
   divider: { height: StyleSheet.hairlineWidth, backgroundColor: colors.divider },
-  money: { ...T.emph, color: colors.ink, fontVariant: ["tabular-nums"] },
+  money: { ...T.emph, color: colors.ink, fontVariant: ["tabular-nums"], flexShrink: 0 },
   iconPill: { alignItems: "center", justifyContent: "center" },
   avatar: { alignItems: "center", justifyContent: "center" },
   tag: { paddingHorizontal: spacing.sm + 2, paddingVertical: 3, borderRadius: radius.pill, alignSelf: "flex-start" },

@@ -11,7 +11,7 @@ import { apiGet, apiPost, apiDelete, api } from "@/src/api";
 import { useAuth } from "@/src/auth";
 import { useHousehold } from "@/src/household";
 import { ScreenHeader, Sheet, Card, Row, Divider, Avatar, IconPill, Overline } from "@/src/ui";
-import { colors, spacing, radius, type as T } from "@/src/theme";
+import { colors, spacing, radius, type as T, metrics } from "@/src/theme";
 
 type Scope = "household" | "self";
 type Item = {
@@ -151,7 +151,7 @@ export default function Liste() {
                 <Row
                   minHeight={80}
                   leading={<IconPill name="cart-outline" color={colors.accent}
-                                     tint={colors.accentSoft} size={40} />}
+                                     tint={colors.accentSoft} />}
                   title="Liste boş"
                   subtitle={scope === "household"
                     ? "Eve lazım olanı yaz, markete giden görsün"
@@ -159,7 +159,7 @@ export default function Liste() {
                 />
               </Card>
             ) : (
-              <View style={{ gap: spacing.lg, marginTop: spacing.lg }}>
+              <View style={{ gap: metrics.cardGap, marginTop: spacing.lg }}>
                 {pending.length > 0 && (
                   <Card style={styles.mx}>
                     {pending.map((it, i) => (

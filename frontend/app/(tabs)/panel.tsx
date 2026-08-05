@@ -2,7 +2,6 @@
  *  toplamı, nereye gittiği, kimin ne ödediği ve günlük akış var. */
 import { useCallback, useState } from "react";
 import { View, Text, StyleSheet, ScrollView, RefreshControl, Pressable, ActivityIndicator } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
 import { useRouter, useFocusEffect } from "expo-router";
 import Svg, { Circle } from "react-native-svg";
 
@@ -13,7 +12,7 @@ import {
   ScreenHeader, HeaderSplit, TrendBadge, Sheet, Card, Row, Divider, Avatar,
   Money, IconPill, CategoryIcon, categoryLabel, formatEUR,
 } from "@/src/ui";
-import { colors, spacing, radius, type as T, overline, fontFamily, CATEGORY_ICONS } from "@/src/theme";
+import { colors, spacing, type as T, overline, fontFamily, metrics, CATEGORY_ICONS } from "@/src/theme";
 
 type Expense = {
   expense_id: string; added_by: string; target_type: string; target_user_id?: string;
@@ -128,7 +127,11 @@ export default function Panel() {
         >
           <Text style={styles.heroLabel}>BU DÖNEM EV HARCAMASI</Text>
           <Text style={styles.heroValue}>{formatEUR(stats?.total ?? 0)}</Text>
-          {stats?.change_pct != null && <TrendBadge pct={stats.change_pct} />}
+          <TrendBadge
+            pct={stats?.change_pct}
+            onPress={() => router.push("/(tabs)/denge?focus=stats")}
+            testID="open-stats-btn"
+          />
           <HeaderSplit
             items={[
               { label: "Kişi başı", value: formatEUR(stats?.per_person ?? 0) },
@@ -141,7 +144,7 @@ export default function Panel() {
           {loading ? (
             <ActivityIndicator color={colors.dark} style={{ marginTop: spacing.xxl }} />
           ) : (
-            <View style={{ gap: spacing.lg }}>
+            <View style={{ gap: metrics.cardGap }}>
               {cats.length > 0 && (
                 <Card title="Nereye Gitti" action="Tümü"
                       onAction={() => router.push("/harcamalar")} style={styles.mx}>
@@ -171,7 +174,7 @@ export default function Panel() {
                   {members.map((m, i) => (
                     <View key={m.user_id}>
                       <Row
-                        leading={<Avatar name={m.name} size={38} avatarId={(m as any).avatar_id}
+                        leading={<Avatar name={m.name} avatarId={(m as any).avatar_id}
                                          userId={m.user_id} photoVersion={(m as any).photo_version} />}
                         title={`${m.name}${m.user_id === user?.user_id ? " (sen)" : ""}`}
                         subtitle="ev harcaması"
@@ -223,7 +226,7 @@ export default function Panel() {
                         <Row
                           onPress={() => router.push("/harcamalar")}
                           testID={`expense-row-${e.expense_id}`}
-                          leading={<Avatar name={author?.name} size={38} avatarId={(author as any)?.avatar_id}
+                          leading={<Avatar name={author?.name} avatarId={(author as any)?.avatar_id}
                                            userId={author?.user_id} photoVersion={(author as any)?.photo_version} />}
                           title={author?.name || "Bilinmeyen"}
                           subtitle={`${e.merchant || (e.source === "receipt" ? "Fiş" : "Manuel")} · ${target}`}

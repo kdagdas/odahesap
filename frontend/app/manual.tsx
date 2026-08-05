@@ -75,7 +75,10 @@ export default function Manual() {
   return (
     <View style={styles.root} testID="manual-screen">
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
-        {/* Tutar koyu alanda: ekranın tek büyük rakamı, kart içinde değil. */}
+        {/* Başlık kaydırma alanının içinde; alttaki Kaydet çubuğu sabit kalıyor.
+            Tutar koyu alanda: ekranın tek büyük rakamı, kart içinde değil. */}
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.page}
+                    keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         <ScreenHeader
           overline="MANUEL HARCAMA"
           title="Yeni Kayıt"
@@ -103,7 +106,7 @@ export default function Manual() {
         </ScreenHeader>
 
         <Sheet>
-          <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.form} keyboardShouldPersistTaps="handled">
+          <View style={styles.form}>
             <Text style={styles.label}>BAŞLIK</Text>
             <TextInput
               style={styles.input}
@@ -192,9 +195,11 @@ export default function Manual() {
             />
 
             {error && <Text style={styles.error} testID="manual-error">{error}</Text>}
-          </ScrollView>
+          </View>
+        </Sheet>
+        </ScrollView>
 
-          <View style={[styles.footer, { paddingBottom: spacing.lg + insets.bottom }]}>
+        <View style={[styles.footer, { paddingBottom: spacing.lg + insets.bottom }]}>
             <Pressable style={[styles.saveBtn, saving && { opacity: 0.6 }]} onPress={save} disabled={saving} testID="manual-save-btn">
               {saving ? <ActivityIndicator color={colors.onBrand} /> : (
                 <>
@@ -203,8 +208,7 @@ export default function Manual() {
                 </>
               )}
             </Pressable>
-          </View>
-        </Sheet>
+        </View>
       </KeyboardAvoidingView>
     </View>
   );
@@ -223,6 +227,7 @@ const styles = StyleSheet.create({
     flex: 1, padding: 0, letterSpacing: -1,
   },
   amountPreview: { ...T.captionSb, color: colors.accentOnDark, marginTop: spacing.xs },
+  page: { backgroundColor: colors.bg, flexGrow: 1 },
   form: { padding: spacing.lg, paddingTop: spacing.sm, gap: spacing.sm, paddingBottom: spacing.xxl },
   label: { ...overline, marginTop: spacing.md },
   row2: { flexDirection: "row", gap: spacing.md },

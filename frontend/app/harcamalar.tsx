@@ -11,7 +11,7 @@ import {
   ScreenHeader, HeaderSplit, Sheet, Card, Divider, Chip, Avatar, CategoryIcon,
   MerchantBadge, Tag, Money, formatEUR, formatDateTR,
 } from "@/src/ui";
-import { colors, spacing, radius, type as T, overline } from "@/src/theme";
+import { colors, spacing, radius, type as T, overline, metrics } from "@/src/theme";
 
 type Item = { name: string; price: number; quantity?: number; category: string };
 type Expense = {
@@ -69,30 +69,34 @@ export default function Harcamalar() {
 
   return (
     <View style={styles.root} testID="harcamalar-screen">
-      <ScreenHeader
-        overline="GEÇMİŞ"
-        title="Harcamalar"
-        right={
-          <Pressable onPress={() => router.back()} hitSlop={12} testID="harcamalar-back" style={styles.headBtn}>
-            <Ionicons name="close" size={20} color={colors.onDark} />
-          </Pressable>
+      {/* Başlık kaydırma alanının içinde: aşağı inerken beyaz yüzey koyu alanı
+          örtüp yerini alıyor. Sabit kalan koyu bant listeden yer çalıyordu. */}
+      <ScrollView
+        contentContainerStyle={styles.page}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={colors.dark} />
         }
       >
-        <HeaderSplit
-          items={[
-            { label: "Süzülen toplam", value: formatEUR(listedTotal) },
-            { label: "Kayıt", value: `${expenses.length} harcama` },
-          ]}
-        />
-      </ScreenHeader>
-
-      <Sheet>
-        <ScrollView
-          contentContainerStyle={styles.scroll}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={colors.dark} />
+        <ScreenHeader
+          overline="GEÇMİŞ"
+          title="Harcamalar"
+          right={
+            <Pressable onPress={() => router.back()} hitSlop={12} testID="harcamalar-back" style={styles.headBtn}>
+              <Ionicons name="close" size={20} color={colors.onDark} />
+            </Pressable>
           }
         >
+          <HeaderSplit
+            items={[
+              { label: "Süzülen toplam", value: formatEUR(listedTotal) },
+              { label: "Kayıt", value: `${expenses.length} harcama` },
+            ]}
+          />
+        </ScreenHeader>
+
+        <Sheet>
+          <View style={styles.scroll}>
           <Text style={styles.groupLabel}>KİM</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
             <Chip label="Herkes" active={!memberFilter} onPress={() => setMemberFilter(undefined)} icon="people" testID="filter-all-members" />
@@ -157,7 +161,7 @@ export default function Harcamalar() {
                     >
                       <View style={styles.expRow}>
                         <Avatar
-                          name={author?.name || "?"} size={40}
+                          name={author?.name || "?"}
                           avatarId={(author as any)?.avatar_id}
                           userId={author?.user_id}
                           photoVersion={(author as any)?.photo_version}
@@ -224,8 +228,9 @@ export default function Harcamalar() {
               })}
             </Card>
           )}
-        </ScrollView>
-      </Sheet>
+          </View>
+        </Sheet>
+      </ScrollView>
     </View>
   );
 }
@@ -236,7 +241,8 @@ const styles = StyleSheet.create({
     width: 36, height: 36, borderRadius: 18, backgroundColor: colors.darkSurface,
     alignItems: "center", justifyContent: "center",
   },
-  scroll: { padding: spacing.lg, paddingTop: spacing.sm, gap: spacing.md, paddingBottom: 120 },
+  page: { backgroundColor: colors.bg, flexGrow: 1 },
+  scroll: { padding: spacing.lg, paddingTop: spacing.sm, gap: metrics.cardGap, paddingBottom: spacing.xxxl },
   groupLabel: { ...overline, marginTop: spacing.xs },
   chipRow: { gap: spacing.sm, alignItems: "center", paddingRight: spacing.lg },
   archivedBanner: {

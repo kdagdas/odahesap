@@ -1,6 +1,6 @@
 /** Member detail drill-down: what a given roommate spent for the household in a period. */
 import { useCallback, useState } from "react";
-import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator } from "react-native";
+import { View, Text, ScrollView, StyleSheet, Pressable, ActivityIndicator } from "react-native";
 import { useLocalSearchParams, useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { apiGet } from "@/src/api";
@@ -9,7 +9,7 @@ import {
   ScreenHeader, HeaderSplit, Sheet, Card, Divider, Avatar, CategoryIcon,
   MerchantBadge, Tag, Money, formatEUR, formatDateTR,
 } from "@/src/ui";
-import { colors, spacing, type as T } from "@/src/theme";
+import { colors, spacing, type as T, metrics } from "@/src/theme";
 
 type Item = { name: string; price: number; quantity?: number; category: string };
 type Expense = {
@@ -45,6 +45,8 @@ export default function MemberDetail() {
 
   return (
     <View style={styles.root} testID="member-detail-screen">
+      {/* Başlık kaydırma alanının içinde — aşağı inerken beyaz yüzey örtüyor. */}
+      <ScrollView contentContainerStyle={styles.page} showsVerticalScrollIndicator={false}>
       <ScreenHeader
         overline="EV ARKADAŞI"
         title={member?.name || "—"}
@@ -72,7 +74,7 @@ export default function MemberDetail() {
       </ScreenHeader>
 
       <Sheet>
-        <ScrollView contentContainerStyle={styles.scroll}>
+        <View style={styles.scroll}>
           {loading ? (
             <ActivityIndicator color={colors.dark} style={{ marginTop: spacing.xl }} />
           ) : expenses.length === 0 ? (
@@ -132,8 +134,9 @@ export default function MemberDetail() {
               })}
             </Card>
           )}
-        </ScrollView>
+        </View>
       </Sheet>
+      </ScrollView>
     </View>
   );
 }
@@ -146,7 +149,8 @@ const styles = StyleSheet.create({
   },
   heroAvatar: { flexDirection: "row", alignItems: "center", gap: spacing.md },
   heroCaption: { ...T.caption, color: colors.onDarkMuted, flex: 1 },
-  scroll: { padding: spacing.lg, paddingTop: spacing.sm, gap: spacing.md, paddingBottom: spacing.xxxl },
+  page: { backgroundColor: colors.bg, flexGrow: 1 },
+  scroll: { padding: spacing.lg, paddingTop: spacing.sm, gap: metrics.cardGap, paddingBottom: spacing.xxxl },
   empty: { alignItems: "center", paddingVertical: spacing.xxl, gap: spacing.md },
   emptyRing: {
     width: 72, height: 72, borderRadius: 36, borderWidth: 1, borderColor: colors.border,

@@ -117,10 +117,6 @@ export default function Tara() {
         </View>
       </View>
 
-      {/* Fades the camera out behind the buttons so the white icons stay
-          legible over a bright receipt. */}
-      <View style={styles.controlsScrim} pointerEvents="none" />
-
       {processing && (
         <View style={styles.processing} testID="ocr-processing">
           <ActivityIndicator size="large" color={colors.onDark} />
@@ -134,9 +130,13 @@ export default function Tara() {
         </ScrollView>
       )}
 
+      {/* Fiş dikey ve uzun; önizlemeyi bir bant ile kesmek yerine her denetim
+          kendi okunurluğunu taşıyor: koyu yarı saydam daire (tanımlı bir şekil,
+          leke değil) + glif gölgesi. Böylece parlak bir fişin üstünde de
+          beyaz ikonlar seçiliyor ve kamera tam boy kalıyor. */}
       <SafeAreaView style={styles.controls} edges={["bottom"]}>
         <Pressable style={styles.sideBtn} onPress={pickImage} testID="open-gallery-btn">
-          <Ionicons name="images-outline" size={24} color={colors.onDark} />
+          <Ionicons name="images-outline" size={24} color={colors.onDark} style={styles.glyph} />
           <View style={styles.multiBadge}><Text style={styles.multiBadgeTxt}>×N</Text></View>
         </Pressable>
         <Pressable style={styles.shutter} onPress={takePhoto} disabled={processing} testID="shutter-btn">
@@ -145,7 +145,7 @@ export default function Tara() {
           </View>
         </Pressable>
         <Pressable style={styles.sideBtn} onPress={() => router.push("/manual")} testID="manual-from-camera">
-          <Ionicons name="create-outline" size={24} color={colors.onDark} />
+          <Ionicons name="create-outline" size={24} color={colors.onDark} style={styles.glyph} />
         </Pressable>
       </SafeAreaView>
     </View>
@@ -191,19 +191,21 @@ const styles = StyleSheet.create({
   errorWrap: { position: "absolute", top: 60, left: 16, right: 16 },
   errorInner: { backgroundColor: colors.negative, padding: spacing.md, borderRadius: radius.md },
   errorTxt: { ...T.bodySb, color: colors.onDark, textAlign: "center" },
-  controlsScrim: {
-    position: "absolute", left: 0, right: 0, bottom: 0, height: CONTROLS_HEIGHT + 60,
-    backgroundColor: "rgba(0,0,0,0.45)",
-  },
   controls: {
     position: "absolute", left: 0, right: 0, bottom: 0,
     flexDirection: "row", alignItems: "center", justifyContent: "space-around",
     paddingHorizontal: spacing.xl, paddingBottom: spacing.md, paddingTop: spacing.lg,
   },
   sideBtn: {
-    width: 52, height: 52, borderRadius: 26, backgroundColor: "rgba(255,255,255,0.18)",
+    width: 52, height: 52, borderRadius: 26,
+    // Beyaz yerine koyu: parlak bir fişin üstünde beyaz halka kayboluyor,
+    // koyu halka her zeminde buton olarak okunuyor.
+    backgroundColor: "rgba(15,27,51,0.55)",
+    borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(255,255,255,0.35)",
     alignItems: "center", justifyContent: "center",
   },
+  // Ionicons bir metin glifi olduğu için gölge stilleri ona uygulanabiliyor.
+  glyph: { textShadowColor: "rgba(0,0,0,0.65)", textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 5 },
   multiBadge: {
     position: "absolute", top: -6, right: -6, backgroundColor: colors.accent,
     borderRadius: radius.pill, paddingHorizontal: 6, paddingVertical: 2, minWidth: 22, alignItems: "center",
@@ -212,6 +214,9 @@ const styles = StyleSheet.create({
   shutter: {
     width: 84, height: 84, borderRadius: 42, borderWidth: 4, borderColor: colors.onDark,
     alignItems: "center", justifyContent: "center", padding: 4,
+    // Beyaz halka beyaz fişin üstünde eriyordu.
+    shadowColor: colors.black, shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.5, shadowRadius: 8, elevation: 8,
   },
   shutterInner: {
     flex: 1, alignSelf: "stretch", borderRadius: 36, backgroundColor: colors.onDark,

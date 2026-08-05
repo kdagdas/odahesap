@@ -1,13 +1,13 @@
 /** Kasa — kişisel hesap. Ev toplamları Anasayfa'ya taşındı; burada senin
  *  net durumun, kimin kime borçlu olduğu tek blok halinde, dönem istatistikleri
  *  ve dönem yönetimi var. */
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import {
   View, Text, StyleSheet, ScrollView, ActivityIndicator, Pressable,
   RefreshControl, TextInput, KeyboardAvoidingView, Platform,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useLocalSearchParams } from "expo-router";
 
 import { apiGet, apiPost, apiDelete } from "@/src/api";
 import { useAuth } from "@/src/auth";
@@ -16,7 +16,7 @@ import {
   ScreenHeader, HeaderSplit, Sheet, Card, Row, Divider, Avatar, Money,
   IconPill, Chip, PrimaryButton, MerchantBadge, formatEUR,
 } from "@/src/ui";
-import { colors, spacing, radius, type as T, overline, fontFamily } from "@/src/theme";
+import { colors, spacing, radius, type as T, overline, fontFamily, metrics } from "@/src/theme";
 
 type Transfer = { from: string; to: string; amount: number };
 type Period = { period_id: string; started_at: string; closed_at: string | null; status: string };
@@ -72,6 +72,11 @@ function Bars({ data }: { data: { day: string; total: number }[] }) {
 export default function Denge() {
   const { user } = useAuth();
   const { members, activePeriod, isAdmin, refresh: refreshHH } = useHousehold();
+  // Anasayfadaki değişim rozetinden gelindiğinde doğrudan istatistiklere in.
+  const { focus } = useLocalSearchParams<{ focus?: string }>();
+  const scrollRef = useRef<ScrollView>(null);
+  const statsY = useRef(0);
+  const jumped = useRef<string | null>(null);
 
   const [periods, setPeriods] = useState<Period[]>([]);
   const [selected, setSelected] = useState<string | undefined>(undefined);
@@ -79,7 +84,7 @@ export default function Denge() {
   const [transfers, setTransfers] = useState<Transfer[]>([]);
   const [settlements, setSettlements] = useState<Settlement[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
-  const [showStats, setShowStats] = useState(false);
+  const [showStats, setShowStats] = useState(true);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -194,6 +199,7 @@ export default function Denge() {
     <View style={styles.root} testID="denge-screen">
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
         <ScrollView
+          ref={scrollRef}
           contentContainerStyle={styles.scroll}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
@@ -234,7 +240,7 @@ export default function Denge() {
             {loading ? (
               <ActivityIndicator color={colors.dark} style={{ marginTop: spacing.xxl }} />
             ) : (
-              <View style={{ gap: spacing.lg }}>
+              <View style={{ gap: metrics.cardGap }}>
                 {archived && (
                   <View style={[styles.banner, styles.mx]} testID="denge-archived-banner">
                     <Ionicons name="archive-outline" size={16} color={colors.inkSecondary} />
@@ -242,15 +248,21 @@ export default function Denge() {
                   </View>
                 )}
 
-                {/* Tek blok: dönemin bütün borçları, kim kime ne kadar. */}
+                {/* Tek blok: dönemin bütün borçları, kim kime ne kadar.
+                    Beni ilgilendirenler "köprü" düzeninde — tutar ortada ve
+                    büyük, taraflar iki uçta. Denkleştirme 3 kişilik evde en
+                    fazla 2 transfer üretiyor, yani burada yükseklik harcamak
+                    ucuz; Kasa'yı açma sebebi zaten bu blok. Beni
+                    ilgilendirmeyen borç aynı kutunun altında tek satıra iniyor
+                    ki ev büyürse blok şişmesin. */}
                 <Card title="Kim Kime Borçlu" style={styles.mx}>
                   {ordered.length === 0 ? (
                     <Row
                       leading={<IconPill name="checkmark-circle" color={colors.accent}
-                                         tint={colors.accentSoft} size={40} />}
+                                         tint={colors.accentSoft} />}
                       title="Herkes ödeşmiş"
                       subtitle="Bu dönemde kimsenin borcu kalmadı"
-                      minHeight={72}
+                      minHeight={metrics.rowHeightLg}
                     />
                   ) : (
                     ordered.map((t, i) => {
@@ -258,47 +270,54 @@ export default function Denge() {
                       const iPay = t.from === me;
                       return (
                         <View key={`${t.from}-${t.to}-${i}`}>
-                          {i > 0 && <Divider inset={spacing.lg} />}
-                          <View style={[styles.debtRow, mine && styles.debtRowMine]}>
-                            {/* İki avatar üst üste: yönü tek bakışta anlatıyor. */}
-                            <View style={styles.pair}>
-                              <Avatar name={nameOf(t.from)} size={34}
-                                      avatarId={(member(t.from) as any)?.avatar_id}
-                                      userId={t.from}
-                                      photoVersion={(member(t.from) as any)?.photo_version} />
-                              <View style={styles.pairSecond}>
-                                <Avatar name={nameOf(t.to)} size={34}
-                                        avatarId={(member(t.to) as any)?.avatar_id}
-                                        userId={t.to}
-                                        photoVersion={(member(t.to) as any)?.photo_version} />
+                          {i > 0 && <Divider inset={mine ? 0 : spacing.lg} />}
+                          {mine ? (
+                            <View style={styles.bridge} testID={`debt-${t.from}-${t.to}`}>
+                              <View style={styles.bridgeRow}>
+                                <View style={styles.side}>
+                                  <Avatar name={nameOf(t.from)}
+                                          avatarId={(member(t.from) as any)?.avatar_id}
+                                          userId={t.from}
+                                          photoVersion={(member(t.from) as any)?.photo_version} />
+                                  <Text style={styles.sideName} numberOfLines={1}>{first(t.from)}</Text>
+                                </View>
+                                <View style={styles.middle}>
+                                  <Money value={t.amount} style={styles.bridgeAmount} />
+                                  <View style={styles.wire}>
+                                    <View style={styles.wireLine} />
+                                    <Ionicons name="arrow-forward" size={13} color={colors.inkTertiary} />
+                                    <View style={styles.wireLine} />
+                                  </View>
+                                </View>
+                                <View style={styles.side}>
+                                  <Avatar name={nameOf(t.to)}
+                                          avatarId={(member(t.to) as any)?.avatar_id}
+                                          userId={t.to}
+                                          photoVersion={(member(t.to) as any)?.photo_version} />
+                                  <Text style={styles.sideName} numberOfLines={1}>{first(t.to)}</Text>
+                                </View>
                               </View>
-                            </View>
-                            <View style={{ flex: 1 }}>
-                              <Text style={[styles.debtTitle, !mine && styles.debtTitleMuted]}>
-                                {first(t.from)} <Text style={styles.arrow}>→</Text> {first(t.to)}
-                              </Text>
-                              <Text style={styles.debtSub}>
-                                {iPay ? "sen ödeyeceksin"
-                                      : t.to === me ? "sana ödenecek"
-                                      : "seni ilgilendirmiyor"}
-                              </Text>
-                            </View>
-                            <View style={styles.debtRight}>
-                              <Money value={t.amount}
-                                     color={mine ? colors.ink : colors.inkTertiary} />
-                              {mine && !archived && (
+                              {!archived && (
                                 <Pressable
-                                  style={iPay ? styles.actionDark : styles.actionSoft}
+                                  style={[styles.bridgeBtn, iPay ? styles.btnDark : styles.btnSoft]}
                                   onPress={() => openPay(t)}
                                   testID={iPay ? `mark-paid-to-${t.to}` : `mark-paid-${t.from}`}
                                 >
-                                  <Text style={iPay ? styles.actionDarkTxt : styles.actionSoftTxt}>
+                                  <Text style={iPay ? styles.btnDarkTxt : styles.btnSoftTxt}>
                                     {iPay ? "Ödedim" : "Ödendi"}
                                   </Text>
                                 </Pressable>
                               )}
                             </View>
-                          </View>
+                          ) : (
+                            <View style={styles.otherRow}>
+                              <Text style={styles.otherTxt} numberOfLines={1}>
+                                {first(t.from)} <Text style={styles.arrow}>→</Text> {first(t.to)}
+                              </Text>
+                              <Money value={t.amount} color={colors.inkTertiary}
+                                     style={styles.otherAmount} />
+                            </View>
+                          )}
                         </View>
                       );
                     })
@@ -335,8 +354,6 @@ export default function Denge() {
                   </Card>
                 )}
 
-                {/* İstatistikler kapalı geliyor: Kasa'ya gelen önce borcuna
-                    bakar, rakamları merak eden açar. */}
                 {stats && stats.expense_count > 0 && (
                   <Card
                     title="İstatistikler"
@@ -344,6 +361,16 @@ export default function Denge() {
                     onAction={() => setShowStats((v) => !v)}
                     style={styles.mx}
                     testID="stats-card"
+                    onLayout={(y) => {
+                      statsY.current = y;
+                      // Kartın yeri ölçülür ölçülmez atla; ölçümden önce
+                      // scrollTo çağırmak hiçbir yere gitmiyordu.
+                      if (focus === "stats" && jumped.current !== String(focus) + y) {
+                        jumped.current = String(focus) + y;
+                        requestAnimationFrame(() =>
+                          scrollRef.current?.scrollTo({ y: Math.max(0, y - 12), animated: true }));
+                      }
+                    }}
                   >
                     {showStats && (
                       <View style={styles.statsBody}>
@@ -523,30 +550,30 @@ const styles = StyleSheet.create({
   bannerTxt: { ...T.caption, color: colors.inkSecondary, flex: 1 },
 
   // --- kim kime borçlu ---
-  debtRow: {
+  bridge: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.lg },
+  bridgeRow: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  side: { width: 62, alignItems: "center" },
+  sideName: { ...T.caption, color: colors.inkSecondary, marginTop: 5 },
+  middle: { flex: 1, alignItems: "center" },
+  bridgeAmount: { fontSize: 21, lineHeight: 27, fontFamily: fontFamily.semibold, letterSpacing: -0.5 },
+  wire: { flexDirection: "row", alignItems: "center", gap: 5, alignSelf: "stretch", marginTop: 6 },
+  wireLine: { flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: colors.borderStrong },
+  bridgeBtn: {
+    alignSelf: "center", marginTop: spacing.md, minHeight: 38, justifyContent: "center",
+    paddingHorizontal: spacing.xl, borderRadius: radius.pill,
+  },
+  btnDark: { backgroundColor: colors.brand },
+  btnDarkTxt: { ...T.bodySb, color: colors.onBrand },
+  btnSoft: { backgroundColor: colors.accentSoft },
+  btnSoftTxt: { ...T.bodySb, color: colors.accentDark },
+  // Başkalarının arasındaki borç: aynı kutuda ama sessiz ve tek satır.
+  otherRow: {
     flexDirection: "row", alignItems: "center", gap: spacing.md,
-    paddingHorizontal: spacing.lg, paddingVertical: spacing.md, minHeight: 72,
+    paddingHorizontal: spacing.lg, minHeight: 44,
   },
-  // Beni ilgilendiren satır soldan ince bir yeşil şeritle işaretli; başkalarının
-  // arasındaki borç aynı listede ama sessiz duruyor.
-  debtRowMine: { borderLeftWidth: 3, borderLeftColor: colors.accent, paddingLeft: spacing.lg - 3 },
-  pair: { flexDirection: "row", width: 54, alignItems: "center" },
-  pairSecond: { marginLeft: -14, borderRadius: 20, borderWidth: 2, borderColor: colors.surface },
-  debtTitle: { ...T.bodySb, color: colors.ink },
-  debtTitleMuted: { color: colors.inkSecondary },
+  otherTxt: { ...T.body, color: colors.inkSecondary, flex: 1 },
+  otherAmount: { ...T.bodySb },
   arrow: { color: colors.inkTertiary },
-  debtSub: { ...T.caption, color: colors.inkTertiary, marginTop: 1 },
-  debtRight: { alignItems: "flex-end", gap: 6 },
-  actionSoft: {
-    backgroundColor: colors.accentSoft, paddingHorizontal: spacing.md,
-    paddingVertical: 6, borderRadius: radius.pill,
-  },
-  actionSoftTxt: { ...T.captionSb, color: colors.accentDark },
-  actionDark: {
-    backgroundColor: colors.brand, paddingHorizontal: spacing.md,
-    paddingVertical: 6, borderRadius: radius.pill,
-  },
-  actionDarkTxt: { ...T.captionSb, color: colors.onBrand },
 
   stlRight: { alignItems: "flex-end", gap: 2 },
   undo: { ...T.caption, color: colors.negative },
