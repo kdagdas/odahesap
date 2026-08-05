@@ -243,7 +243,7 @@ export default function Profil() {
             </Card>
           )}
 
-          <Card title="Avatarını seç" padded>
+          <Card title="Avatarını Seç" padded>
             <View style={styles.avatarGrid}>
               {AVATARS.map((a) => {
                 const active = (user?.avatar_id ?? 0) === a.id;
@@ -282,7 +282,7 @@ export default function Profil() {
           )}
 
           {household && pendingMembers.length > 0 && isAdmin && (
-            <Card title={`Onay bekleyenler (${pendingMembers.length})`}>
+            <Card title={`Onay Bekleyenler (${pendingMembers.length})`}>
               {openExpenseCount > 0 && (
                 <View style={styles.warnBox} testID="mid-period-join-warning">
                   <Ionicons name="alert-circle" size={16} color={colors.onWarning} />

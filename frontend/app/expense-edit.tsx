@@ -153,7 +153,7 @@ export default function ExpenseEdit() {
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
         <ScreenHeader
           overline="DÜZENLE"
-          title="Harcamayı düzenle"
+          title="Harcamayı Düzenle"
           right={
             <Pressable onPress={() => router.back()} hitSlop={12} testID="edit-back" style={styles.headBtn}>
               <Ionicons name="close" size={20} color={colors.onDark} />

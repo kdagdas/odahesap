@@ -76,33 +76,42 @@ export const spacing = {
 /** Köşe yarıçapı: büyük yüzey 18, gruplanmış liste 14, rozet hap. */
 export const radius = { sm: 6, md: 12, lg: 18, xl: 28, pill: 999 };
 
+/**
+ * Inter. IBM Plex'ten geçildi: Plex mühendislik/teknik bir ses taşıyor, finans
+ * arayüzlerinin sakin dilini vermiyordu. Inter nötr, tablo rakamları güçlü
+ * (`tnum`) ve sütun sütun dizilen tutarlar onunla hizalı okunuyor.
+ */
 export const fontFamily = {
-  regular: "IBMPlexSans-Regular",
-  medium: "IBMPlexSans-Medium",
-  semibold: "IBMPlexSans-SemiBold",
-  bold: "IBMPlexSans-Bold",
+  regular: "Inter-Regular",
+  medium: "Inter-Medium",
+  semibold: "Inter-SemiBold",
+  bold: "Inter-Bold",
 };
 
 /**
  * Yazı ölçeği. Her boyutun satır yüksekliği tanımlı — denetimde 189 yazı
  * stilinden yalnızca 17'sinde vardı, gerisi platform varsayılanıyla sıkışıktı.
- * `weight` doğrudan font ailesine çevrilir: React Native'de özel fontlarda
+ * Ağırlık doğrudan font ailesine çevrilir: React Native'de özel fontlarda
  * fontWeight güvenilir çalışmaz, aile adı kullanılmalıdır.
+ *
+ * Ağırlıklar bilerek bir kademe hafif: başlıklar Bold değil SemiBold, vurgulu
+ * gövde metni SemiBold değil Medium. Büyük punto + 700 kalınlık ekranı
+ * bağırtıyordu; büyük punto + 600 + sıkı harf aralığı premium okunuyor.
  */
 export const type = {
   caption:   { fontSize: 12, lineHeight: 16, fontFamily: fontFamily.regular },
-  captionSb: { fontSize: 12, lineHeight: 16, fontFamily: fontFamily.semibold },
+  captionSb: { fontSize: 12, lineHeight: 16, fontFamily: fontFamily.medium },
   body:      { fontSize: 15, lineHeight: 21, fontFamily: fontFamily.regular },
-  bodySb:    { fontSize: 15, lineHeight: 21, fontFamily: fontFamily.semibold },
-  emph:      { fontSize: 17, lineHeight: 23, fontFamily: fontFamily.semibold },
-  title:     { fontSize: 19, lineHeight: 25, fontFamily: fontFamily.bold },
-  screen:    { fontSize: 24, lineHeight: 30, fontFamily: fontFamily.bold, letterSpacing: -0.3 },
-  hero:      { fontSize: 38, lineHeight: 46, fontFamily: fontFamily.bold, letterSpacing: -1 },
+  bodySb:    { fontSize: 15, lineHeight: 21, fontFamily: fontFamily.medium },
+  emph:      { fontSize: 17, lineHeight: 23, fontFamily: fontFamily.semibold, letterSpacing: -0.2 },
+  title:     { fontSize: 18, lineHeight: 24, fontFamily: fontFamily.semibold, letterSpacing: -0.3 },
+  screen:    { fontSize: 23, lineHeight: 29, fontFamily: fontFamily.semibold, letterSpacing: -0.5 },
+  hero:      { fontSize: 38, lineHeight: 45, fontFamily: fontFamily.semibold, letterSpacing: -1.4 },
 } as const;
 
 /** Bölüm etiketi: küçük, harf aralıklı, sessiz — finans arayüzlerinin imzası. */
 export const overline = {
-  fontSize: 11, lineHeight: 14, fontFamily: fontFamily.semibold,
+  fontSize: 11, lineHeight: 14, fontFamily: fontFamily.medium,
   letterSpacing: 1.1, color: colors.inkTertiary,
 } as const;
 

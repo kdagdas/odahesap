@@ -138,7 +138,7 @@ export default function Harcamalar() {
               <Text style={styles.emptyTitle}>Bu dönemde harcama yok</Text>
             </View>
           ) : (
-            <Card title="Tüm harcamalar">
+            <Card title="Tüm Harcamalar">
               {expenses.map((e, idx) => {
                 const author = members.find((m) => m.user_id === e.added_by);
                 const targetChip = e.target_type === "household"

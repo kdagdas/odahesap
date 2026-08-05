@@ -78,7 +78,7 @@ export default function Manual() {
         {/* Tutar koyu alanda: ekranın tek büyük rakamı, kart içinde değil. */}
         <ScreenHeader
           overline="MANUEL HARCAMA"
-          title="Yeni kayıt"
+          title="Yeni Kayıt"
           right={
             <Pressable onPress={() => router.back()} testID="manual-back-btn" hitSlop={12} style={styles.headBtn}>
               <Ionicons name="close" size={20} color={colors.onDark} />

@@ -19,7 +19,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 
 import {
-  colors, spacing, radius, type as T, overline, merchantColor,
+  colors, spacing, radius, type as T, overline, fontFamily, merchantColor,
   CATEGORY_ICONS, CATEGORY_LABEL_TR, getAvatar,
 } from "./theme";
 
@@ -351,9 +351,9 @@ const styles = StyleSheet.create({
   iconPill: { alignItems: "center", justifyContent: "center" },
   avatar: { alignItems: "center", justifyContent: "center" },
   tag: { paddingHorizontal: spacing.sm + 2, paddingVertical: 3, borderRadius: radius.pill, alignSelf: "flex-start" },
-  tagTxt: { fontSize: 11, lineHeight: 14, fontFamily: "IBMPlexSans-SemiBold" },
+  tagTxt: { fontSize: 11, lineHeight: 14, fontFamily: fontFamily.medium },
   merchant: { alignSelf: "flex-start", paddingHorizontal: spacing.sm, paddingVertical: 3, borderRadius: radius.sm },
-  merchantTxt: { color: "#fff", fontSize: 10, lineHeight: 13, fontFamily: "IBMPlexSans-Bold", letterSpacing: 0.4 },
+  merchantTxt: { color: colors.onDark, fontSize: 10, lineHeight: 13, fontFamily: fontFamily.semibold, letterSpacing: 0.4 },
   chip: {
     flexDirection: "row", alignItems: "center", height: 38, paddingHorizontal: spacing.lg,
     borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border,

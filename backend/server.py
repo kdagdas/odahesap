@@ -1605,6 +1605,16 @@ async def balances(period_id: Optional[str] = None, user=Depends(get_current_use
 
 
 # ---------- Stats ----------
+# Ev ya da dönem yoksa dönen iskelet. Alanların hepsi burada da bulunmalı:
+# istemci eksik anahtarı undefined okuyup grafiği boş yerine çökmüş çiziyordu.
+EMPTY_STATS = {
+    "total": 0, "per_person": 0, "daily_average": 0, "projected_30d": 0,
+    "change_pct": None, "expense_count": 0, "item_count": 0, "avg_expense": 0,
+    "member_count": 0, "by_member": [], "daily_series": [],
+    "categories": [], "merchants": [],
+}
+
+
 @api.get("/stats")
 async def stats(period_id: Optional[str] = None, user=Depends(get_current_user)):
     """Household numbers for the home screen.
@@ -1614,14 +1624,14 @@ async def stats(period_id: Optional[str] = None, user=Depends(get_current_user))
     """
     hh = await get_user_household(user["user_id"])
     if not hh:
-        return {"total": 0, "per_person": 0, "categories": [], "merchants": []}
+        return EMPTY_STATS
 
     period = (
         await db.periods.find_one({"period_id": period_id, "household_id": hh["household_id"]}, {"_id": 0})
         if period_id else await get_active_period(hh["household_id"])
     )
     if not period:
-        return {"total": 0, "per_person": 0, "categories": [], "merchants": []}
+        return EMPTY_STATS
 
     exps = await db.expenses.find(
         {"household_id": hh["household_id"], "period_id": period["period_id"],
@@ -1652,6 +1662,35 @@ async def stats(period_id: Optional[str] = None, user=Depends(get_current_user))
         merchants[(e.get("merchant") or "Diğer").strip() or "Diğer"] = (
             merchants.get((e.get("merchant") or "Diğer").strip() or "Diğer", 0) + float(e["total"])
         )
+
+    # Kim ne kadar ödedi. Aynı listeden çıkıyor — ek sorgu yok.
+    by_member: Dict[str, float] = {m: 0.0 for m in members}
+    for e in exps:
+        payer = e.get("added_by")
+        if payer in by_member:
+            by_member[payer] += float(e["total"])
+
+    # Son 14 günün günlük dökümü. Grafiğin her zaman çubuğu olsun diye harcama
+    # olmayan günler de 0 ile dizide duruyor — aksi halde grafik gün atlıyor
+    # ve aralar eşit görünmüyordu.
+    item_count = 0
+    days_of: List[str] = []
+    for e in exps:
+        item_count += len(e.get("items") or [])
+        d = (e.get("expense_date") or "")[:10]
+        days_of.append(d or make_aware(e["created_at"]).date().isoformat())
+
+    # Pencerenin sonu UTC "bugün" DEĞİL, bunun ile en yeni harcama tarihinin
+    # büyüğü. expense_date kullanıcının yerel takviminden geliyor: Almanya'da
+    # gece 01:00'de girilen harcama UTC'ye göre yarın tarihli olur ve sabit
+    # UTC penceresi onu grafikten tamamen düşürürdü.
+    last = max([now_utc().date().isoformat()] + days_of)
+    end = date.fromisoformat(last)
+    span = [end - timedelta(days=i) for i in range(13, -1, -1)]
+    daily_map: Dict[str, float] = {d.isoformat(): 0.0 for d in span}
+    for e, day in zip(exps, days_of):
+        if day in daily_map:
+            daily_map[day] += float(e["total"])
 
     started = make_aware(period["started_at"])
     days = max((now_utc() - started).days + 1, 1)
@@ -1684,6 +1723,14 @@ async def stats(period_id: Optional[str] = None, user=Depends(get_current_user))
         "projected_30d": projected,
         "change_pct": change_pct,
         "expense_count": len(exps),
+        "item_count": item_count,
+        "avg_expense": round(total / len(exps), 2) if exps else 0,
+        "member_count": len(members),
+        "by_member": [
+            {"user_id": uid, "total": round(v, 2)}
+            for uid, v in sorted(by_member.items(), key=lambda x: -x[1])
+        ],
+        "daily_series": [{"day": d, "total": round(v, 2)} for d, v in daily_map.items()],
         "categories": sorted(
             [{"key": k, "total": round(v, 2)} for k, v in cats.items() if v > 0.005],
             key=lambda x: -x["total"],

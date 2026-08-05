@@ -27,8 +27,13 @@ type Stats = {
 };
 type ShopItem = { item_id: string; text: string; added_by: string; done: boolean };
 
-/** Halka grafik — kategori dağılımı. Dikdörtgen olmayan tek görsel öğe. */
-function Donut({ parts, size = 108, stroke = 20 }: {
+/**
+ * Halka grafik — kategori dağılımı. Dikdörtgen olmayan tek görsel öğe.
+ *
+ * Çap aynı, çizgi ince: kalın halka pasta grafiğe yaklaşıp ağırlaşıyordu.
+ * İnce halka aynı bilgiyi taşıyıp ortadaki toplama yer açıyor.
+ */
+function Donut({ parts, size = 108, stroke = 9 }: {
   parts: { total: number; color: string }[]; size?: number; stroke?: number;
 }) {
   const r = (size - stroke) / 2;
@@ -37,12 +42,15 @@ function Donut({ parts, size = 108, stroke = 20 }: {
   let offset = 0;
   return (
     <Svg width={size} height={size}>
+      {/* Sessiz taban halkası: tek kategori varsa bile daire kapalı okunuyor. */}
+      <Circle cx={size / 2} cy={size / 2} r={r} fill="none"
+              stroke={colors.border} strokeWidth={stroke} />
       {parts.map((p, i) => {
         const len = (p.total / sum) * circ;
         const el = (
           <Circle
             key={i} cx={size / 2} cy={size / 2} r={r} fill="none"
-            stroke={p.color} strokeWidth={stroke}
+            stroke={p.color} strokeWidth={stroke} strokeLinecap="butt"
             strokeDasharray={`${len} ${circ - len}`}
             strokeDashoffset={-offset}
             // -90°: ilk dilim tepeden başlasın
@@ -135,7 +143,7 @@ export default function Panel() {
           ) : (
             <View style={{ gap: spacing.lg }}>
               {cats.length > 0 && (
-                <Card title="Nereye gitti" action="Tümü"
+                <Card title="Nereye Gitti" action="Tümü"
                       onAction={() => router.push("/harcamalar")} style={styles.mx}>
                   <View style={styles.donutRow}>
                     <View style={styles.donutWrap}>
@@ -159,7 +167,7 @@ export default function Panel() {
               )}
 
               {members.length > 0 && (
-                <Card title="Kim ne kadar ödedi" style={styles.mx}>
+                <Card title="Kim Ne Kadar Ödedi" style={styles.mx}>
                   {members.map((m, i) => (
                     <View key={m.user_id}>
                       <Row
@@ -198,7 +206,7 @@ export default function Panel() {
                 )}
               </Card>
 
-              <Card title="Son harcamalar" action="Tümü"
+              <Card title="Son Harcamalar" action="Tümü"
                     onAction={() => router.push("/harcamalar")} style={styles.mx}>
                 {expenses.length === 0 ? (
                   <Row title="Henüz harcama yok" subtitle="İlk fişi tara veya elle ekle"

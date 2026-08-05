@@ -83,7 +83,7 @@ export default function MemberDetail() {
               <Text style={styles.emptyTxt}>Bu dönemde bir harcaması yok.</Text>
             </View>
           ) : (
-            <Card title="Harcama detayı">
+            <Card title="Harcama Detayı">
               {expenses.map((e, idx) => {
                 const targetChip = e.target_type === "household"
                   ? { txt: "Ev", color: colors.dark, bg: colors.surfaceSecondary }

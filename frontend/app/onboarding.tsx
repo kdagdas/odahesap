@@ -59,7 +59,7 @@ export default function Onboarding() {
   if (pendingHousehold) {
     return (
       <View style={styles.root} testID="pending-approval-screen">
-        <ScreenHeader overline="KATILMA İSTEĞİ" title="Onay bekleniyor" />
+        <ScreenHeader overline="KATILMA İSTEĞİ" title="Onay Bekleniyor" />
         <Sheet>
           <View style={styles.pendingWrap}>
             <View style={styles.pendingIcon}>
@@ -90,7 +90,7 @@ export default function Onboarding() {
   return (
     <View style={styles.root} testID="onboarding-screen">
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
-        <ScreenHeader overline={`MERHABA, ${(user?.name?.split(" ")[0] || "").toLocaleUpperCase("tr-TR")}`} title="Ev seç veya oluştur">
+        <ScreenHeader overline={`MERHABA, ${(user?.name?.split(" ")[0] || "").toLocaleUpperCase("tr-TR")}`} title="Ev Seç veya Oluştur">
           <Text style={styles.heroSub}>
             Oda arkadaşlarınla harcamaları paylaşmak için bir ev bağla.
           </Text>

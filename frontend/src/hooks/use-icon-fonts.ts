@@ -44,13 +44,13 @@ const iconFontMap = (): Record<string, string> =>
     Object.entries(ICON_FAMILIES).map(([key, file]) => [key, cdnUrl(file)]),
   );
 
-// IBM Plex Sans — arayüzün gövde yazı tipi. Değişken fonttan çıkarılıp
-// Türkçe + Latin'e indirgenmiş statik ağırlıklar (4 × ~53 KB).
+// Inter — arayüzün gövde yazı tipi. Değişken fonttan çıkarılıp Türkçe +
+// Latin'e indirgenmiş statik ağırlıklar (4 × ~74 KB).
 const appFonts = {
-  "IBMPlexSans-Regular": require("../../assets/fonts/IBMPlexSans-Regular.ttf"),
-  "IBMPlexSans-Medium": require("../../assets/fonts/IBMPlexSans-Medium.ttf"),
-  "IBMPlexSans-SemiBold": require("../../assets/fonts/IBMPlexSans-SemiBold.ttf"),
-  "IBMPlexSans-Bold": require("../../assets/fonts/IBMPlexSans-Bold.ttf"),
+  "Inter-Regular": require("../../assets/fonts/Inter-Regular.ttf"),
+  "Inter-Medium": require("../../assets/fonts/Inter-Medium.ttf"),
+  "Inter-SemiBold": require("../../assets/fonts/Inter-SemiBold.ttf"),
+  "Inter-Bold": require("../../assets/fonts/Inter-Bold.ttf"),
 };
 
 export const useIconFonts = (): readonly [boolean, Error | null] =>

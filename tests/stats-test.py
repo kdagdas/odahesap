@@ -1,6 +1,7 @@
 """Istatistik ucu testi."""
 import sys
 import uuid
+from datetime import date, timedelta
 
 import httpx
 
@@ -84,6 +85,51 @@ check("gunluk ortalama > 0", s["daily_average"] > 0, str(s["daily_average"]))
 check("30 gun tahmini = gunluk x 30",
       abs(s["projected_30d"] - s["daily_average"] * 30) < 0.02, str(s))
 check("ilk donemde degisim yok", s["change_pct"] is None, str(s["change_pct"]))
+
+print("\n-- kim ne kadar odedi --")
+bym = {x["user_id"]: x["total"] for x in s["by_member"]}
+check("iki uye de listede", len(s["by_member"]) == 2, str(s["by_member"]))
+check("Alice 100 odedi", abs(bym.get(alice_id, 0) - 100) < 0.01, str(bym))
+check("Bob 60 odedi", abs(bym.get(bob_id, 0) - 60) < 0.01, str(bym))
+# Kisisel ve ikili harcamalar buraya da girmemeli.
+check("kisi toplami = ev toplami",
+      abs(sum(bym.values()) - s["total"]) < 0.01, f"{sum(bym.values())} vs {s['total']}")
+check("buyukten kucuge sirali",
+      [x["total"] for x in s["by_member"]] == sorted([x["total"] for x in s["by_member"]], reverse=True),
+      str(s["by_member"]))
+check("uye sayisi 2", s["member_count"] == 2, str(s["member_count"]))
+
+print("\n-- gunluk seri --")
+check("14 gun donuyor", len(s["daily_series"]) == 14, str(len(s["daily_series"])))
+check("tarihler artan sirali",
+      [d["day"] for d in s["daily_series"]] == sorted(d["day"] for d in s["daily_series"]),
+      str([d["day"] for d in s["daily_series"]][:3]))
+# Pencere UTC bugunden geri sayiyor; yerel takvim bir gun ileride olabilir.
+check("son gun bugun ya da yerel bugun",
+      s["daily_series"][-1]["day"] in
+      {date.today().isoformat(), (date.today() - timedelta(days=1)).isoformat()},
+      s["daily_series"][-1]["day"])
+# Harcamalar bugun eklendi; hepsi son kovaya dusmeli.
+check("bugunun toplami 160", abs(s["daily_series"][-1]["total"] - 160) < 0.01,
+      str(s["daily_series"][-1]))
+check("harcamasiz gunler 0 ile duruyor",
+      all(d["total"] == 0 for d in s["daily_series"][:-1]), str(s["daily_series"][:3]))
+# Yerel takvimi UTC'nin onundeki saatlerde girilen harcama duserdi.
+tomorrow = (date.today() + timedelta(days=1)).isoformat()
+c.post(f"{API}/expenses", headers=hdr(alice), json={
+    "target_type": "household", "total": 20.0, "source": "manual",
+    "expense_date": tomorrow, "items": []})
+s_t = c.get(f"{API}/stats", headers=hdr(alice)).json()
+check("ileri tarihli harcama grafikten dusmuyor",
+      abs(sum(d["total"] for d in s_t["daily_series"]) - s_t["total"]) < 0.01,
+      f"{sum(d['total'] for d in s_t['daily_series'])} vs {s_t['total']}")
+c.delete(f"{API}/expenses/{c.get(f'{API}/expenses', headers=hdr(alice)).json()['expenses'][0]['expense_id']}",
+         headers=hdr(alice))
+s = c.get(f"{API}/stats", headers=hdr(alice)).json()
+
+print("\n-- ortalama ve kalem sayisi --")
+check("ortalama fis 80 (160/2)", abs(s["avg_expense"] - 80) < 0.01, str(s["avg_expense"]))
+check("kalem sayisi 3", s["item_count"] == 3, str(s["item_count"]))
 
 print("\n-- gecen doneme gore degisim --")
 c.post(f"{API}/periods/close", headers=hdr(alice))

@@ -102,7 +102,7 @@ export default function Liste() {
         >
           <ScreenHeader
             overline="ALINACAKLAR"
-            title={pending.length > 0 ? `${pending.length} ürün bekliyor` : "Liste temiz"}
+            title={pending.length > 0 ? `${pending.length} Ürün Bekliyor` : "Liste Temiz"}
           >
             <View style={styles.segment}>
               {([
