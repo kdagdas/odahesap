@@ -159,8 +159,11 @@ export function Row({
     : <View testID={testID}>{body}</View>;
 }
 
-/** Satır arası saç teli. Metin başlangıcına hizalanır. */
-export function Divider({ inset = 58 }: { inset?: number }) {
+/**
+ * Satır arası saç teli. Varsayılan girinti metin başlangıcına denk gelir:
+ * kenar boşluğu 16 + 40'lık ikon yuvası + 12 boşluk = 68.
+ */
+export function Divider({ inset = 68 }: { inset?: number }) {
   return <View style={[styles.divider, { marginLeft: inset }]} />;
 }
 

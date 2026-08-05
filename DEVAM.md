@@ -81,6 +81,17 @@ diyerek hiç başlamıyor. `android/gradle.properties` içindeki
 `org.gradle.jvmargs` satırı bu yüzden `-Djava.io.tmpdir=D:/SettleUp/build-tools/tmp`
 taşıyor. **Bu satır silinmemeli.**
 
+Ama tek başına yetmiyor: `org.gradle.jvmargs` yalnızca *çatallanan* daemon'a
+geçiyor, onu başlatan launcher JVM hâlâ varsayılan geçici dizini kullanıyor ve
+soketi orada açmaya çalışıyor. Bu yüzden derlemeden önce kabuğa şunlar da
+verilmeli:
+
+```bash
+TMP=D:/SettleUp/build-tools/tmp
+TEMP=D:/SettleUp/build-tools/tmp
+GRADLE_OPTS=-Djava.io.tmpdir=D:/SettleUp/build-tools/tmp
+```
+
 ### PowerShell dosya yazarken BOM ekliyor
 
 `Set-Content -Encoding utf8` dosyanın başına BOM koyuyor; Groovy bunu
