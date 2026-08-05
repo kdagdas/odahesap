@@ -1,212 +1,262 @@
+/** Anasayfa — ev odaklı. Kişisel bakiye Kasa'ya taşındı; burada evin
+ *  toplamı, nereye gittiği, kimin ne ödediği ve günlük akış var. */
 import { useCallback, useState } from "react";
-import {
-  View, Text, StyleSheet, ScrollView, RefreshControl, Pressable, ActivityIndicator,
-} from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { LinearGradient } from "expo-linear-gradient";
+import { View, Text, StyleSheet, ScrollView, RefreshControl, Pressable, ActivityIndicator } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter, useFocusEffect } from "expo-router";
+import Svg, { Circle } from "react-native-svg";
+
 import { apiGet } from "@/src/api";
 import { useAuth } from "@/src/auth";
 import { useHousehold } from "@/src/household";
-import { Card, Avatar, MerchantBadge, formatEUR, formatDateTR } from "@/src/ui";
-import { colors, spacing, radius, font } from "@/src/theme";
+import {
+  ScreenHeader, HeaderSplit, TrendBadge, Sheet, Card, Row, Divider, Avatar,
+  Money, IconPill, CategoryIcon, categoryLabel, formatEUR,
+} from "@/src/ui";
+import { colors, spacing, radius, type as T, overline, fontFamily, CATEGORY_ICONS } from "@/src/theme";
 
 type Expense = {
   expense_id: string; added_by: string; target_type: string; target_user_id?: string;
-  total: number; merchant?: string; category?: string; source: string;
-  created_at: string; expense_date?: string; notes?: string;
+  total: number; merchant?: string; category?: string; source: string; expense_date?: string;
 };
+type Stats = {
+  total: number; per_person: number; daily_average: number; projected_30d: number;
+  change_pct: number | null; expense_count: number;
+  categories: { key: string; total: number }[];
+  merchants: { name: string; total: number }[];
+};
+type ShopItem = { item_id: string; text: string; added_by: string; done: boolean };
+
+/** Halka grafik — kategori dağılımı. Dikdörtgen olmayan tek görsel öğe. */
+function Donut({ parts, size = 108, stroke = 20 }: {
+  parts: { total: number; color: string }[]; size?: number; stroke?: number;
+}) {
+  const r = (size - stroke) / 2;
+  const circ = 2 * Math.PI * r;
+  const sum = parts.reduce((s, p) => s + p.total, 0) || 1;
+  let offset = 0;
+  return (
+    <Svg width={size} height={size}>
+      {parts.map((p, i) => {
+        const len = (p.total / sum) * circ;
+        const el = (
+          <Circle
+            key={i} cx={size / 2} cy={size / 2} r={r} fill="none"
+            stroke={p.color} strokeWidth={stroke}
+            strokeDasharray={`${len} ${circ - len}`}
+            strokeDashoffset={-offset}
+            // -90°: ilk dilim tepeden başlasın
+            transform={`rotate(-90 ${size / 2} ${size / 2})`}
+          />
+        );
+        offset += len;
+        return el;
+      })}
+    </Svg>
+  );
+}
 
 export default function Panel() {
   const { user } = useAuth();
   const { household, members, pendingMembers, refresh: refreshHH } = useHousehold();
   const router = useRouter();
+  const [stats, setStats] = useState<Stats | null>(null);
   const [expenses, setExpenses] = useState<Expense[]>([]);
-  const [net, setNet] = useState<Record<string, number>>({});
   const [totalsPaid, setTotalsPaid] = useState<Record<string, number>>({});
+  const [shopping, setShopping] = useState<ShopItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      // Refresh the household too: join requests arrive while the app is open,
-      // and without this the pending badge only ever updated on a cold start.
-      const [exp, bal] = await Promise.all([
-        apiGet("/expenses"),
-        apiGet("/balances"),
+      const [st, exp, bal, shop] = await Promise.all([
+        apiGet<Stats>("/stats"),
+        apiGet<{ expenses: Expense[] }>("/expenses"),
+        apiGet<any>("/balances"),
+        apiGet<{ items: ShopItem[] }>("/shopping?scope=household"),
         refreshHH(),
       ]);
+      setStats(st);
       setExpenses(exp.expenses || []);
-      setNet(bal.net || {});
       setTotalsPaid(bal.totals_paid || {});
+      setShopping((shop.items || []).filter((i) => !i.done));
     } catch (e) { console.log(e); }
     finally { setLoading(false); setRefreshing(false); }
   }, [refreshHH]);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
-  const memberById = (id: string) => members.find((m) => m.user_id === id);
-  const rawNet = net[user?.user_id || ""] || 0;
-  // Snap sub-cent rounding noise to zero so the card never reads "-0,00 €".
-  const myNet = Math.abs(rawNet) < 0.005 ? 0 : rawNet;
+  const member = (id?: string | null) => members.find((m) => m.user_id === id);
+  const firstName = (id?: string | null) => member(id)?.name?.split(" ")[0] || "?";
+
+  const cats = (stats?.categories || []).slice(0, 4).map((c) => ({
+    ...c, color: (CATEGORY_ICONS[c.key] || CATEGORY_ICONS.diger).color,
+  }));
 
   return (
-    <SafeAreaView style={styles.root} edges={["top"]} testID="panel-screen">
+    <View style={styles.root} testID="panel-screen">
       <ScrollView
         contentContainerStyle={styles.scroll}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={colors.brand} />}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }}
+                          tintColor={colors.dark} progressBackgroundColor={colors.surface} />
+        }
       >
-        <View style={styles.header}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.hi}>Merhaba, {user?.name?.split(" ")[0]}</Text>
-            <Text style={styles.homeName}>{household?.name}</Text>
-          </View>
-          <Pressable onPress={() => router.push("/(tabs)/profil")} testID="open-settings-btn">
-            <Avatar name={user?.name || "?"} size={44} avatarId={user?.avatar_id} userId={user?.user_id} photoVersion={(user as any)?.photo_version} />
-            {pendingMembers.length > 0 && (
-              <View style={styles.settingsBadge} testID="pending-approvals-badge">
-                <Text style={styles.settingsBadgeTxt}>{pendingMembers.length}</Text>
-              </View>
-            )}
-          </Pressable>
-        </View>
-
-        <View style={styles.balanceCard} testID="balance-card">
-          <LinearGradient
-            colors={myNet >= 0 ? ["#0EA5A5", "#0B8180"] : ["#F97066", "#DC2626"]}
-            start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-            style={StyleSheet.absoluteFill}
+        <ScreenHeader
+          overline="EV"
+          title={household?.name || "—"}
+          right={
+            <Pressable onPress={() => router.push("/(tabs)/profil")} testID="open-settings-btn">
+              <Avatar name={user?.name} size={42} avatarId={user?.avatar_id}
+                      userId={user?.user_id} photoVersion={(user as any)?.photo_version} />
+              {pendingMembers.length > 0 && (
+                <View style={styles.badge} testID="pending-approvals-badge">
+                  <Text style={styles.badgeTxt}>{pendingMembers.length}</Text>
+                </View>
+              )}
+            </Pressable>
+          }
+        >
+          <Text style={styles.heroLabel}>BU DÖNEM EV HARCAMASI</Text>
+          <Text style={styles.heroValue}>{formatEUR(stats?.total ?? 0)}</Text>
+          {stats?.change_pct != null && <TrendBadge pct={stats.change_pct} />}
+          <HeaderSplit
+            items={[
+              { label: "Kişi başı", value: formatEUR(stats?.per_person ?? 0) },
+              { label: "Ay sonu tahmini", value: formatEUR(stats?.projected_30d ?? 0) },
+            ]}
           />
-          <Text style={styles.balanceLabel}>Bu dönem net durumun</Text>
-          <Text style={styles.balanceAmount}>
-            {myNet > 0 ? "+" : ""}{formatEUR(myNet)}
-          </Text>
-          <Text style={styles.balanceHint}>
-            {myNet > 0.01 ? "Ev sana borçlu" : myNet < -0.01 ? "Eve borcun var" : "Ödeşmiş durumdasın"}
-          </Text>
-          <View style={styles.balanceActions}>
-            <Pressable style={styles.balanceBtn} onPress={() => router.push("/manual")} testID="add-manual-cta">
-              <Ionicons name="add-circle" size={18} color="#fff" />
-              <Text style={styles.balanceBtnTxt}>Manuel Ekle</Text>
-            </Pressable>
-            <Pressable style={styles.balanceBtn} onPress={() => router.push("/(tabs)/tara")} testID="scan-cta">
-              <Ionicons name="scan" size={18} color="#fff" />
-              <Text style={styles.balanceBtnTxt}>Fiş Tara</Text>
-            </Pressable>
-          </View>
-        </View>
+        </ScreenHeader>
 
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Ev arkadaşları</Text>
-          {members.map((m) => (
-            <Card key={m.user_id} style={styles.memberRow} testID={`member-row-${m.user_id}`}>
-              <Avatar name={m.name} size={40} avatarId={(m as any).avatar_id} userId={m.user_id} photoVersion={(m as any).photo_version} />
-              <View style={{ flex: 1 }}>
-                {/* No e-mail here: on the home screen the name and what they
-                    spent is the whole story, and addresses just crowd it. */}
-                <Text style={styles.memberName}>{m.name}{m.user_id === user?.user_id ? " (sen)" : ""}</Text>
-              </View>
-              <View style={{ alignItems: "flex-end" }}>
-                <Text style={styles.memberPaid}>{formatEUR(totalsPaid[m.user_id] || 0)}</Text>
-                <Text style={styles.memberSubtle}>ev için ödedi</Text>
-              </View>
-            </Card>
-          ))}
-        </View>
-
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Son harcamalar</Text>
-            <Pressable onPress={() => router.push("/harcamalar")} testID="see-all-expenses">
-              <Text style={styles.link}>Tümü</Text>
-            </Pressable>
-          </View>
+        <Sheet>
           {loading ? (
-            <ActivityIndicator color={colors.brand} style={{ marginTop: spacing.lg }} />
-          ) : expenses.length === 0 ? (
-            <Card style={styles.emptyCard} testID="empty-expenses">
-              <View style={styles.emptyIcon}>
-                <Ionicons name="receipt-outline" size={32} color={colors.brand} />
-              </View>
-              <Text style={styles.emptyTitle}>Henüz bir harcama yok</Text>
-              <Text style={styles.emptyDesc}>İlk fişi tara veya manuel ekle.</Text>
-            </Card>
+            <ActivityIndicator color={colors.dark} style={{ marginTop: spacing.xxl }} />
           ) : (
-            expenses.slice(0, 8).map((e) => {
-              const author = memberById(e.added_by);
-              const targetLabel =
-                e.target_type === "household" ? "Ev"
-                : e.target_type === "self" ? "Kendim"
-                : `→ ${memberById(e.target_user_id || "")?.name?.split(" ")[0] || "Oda"}`;
-              return (
-                <Card key={e.expense_id} style={styles.expCard} testID={`expense-row-${e.expense_id}`}>
-                  <View style={styles.expTop}>
-                    <Avatar name={author?.name || "?"} size={36} avatarId={(author as any)?.avatar_id} userId={author?.user_id} photoVersion={(author as any)?.photo_version} />
-                    <View style={{ flex: 1, gap: 2 }}>
-                      <Text style={styles.expTitle} numberOfLines={1}>
-                        {author?.name || "Bilinmeyen"}
-                      </Text>
-                      <View style={styles.expMeta}>
-                        <Text style={styles.expSubtle}>{targetLabel}</Text>
-                        {e.expense_date && (
-                          <>
-                            <Text style={styles.expDot}>·</Text>
-                            <Text style={styles.expSubtle}>{formatDateTR(e.expense_date)}</Text>
-                          </>
-                        )}
+            <View style={{ gap: spacing.lg }}>
+              {cats.length > 0 && (
+                <Card title="Nereye gitti" action="Tümü"
+                      onAction={() => router.push("/harcamalar")} style={styles.mx}>
+                  <View style={styles.donutRow}>
+                    <View style={styles.donutWrap}>
+                      <Donut parts={cats} />
+                      <View style={styles.donutCenter}>
+                        <Text style={styles.donutTotal}>{formatEUR(stats?.total ?? 0).replace(",00 €", " €")}</Text>
+                        <Text style={styles.donutSub}>{stats?.expense_count} harcama</Text>
                       </View>
                     </View>
-                    <View style={{ alignItems: "flex-end", gap: 4 }}>
-                      <Text style={styles.expAmount}>{formatEUR(e.total)}</Text>
-                      {e.merchant && <MerchantBadge name={e.merchant} />}
+                    <View style={{ flex: 1, gap: spacing.sm }}>
+                      {cats.map((c) => (
+                        <View key={c.key} style={styles.legend}>
+                          <CategoryIcon category={c.key} size={26} />
+                          <Text style={styles.legendTxt} numberOfLines={1}>{categoryLabel(c.key)}</Text>
+                          <Money value={c.total} style={styles.legendVal} />
+                        </View>
+                      ))}
                     </View>
                   </View>
                 </Card>
-              );
-            })
+              )}
+
+              {members.length > 0 && (
+                <Card title="Kim ne kadar ödedi" style={styles.mx}>
+                  {members.map((m, i) => (
+                    <View key={m.user_id}>
+                      <Row
+                        leading={<Avatar name={m.name} size={38} avatarId={(m as any).avatar_id}
+                                         userId={m.user_id} photoVersion={(m as any).photo_version} />}
+                        title={`${m.name}${m.user_id === user?.user_id ? " (sen)" : ""}`}
+                        subtitle="ev harcaması"
+                        right={<Money value={totalsPaid[m.user_id] || 0} />}
+                      />
+                      {i < members.length - 1 && <Divider />}
+                    </View>
+                  ))}
+                </Card>
+              )}
+
+              <Card title="Alınacaklar" action="Tümü"
+                    onAction={() => router.push("/(tabs)/liste")} style={styles.mx}>
+                {shopping.length === 0 ? (
+                  <Row title="Liste temiz" subtitle="Eve lazım olanı yazın, markete giden görsün"
+                       leading={<IconPill name="checkmark" color={colors.accent}
+                                          tint={colors.accentSoft} size={34} />} />
+                ) : (
+                  shopping.slice(0, 3).map((it, i) => (
+                    <View key={it.item_id}>
+                      <Row
+                        minHeight={46}
+                        leading={<View style={styles.check} />}
+                        title={<Text style={styles.itemTxt}>{it.text}</Text>}
+                        right={<Text style={styles.itemWho}>
+                          {it.added_by === user?.user_id ? "sen" : firstName(it.added_by)}
+                        </Text>}
+                      />
+                      {i < Math.min(shopping.length, 3) - 1 && <Divider inset={58} />}
+                    </View>
+                  ))
+                )}
+              </Card>
+
+              <Card title="Son harcamalar" action="Tümü"
+                    onAction={() => router.push("/harcamalar")} style={styles.mx}>
+                {expenses.length === 0 ? (
+                  <Row title="Henüz harcama yok" subtitle="İlk fişi tara veya elle ekle"
+                       leading={<IconPill name="receipt-outline" color={colors.inkSecondary}
+                                          tint={colors.surfaceSecondary} size={34} />} />
+                ) : (
+                  expenses.slice(0, 5).map((e, i) => {
+                    const author = member(e.added_by);
+                    const target = e.target_type === "household" ? "Ev"
+                      : e.target_type === "self" ? "Kendim"
+                      : `→ ${firstName(e.target_user_id)}`;
+                    return (
+                      <View key={e.expense_id}>
+                        <Row
+                          onPress={() => router.push("/harcamalar")}
+                          testID={`expense-row-${e.expense_id}`}
+                          leading={<Avatar name={author?.name} size={38} avatarId={(author as any)?.avatar_id}
+                                           userId={author?.user_id} photoVersion={(author as any)?.photo_version} />}
+                          title={author?.name || "Bilinmeyen"}
+                          subtitle={`${e.merchant || (e.source === "receipt" ? "Fiş" : "Manuel")} · ${target}`}
+                          right={<Money value={e.total} />}
+                        />
+                        {i < Math.min(expenses.length, 5) - 1 && <Divider />}
+                      </View>
+                    );
+                  })
+                )}
+              </Card>
+            </View>
           )}
-        </View>
+        </Sheet>
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.surfaceAlt },
-  scroll: { padding: spacing.lg, gap: spacing.lg, paddingBottom: 120 },
-  header: { flexDirection: "row", alignItems: "center", gap: spacing.md, marginTop: spacing.sm },
-  hi: { fontSize: font.sizes.sm, color: colors.onSurfaceSecondary },
-  homeName: { fontSize: 26, fontWeight: font.weights.bold, color: colors.onSurface, letterSpacing: -0.3 },
-  settingsBadge: { position: "absolute", top: -4, right: -4, minWidth: 20, height: 20, borderRadius: 10, backgroundColor: colors.coral, alignItems: "center", justifyContent: "center", paddingHorizontal: 5 },
-  settingsBadgeTxt: { color: "#fff", fontSize: 11, fontWeight: font.weights.bold },
-  balanceCard: {
-    borderRadius: radius.lg, padding: spacing.xl, overflow: "hidden", gap: spacing.xs,
-    shadowColor: "#0F2A2E", shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.18, shadowRadius: 16, elevation: 6,
+  root: { flex: 1, backgroundColor: colors.dark },
+  scroll: { paddingBottom: 120, backgroundColor: colors.bg, flexGrow: 1 },
+  mx: { marginHorizontal: spacing.lg },
+  heroLabel: { ...overline, color: colors.onDarkMuted },
+  heroValue: { ...T.hero, color: colors.onDark, marginTop: spacing.xs },
+  badge: {
+    position: "absolute", top: -3, right: -3, minWidth: 20, height: 20, borderRadius: 10,
+    backgroundColor: colors.negative, alignItems: "center", justifyContent: "center",
+    paddingHorizontal: 5, borderWidth: 2, borderColor: colors.dark,
   },
-  balanceLabel: { color: "rgba(255,255,255,0.85)", fontSize: font.sizes.sm, fontWeight: font.weights.semibold, textTransform: "uppercase", letterSpacing: 0.7 },
-  balanceAmount: { color: "#fff", fontSize: 44, fontWeight: font.weights.bold, letterSpacing: -1, marginTop: spacing.xs },
-  balanceHint: { color: "rgba(255,255,255,0.9)", fontSize: font.sizes.base, marginTop: spacing.xs },
-  balanceActions: { flexDirection: "row", gap: spacing.sm, marginTop: spacing.md },
-  balanceBtn: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "rgba(255,255,255,0.2)", paddingHorizontal: spacing.md, paddingVertical: 8, borderRadius: radius.pill },
-  balanceBtnTxt: { color: "#fff", fontWeight: font.weights.semibold, fontSize: font.sizes.base },
-  section: { gap: spacing.sm },
-  sectionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  sectionTitle: { fontSize: font.sizes.lg, fontWeight: font.weights.semibold, color: colors.onSurface, marginBottom: spacing.xs },
-  link: { color: colors.brand, fontWeight: font.weights.semibold },
-  memberRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, padding: spacing.md },
-  memberName: { fontSize: font.sizes.base, fontWeight: font.weights.semibold, color: colors.onSurface },
-  memberPaid: { fontSize: font.sizes.base, fontWeight: font.weights.semibold, color: colors.onSurface },
-  memberSubtle: { fontSize: font.sizes.sm, color: colors.onSurfaceTertiary },
-  expCard: { padding: spacing.md },
-  expTop: { flexDirection: "row", alignItems: "center", gap: spacing.md },
-  expTitle: { fontSize: font.sizes.base, fontWeight: font.weights.semibold, color: colors.onSurface },
-  expMeta: { flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" },
-  expSubtle: { fontSize: font.sizes.sm, color: colors.onSurfaceTertiary },
-  expDot: { color: colors.onSurfaceTertiary },
-  expAmount: { fontSize: font.sizes.lg, fontWeight: font.weights.bold, color: colors.onSurface },
-  emptyCard: { alignItems: "center", padding: spacing.xl, gap: spacing.sm },
-  emptyIcon: { width: 64, height: 64, borderRadius: 32, backgroundColor: colors.brandSoft, alignItems: "center", justifyContent: "center", marginBottom: spacing.sm },
-  emptyTitle: { fontSize: font.sizes.lg, fontWeight: font.weights.semibold, color: colors.onSurface },
-  emptyDesc: { fontSize: font.sizes.base, color: colors.onSurfaceSecondary, textAlign: "center" },
+  badgeTxt: { color: colors.onDark, fontSize: 10, lineHeight: 14, fontFamily: fontFamily.bold },
+  donutRow: { flexDirection: "row", alignItems: "center", gap: spacing.lg,
+              paddingHorizontal: spacing.lg, paddingBottom: spacing.lg },
+  donutWrap: { width: 108, height: 108, alignItems: "center", justifyContent: "center" },
+  donutCenter: { position: "absolute", alignItems: "center" },
+  donutTotal: { ...T.bodySb, color: colors.ink },
+  donutSub: { fontSize: 10, lineHeight: 13, fontFamily: fontFamily.regular, color: colors.inkTertiary },
+  legend: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  legendTxt: { ...T.caption, color: colors.inkSecondary, flex: 1 },
+  legendVal: { ...T.caption, fontFamily: fontFamily.semibold, color: colors.ink },
+  check: { width: 20, height: 20, borderRadius: 10, borderWidth: 1.5, borderColor: colors.borderStrong },
+  itemTxt: { ...T.body, color: colors.ink },
+  itemWho: { ...T.caption, color: colors.inkTertiary },
 });

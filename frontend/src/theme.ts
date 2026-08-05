@@ -1,119 +1,172 @@
 /**
- * OdaHesap design tokens — refresh:
- * Fresh, colorful light theme. Teal primary + mint accents + coral highlights.
- * Trustworthy financial tone; no purple/indigo/AI slop.
+ * KaSa tasarım jetonları.
+ *
+ * Yön: koyu lacivert + yeşil, premium finans dili. Lacivert uygulama
+ * ikonundan geliyor; önceki turkuaz arayüz ikonla aynı markayı konuşmuyordu.
+ *
+ * Kural: ekranlarda ham renk kodu kullanılmaz. Bir renge ihtiyaç varsa
+ * buraya isimlendirilmiş bir jeton olarak eklenir — ekranlara dağılmış 27
+ * ham kod, yarısı zaten var olan jetonun kopyasıydı.
  */
 export const colors = {
-  // Surfaces
+  // Zeminler
+  bg: "#F6F8FB",              // ekran zemini (saf beyaz değil — kartlar yüzey gibi okunsun)
   surface: "#FFFFFF",
-  surfaceAlt: "#F1FBF9", // pale mint
-  surfaceSecondary: "#F3F7F9", // pale seafoam
-  surfaceTertiary: "#E6F1EF",
-  surfaceInverse: "#0F2A2E", // deep teal
-  onSurface: "#0F2A2E",
-  onSurfaceSecondary: "#4A5F62",
-  onSurfaceTertiary: "#7A8D8F",
-  onSurfaceInverse: "#F1FBF9",
+  surfaceAlt: "#F6F8FB",
+  surfaceSecondary: "#F1F4F9", // girdi alanları
+  border: "#E9EEF4",
+  divider: "#F0F4F8",
 
-  // Brand
-  brand: "#0EA5A5", // teal-500 → primary
-  brandDark: "#0B8180",
-  brandSoft: "#CFF2EF",
+  // Koyu bölge (hero başlıkları)
+  dark: "#0F1B33",
+  darkAlt: "#1A2B4E",         // degradenin diğer ucu
+  darkSurface: "#26385C",     // koyu üstünde daire/rozet
+  onDark: "#FFFFFF",
+  onDarkMuted: "#9AAECC",
+  negativeOnDark: "#FCA5A5",  // koyu zemin üstünde kırmızı
+  black: "#000000",           // kamera önizlemesi
+
+  // Metin
+  ink: "#0C1626",
+  inkSecondary: "#5F6F85",
+  inkTertiary: "#98A5B6",
+
+  // Marka / vurgu
+  brand: "#0F1B33",           // birincil eylem = lacivert
   onBrand: "#FFFFFF",
-  onBrandSoft: "#065E5E",
+  accent: "#10B981",          // yeşil: pozitif, bağlantı, onay
+  accentDark: "#057A55",
+  accentSoft: "#DBF7ED",
+  accentOnDark: "#6EE7B7",    // koyu zemin üstünde yeşil
 
-  // Accents
-  mint: "#22C55E", // for positive/success
-  coral: "#F97066", // for negative/warning
+  // Anlamsal
+  positive: "#10B981",
+  negative: "#E14141",
+  negativeSoft: "#FEE8E8",
+  warning: "#F59E0B",
+  warningSoft: "#FEF3D6",
+  onWarning: "#92400E",
+  info: "#3B82F6",
+  infoSoft: "#E2EEFF",
+  onInfo: "#1D4ED8",
+  error: "#E14141",
+
+  // Geriye dönük adlar (ekranlar kademeli geçerken kırılmasın)
+  onSurface: "#0C1626",
+  onSurfaceSecondary: "#5F6F85",
+  onSurfaceTertiary: "#98A5B6",
+  onBrandSoft: "#057A55",
+  brandSoft: "#DBF7ED",
+  brandDark: "#1A2B4E",
+  surfaceTertiary: "#F1F4F9",
+  borderStrong: "#CBD5E1",
+  mint: "#10B981",
+  coral: "#E14141",
   amber: "#F59E0B",
-  sky: "#3B82F6", // occasional link accent
+  sky: "#3B82F6",
+  success: "#10B981",
   onMint: "#FFFFFF",
   onCoral: "#FFFFFF",
-
-  // Semantic
-  success: "#16A34A",
-  warning: "#F59E0B",
-  error: "#DC2626",
-  info: "#0EA5A5",
-
-  border: "#E1EEEB",
-  borderStrong: "#B7D3CE",
-  divider: "#E8F0EF",
-
-  positive: "#16A34A",
-  negative: "#DC2626",
 };
 
 export const spacing = {
   xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32, xxxl: 48,
 };
-export const radius = { sm: 6, md: 12, lg: 20, pill: 999 };
-export const font = {
-  sizes: { sm: 12, base: 14, lg: 16, xl: 20, xxl: 24, hero: 32 },
-  weights: {
-    regular: "400" as const, medium: "500" as const, semibold: "600" as const, bold: "700" as const,
-  },
-};
-export const shadow = {
-  card: { shadowColor: "#0F2A2E", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 2 },
+
+/** Köşe yarıçapı: büyük yüzey 18, gruplanmış liste 14, rozet hap. */
+export const radius = { sm: 6, md: 12, lg: 18, xl: 28, pill: 999 };
+
+export const fontFamily = {
+  regular: "IBMPlexSans-Regular",
+  medium: "IBMPlexSans-Medium",
+  semibold: "IBMPlexSans-SemiBold",
+  bold: "IBMPlexSans-Bold",
 };
 
-/** MaterialCommunityIcons names for each category — uniform icon set (no emojis). */
+/**
+ * Yazı ölçeği. Her boyutun satır yüksekliği tanımlı — denetimde 189 yazı
+ * stilinden yalnızca 17'sinde vardı, gerisi platform varsayılanıyla sıkışıktı.
+ * `weight` doğrudan font ailesine çevrilir: React Native'de özel fontlarda
+ * fontWeight güvenilir çalışmaz, aile adı kullanılmalıdır.
+ */
+export const type = {
+  caption:   { fontSize: 12, lineHeight: 16, fontFamily: fontFamily.regular },
+  captionSb: { fontSize: 12, lineHeight: 16, fontFamily: fontFamily.semibold },
+  body:      { fontSize: 15, lineHeight: 21, fontFamily: fontFamily.regular },
+  bodySb:    { fontSize: 15, lineHeight: 21, fontFamily: fontFamily.semibold },
+  emph:      { fontSize: 17, lineHeight: 23, fontFamily: fontFamily.semibold },
+  title:     { fontSize: 19, lineHeight: 25, fontFamily: fontFamily.bold },
+  screen:    { fontSize: 24, lineHeight: 30, fontFamily: fontFamily.bold, letterSpacing: -0.3 },
+  hero:      { fontSize: 38, lineHeight: 46, fontFamily: fontFamily.bold, letterSpacing: -1 },
+} as const;
+
+/** Bölüm etiketi: küçük, harf aralıklı, sessiz — finans arayüzlerinin imzası. */
+export const overline = {
+  fontSize: 11, lineHeight: 14, fontFamily: fontFamily.semibold,
+  letterSpacing: 1.1, color: colors.inkTertiary,
+} as const;
+
+/** Yükseklik bütçesi: ekran başına bir yüzey. Gerisi düz. */
+export const shadow = {
+  card: {
+    shadowColor: "#0F1B33", shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.10, shadowRadius: 14, elevation: 4,
+  },
+};
+
+export const font = {
+  sizes: { sm: 12, base: 15, lg: 17, xl: 19, xxl: 24, hero: 38 },
+  weights: { regular: "400" as const, medium: "500" as const, semibold: "600" as const, bold: "700" as const },
+};
+
+/** Kategori ikonları — Gemini'nin atadığı anahtarlarla birebir eşleşir. */
 export const CATEGORY_ICONS: Record<string, { icon: string; color: string; bg: string }> = {
-  sut_urunleri: { icon: "cup-outline",        color: "#0EA5A5", bg: "#CFF2EF" },
-  meyve_sebze:  { icon: "food-apple-outline", color: "#16A34A", bg: "#DCFCE7" },
-  et_balik:     { icon: "food-steak",         color: "#DC2626", bg: "#FEE2E2" },
-  firin:        { icon: "bread-slice-outline",color: "#B45309", bg: "#FEF3C7" },
-  icecek:       { icon: "bottle-soda-outline",color: "#3B82F6", bg: "#DBEAFE" },
-  atistirmalik: { icon: "candy-outline",      color: "#DB2777", bg: "#FCE7F3" },
-  ev_urunleri:  { icon: "spray-bottle",       color: "#7C3AED", bg: "#EDE9FE" },
-  diger:        { icon: "basket-outline",     color: "#4A5F62", bg: "#E8F0EF" },
+  sut_urunleri: { icon: "cup-outline",         color: "#0EA5A5", bg: "#D7F4F3" },
+  meyve_sebze:  { icon: "food-apple-outline",  color: "#10B981", bg: "#DBF7ED" },
+  et_balik:     { icon: "food-steak",          color: "#E14141", bg: "#FEE8E8" },
+  firin:        { icon: "bread-slice-outline", color: "#D97706", bg: "#FEF0D6" },
+  icecek:       { icon: "bottle-soda-outline", color: "#3B82F6", bg: "#E2EEFF" },
+  atistirmalik: { icon: "candy-outline",       color: "#DB2777", bg: "#FCE7F3" },
+  temel_gida:   { icon: "sack",                color: "#A16207", bg: "#FBF0DA" },
+  ev_urunleri:  { icon: "spray-bottle",        color: "#7C3AED", bg: "#EDE9FE" },
+  diger:        { icon: "basket-outline",      color: "#5F6F85", bg: "#EEF2F7" },
 };
 
 export const CATEGORY_LABEL_TR: Record<string, string> = {
   sut_urunleri: "Süt ürünleri",
   meyve_sebze: "Meyve & sebze",
-  et_balik: "Et & balık",
+  et_balik: "Et & şarküteri",
   firin: "Fırın",
   icecek: "İçecek",
   atistirmalik: "Atıştırmalık",
+  temel_gida: "Temel gıda",
   ev_urunleri: "Ev ürünleri",
   diger: "Diğer",
 };
 
-/** Known German merchant chains → brand color, for pill display */
+/** Bilinen zincirlerin marka renkleri — market rozetinde kullanılır. */
 export const MERCHANT_COLORS: Record<string, string> = {
-  REWE: "#CC071E",
-  EDEKA: "#F0B400",
-  ALDI: "#0B4B99",
-  LIDL: "#0050AA",
-  PENNY: "#CC071E",
-  KAUFLAND: "#E10915",
-  NETTO: "#FFD700",
-  DM: "#004890",
-  ROSSMANN: "#C8102E",
-  BAUHAUS: "#F58220",
-  OBI: "#F47C20",
-  HORNBACH: "#F5A800",
+  REWE: "#CC071E", EDEKA: "#F0B400", ALDI: "#0B4B99", LIDL: "#0050AA",
+  PENNY: "#CC071E", KAUFLAND: "#E10915", NETTO: "#FFD700", DM: "#004890",
+  ROSSMANN: "#C8102E", BAUHAUS: "#F58220", OBI: "#F47C20", HORNBACH: "#F5A800",
   IKEA: "#0058A3",
 };
 
 export function merchantColor(name?: string | null): string {
-  if (!name) return colors.brand;
-  const key = name.trim().toUpperCase();
-  return MERCHANT_COLORS[key] || colors.brand;
+  if (!name) return colors.dark;
+  return MERCHANT_COLORS[name.trim().toUpperCase()] || colors.dark;
 }
 
-/** 8 preset avatar styles — user can pick one in Settings. */
+/** 8 hazır avatar — fotoğraf yüklenmediğinde kullanılır. */
 export type AvatarPreset = { id: number; icon: string; color: string };
 export const AVATARS: AvatarPreset[] = [
-  { id: 0, icon: "person",      color: "#0EA5A5" },
-  { id: 1, icon: "happy",       color: "#F59E0B" },
-  { id: 2, icon: "pizza",       color: "#DC2626" },
-  { id: 3, icon: "rocket",      color: "#3B82F6" },
-  { id: 4, icon: "star",        color: "#8B5CF6" },
-  { id: 5, icon: "heart",       color: "#EC4899" },
-  { id: 6, icon: "leaf",        color: "#16A34A" },
-  { id: 7, icon: "flame",       color: "#F97316" },
+  { id: 0, icon: "person", color: "#0F1B33" },
+  { id: 1, icon: "happy",  color: "#F59E0B" },
+  { id: 2, icon: "pizza",  color: "#E14141" },
+  { id: 3, icon: "rocket", color: "#3B82F6" },
+  { id: 4, icon: "star",   color: "#8B5CF6" },
+  { id: 5, icon: "heart",  color: "#EC4899" },
+  { id: 6, icon: "leaf",   color: "#10B981" },
+  { id: 7, icon: "flame",  color: "#F97316" },
 ];
 export const getAvatar = (id?: number | null): AvatarPreset => AVATARS[id ?? 0] || AVATARS[0];

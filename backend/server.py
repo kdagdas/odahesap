@@ -800,6 +800,11 @@ async def leave_household(user=Depends(get_current_user)):
 
 
 # ---------- OCR (Gemini 3 Flash Vision) ----------
+CATEGORY_KEYS = (
+    "sut_urunleri", "meyve_sebze", "et_balik", "firin",
+    "icecek", "atistirmalik", "temel_gida", "ev_urunleri", "diger",
+)
+
 CATEGORY_KEYWORDS = {
     "sut_urunleri": [
         "milch", "käse", "joghurt", "jogurt", "quark", "sahne", "butter", "kefir",
@@ -881,6 +886,23 @@ Rules:
 6. Ignore non-item lines: "MwSt", "Summe", "Zwischensumme", "Gesamtsumme", "Bar", "EC", "Karte", "Rueckgeld", store address, times, cashier numbers, "vielen Dank".
 7. Item names stay in German — do NOT translate.
 
+8. Classify every line item into exactly one category. Use your own knowledge
+   of the product, not the wording: receipts print brand names, not product
+   types ("Goldähren" is bread, "TUNA DILIM SUCUK" is sausage), and this
+   household also shops at Turkish supermarkets, so items may be in Turkish,
+   German or English. Allowed values:
+     "sut_urunleri"  milk, cheese, yoghurt, butter, cream, eggs (süt, kaşar, peynir, yumurta)
+     "meyve_sebze"   fresh fruit and vegetables (meyve, sebze, salça değil)
+     "et_balik"      meat, poultry, fish, sausage, charcuterie (et, tavuk, balık, sucuk, salam)
+     "firin"         bread, pastry, cake, biscuits-as-bakery (ekmek, poğaça, börek)
+     "icecek"        any drink incl. water, juice, tea, coffee, beer, wine (çay, kahve, ayran)
+     "atistirmalik"  sweets, crisps, chocolate, nuts, ice cream (çikolata, cips, kuruyemiş)
+     "temel_gida"    pasta, rice, flour, sugar, oil, legumes, spices, tinned goods
+                     (makarna, pirinç, un, şeker, yağ, bakliyat, baharat, salça, konserve)
+     "ev_urunleri"   cleaning, hygiene, paper goods, bags, batteries (deterjan, şampuan, poşet)
+     "diger"         only when genuinely none of the above fits
+   Discount lines take the category "diger".
+
 Return JSON EXACTLY in this schema:
 {
   "merchant": "REWE" | "EDEKA" | "ALDI" | "LIDL" | "PENNY" | "KAUFLAND" | "NETTO" | "DM" | "ROSSMANN" | string | null,
@@ -888,7 +910,7 @@ Return JSON EXACTLY in this schema:
   "total": number | null,
   "currency": "EUR",
   "items": [
-    { "name": string, "price": number, "quantity": number }
+    { "name": string, "price": number, "quantity": number, "category": string }
   ]
 }
 
@@ -911,23 +933,65 @@ async def gemini_vision(system_prompt: str, user_text: str, image_b64: str, mime
                 ],
             }
         ],
-        "generationConfig": {"temperature": 0, "responseMimeType": "application/json"},
+        "generationConfig": {
+            "temperature": 0,
+            "responseMimeType": "application/json",
+            # Reading a receipt is transcription, not reasoning. Left on, the
+            # model spent ~1000 thinking tokens per scan and they come out of
+            # the same output budget — long receipts had their JSON cut off
+            # mid-array and failed to parse.
+            "thinkingConfig": {"thinkingBudget": 0},
+            "maxOutputTokens": 8192,
+        },
     }
     url = GEMINI_ENDPOINT.format(model=GEMINI_MODEL)
-    async with httpx.AsyncClient(timeout=120.0) as http:
-        r = await http.post(url, params={"key": GEMINI_API_KEY}, json=payload)
-    if r.status_code != 200:
-        logger.error("Gemini API %s: %s", r.status_code, r.text[:500])
-        if r.status_code == 429:
-            raise HTTPException(status_code=429, detail="Günlük ücretsiz OCR kotası doldu, sonra tekrar deneyin")
-        raise HTTPException(status_code=502, detail=f"OCR servisi hatası ({r.status_code})")
 
-    data = r.json()
-    candidates = data.get("candidates") or []
-    if not candidates:
-        raise HTTPException(status_code=502, detail="OCR yanıtı boş döndü")
-    parts = candidates[0].get("content", {}).get("parts") or []
-    return "".join(p.get("text", "") for p in parts).strip()
+    # The free tier returns 503/429 under load often enough that a single
+    # attempt shows up to the user as "fiş okunamadı" for a perfectly good
+    # photo. Retry the transient ones; a scan is worth a few extra seconds.
+    last_status, last_body = None, ""
+    for attempt in range(1, 4):
+        try:
+            async with httpx.AsyncClient(timeout=120.0) as http:
+                r = await http.post(url, params={"key": GEMINI_API_KEY}, json=payload)
+        except Exception as e:
+            logger.warning("Gemini ağ hatası (deneme %s): %s", attempt, e)
+            if attempt == 3:
+                raise HTTPException(status_code=502, detail="OCR servisine ulaşılamadı")
+            await asyncio.sleep(attempt * 2)
+            continue
+
+        if r.status_code == 200:
+            data = r.json()
+            candidates = data.get("candidates") or []
+            finish = candidates[0].get("finishReason") if candidates else None
+            parts = (candidates[0].get("content", {}).get("parts") or []) if candidates else []
+            text = "".join(p.get("text", "") for p in parts).strip()
+            if finish == "MAX_TOKENS":
+                # Truncated JSON is unparseable; say so plainly in the log
+                # instead of leaving a "parse hatası" mystery behind.
+                logger.warning("Gemini çıktı bütçesi doldu (deneme %s), yanıt kesildi", attempt)
+                text = ""
+            if text:
+                return text
+            # Empty completion happens on a hiccup too — worth one more go.
+            logger.warning("Gemini boş yanıt (deneme %s), finish=%s", attempt,
+                           candidates[0].get("finishReason") if candidates else None)
+            last_status, last_body = 200, "boş yanıt"
+        else:
+            last_status, last_body = r.status_code, r.text[:300]
+            logger.warning("Gemini %s (deneme %s): %s", r.status_code, attempt, last_body)
+            if r.status_code == 429:
+                raise HTTPException(status_code=429,
+                                    detail="Ücretsiz OCR kotası doldu, birazdan tekrar deneyin")
+            if r.status_code < 500 and r.status_code != 408:
+                break  # kalıcı hata, tekrar denemenin anlamı yok
+
+        if attempt < 3:
+            await asyncio.sleep(attempt * 2)
+
+    logger.error("Gemini başarısız: %s %s", last_status, last_body)
+    raise HTTPException(status_code=502, detail="Fiş okunamadı, lütfen tekrar deneyin")
 
 
 @api.post("/ocr/receipt")
@@ -963,11 +1027,13 @@ async def ocr_receipt(body: OCRRequest, user=Depends(get_current_user)):
     start = text.find("{")
     end = text.rfind("}")
     if start == -1 or end == -1:
-        raise HTTPException(status_code=502, detail="OCR yanıtı JSON değil")
+        logger.error("OCR yanıtı JSON değil: %s", text[:300])
+        raise HTTPException(status_code=502, detail="Fiş okunamadı, lütfen tekrar deneyin")
     try:
         parsed = json.loads(text[start : end + 1])
     except Exception:
-        raise HTTPException(status_code=502, detail="OCR JSON parse hatası")
+        logger.error("OCR JSON parse edilemedi: %s", text[:300])
+        raise HTTPException(status_code=502, detail="Fiş okunamadı, lütfen tekrar deneyin")
 
     items = []
     for it in parsed.get("items", []) or []:
@@ -979,12 +1045,19 @@ async def ocr_receipt(body: OCRRequest, user=Depends(get_current_user)):
             continue
         if not name:
             continue
+        # The model classifies from product knowledge; the keyword matcher is
+        # only a net for when it returns something unexpected. Keywords alone
+        # missed 56% of real items — they are German-only and half this
+        # household's shopping is Turkish brands.
+        cat = str(it.get("category", "") or "").strip().lower()
+        if cat not in CATEGORY_KEYS:
+            cat = categorize_item(name)
         items.append(
             {
                 "name": name,
                 "price": round(price, 2),
                 "quantity": qty if qty > 0 else 1,
-                "category": categorize_item(name),
+                "category": cat,
             }
         )
 
@@ -1529,6 +1602,97 @@ async def balances(period_id: Optional[str] = None, user=Depends(get_current_use
     result["members"] = members
     result["period"] = period
     return result
+
+
+# ---------- Stats ----------
+@api.get("/stats")
+async def stats(period_id: Optional[str] = None, user=Depends(get_current_user)):
+    """Household numbers for the home screen.
+
+    Only household expenses count: "self" is private and "roommate" is a debt
+    between two people, neither is money the house spent together.
+    """
+    hh = await get_user_household(user["user_id"])
+    if not hh:
+        return {"total": 0, "per_person": 0, "categories": [], "merchants": []}
+
+    period = (
+        await db.periods.find_one({"period_id": period_id, "household_id": hh["household_id"]}, {"_id": 0})
+        if period_id else await get_active_period(hh["household_id"])
+    )
+    if not period:
+        return {"total": 0, "per_person": 0, "categories": [], "merchants": []}
+
+    exps = await db.expenses.find(
+        {"household_id": hh["household_id"], "period_id": period["period_id"],
+         "target_type": "household"},
+        {"_id": 0},
+    ).to_list(5000)
+
+    total = round(sum(float(e["total"]) for e in exps), 2)
+    members = await period_participants(hh["household_id"], period["period_id"], hh["member_ids"])
+    per_person = round(total / max(len(members), 1), 2)
+
+    cats: Dict[str, float] = {}
+    for e in exps:
+        items = e.get("items") or []
+        item_sum = sum(float(i.get("price", 0)) * float(i.get("quantity", 1) or 1) for i in items)
+        for i in items:
+            line = float(i.get("price", 0)) * float(i.get("quantity", 1) or 1)
+            key = i.get("category") or "diger"
+            # Scale line values to the recorded total so discounts and rounding
+            # on the receipt do not make the breakdown disagree with the header.
+            share = (line / item_sum * float(e["total"])) if item_sum else 0
+            cats[key] = cats.get(key, 0) + share
+        if not items:
+            cats["diger"] = cats.get("diger", 0) + float(e["total"])
+
+    merchants: Dict[str, float] = {}
+    for e in exps:
+        merchants[(e.get("merchant") or "Diğer").strip() or "Diğer"] = (
+            merchants.get((e.get("merchant") or "Diğer").strip() or "Diğer", 0) + float(e["total"])
+        )
+
+    started = make_aware(period["started_at"])
+    days = max((now_utc() - started).days + 1, 1)
+    daily = round(total / days, 2)
+    # Straight-line projection to 30 days — the question people actually ask
+    # mid-period is "where does this land if we carry on like this".
+    projected = round(daily * 30, 2)
+
+    previous = await db.periods.find(
+        {"household_id": hh["household_id"], "status": "closed"}, {"_id": 0}
+    ).sort("closed_at", -1).to_list(1)
+    change_pct = None
+    if previous:
+        prev_exps = await db.expenses.find(
+            {"household_id": hh["household_id"], "period_id": previous[0]["period_id"],
+             "target_type": "household"},
+            {"_id": 0, "total": 1},
+        ).to_list(5000)
+        prev_total = sum(float(e["total"]) for e in prev_exps)
+        if prev_total > 0:
+            change_pct = round((total - prev_total) / prev_total * 100)
+
+    return {
+        "period_id": period["period_id"],
+        "started_at": period["started_at"],
+        "days": days,
+        "total": total,
+        "per_person": per_person,
+        "daily_average": daily,
+        "projected_30d": projected,
+        "change_pct": change_pct,
+        "expense_count": len(exps),
+        "categories": sorted(
+            [{"key": k, "total": round(v, 2)} for k, v in cats.items() if v > 0.005],
+            key=lambda x: -x["total"],
+        ),
+        "merchants": sorted(
+            [{"name": k, "total": round(v, 2)} for k, v in merchants.items()],
+            key=lambda x: -x["total"],
+        )[:6],
+    }
 
 
 # ---------- Periods ----------

@@ -2,7 +2,7 @@ import { Tabs } from "expo-router";
 import { View, StyleSheet, Platform } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { colors, font } from "@/src/theme";
+import { colors, fontFamily } from "@/src/theme";
 
 type IconArg = { color: string; focused: boolean };
 
@@ -20,20 +20,20 @@ export default function TabsLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: colors.brand,
-        tabBarInactiveTintColor: colors.onSurfaceTertiary,
+        tabBarActiveTintColor: colors.dark,
+        tabBarInactiveTintColor: colors.inkTertiary,
         tabBarStyle: {
           backgroundColor: colors.surface,
-          borderTopColor: colors.divider,
+          borderTopColor: colors.border,
           height: 60 + bottomPadding,
           paddingBottom: bottomPadding,
           paddingTop: 10,
           ...Platform.select({
-            ios: { shadowColor: "#0F2A2E", shadowOffset: { width: 0, height: -2 }, shadowOpacity: 0.06, shadowRadius: 6 },
+            ios: { shadowColor: colors.dark, shadowOffset: { width: 0, height: -2 }, shadowOpacity: 0.06, shadowRadius: 6 },
             android: { elevation: 8 },
           }),
         },
-        tabBarLabelStyle: { fontSize: 10, fontWeight: font.weights.semibold as any, marginTop: 2 },
+        tabBarLabelStyle: { fontSize: 10, fontFamily: fontFamily.semibold, marginTop: 2 },
         tabBarItemStyle: { paddingVertical: 4 },
       }}
     >
@@ -62,7 +62,7 @@ export default function TabsLayout() {
           tabBarIcon: ({ focused }: IconArg) => (
             <View style={styles.centerIconWrap}>
               <View style={[styles.centerIcon, focused && styles.centerIconFocused]}>
-                <Ionicons name="scan" size={26} color={focused ? colors.onBrand : colors.brand} />
+                <Ionicons name="scan" size={26} color={colors.onBrand} />
               </View>
             </View>
           ),
@@ -93,18 +93,16 @@ export default function TabsLayout() {
 const styles = StyleSheet.create({
   centerIconWrap: { alignItems: "center", justifyContent: "center" },
   centerIcon: {
-    width: 48, height: 48, borderRadius: 24,
+    width: 50, height: 50, borderRadius: 25,
     alignItems: "center", justifyContent: "center",
-    backgroundColor: colors.brandSoft,
+    backgroundColor: colors.dark,
     // The circle is twice the height of the other icons, so at the default
     // position its lower edge grazed the "Fiş Tara" label. Lift the whole
     // thing — circle and glyph together — clear of the text.
-    marginTop: -20,
+    marginTop: -22,
     marginBottom: 6,
+    shadowColor: colors.dark, shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.28, shadowRadius: 10, elevation: 6,
   },
-  centerIconFocused: {
-    backgroundColor: colors.brand,
-    shadowColor: colors.brand, shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35, shadowRadius: 8, elevation: 6,
-  },
+  centerIconFocused: { backgroundColor: colors.accent },
 });

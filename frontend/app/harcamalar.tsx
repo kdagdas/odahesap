@@ -2,14 +2,16 @@ import { useCallback, useState } from "react";
 import {
   View, Text, StyleSheet, ScrollView, RefreshControl, Pressable, ActivityIndicator,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { apiGet, apiDelete } from "@/src/api";
 import { useAuth } from "@/src/auth";
 import { useHousehold } from "@/src/household";
-import { Card, Chip, Avatar, CategoryIcon, MerchantBadge, formatEUR, formatDateTR } from "@/src/ui";
-import { colors, spacing, radius, font } from "@/src/theme";
+import {
+  ScreenHeader, HeaderSplit, Sheet, Card, Divider, Chip, Avatar, CategoryIcon,
+  MerchantBadge, Tag, Money, formatEUR, formatDateTR,
+} from "@/src/ui";
+import { colors, spacing, radius, type as T, overline } from "@/src/theme";
 
 type Item = { name: string; price: number; quantity?: number; category: string };
 type Expense = {
@@ -63,183 +65,219 @@ export default function Harcamalar() {
 
   const activePeriodId = activePeriod?.period_id;
   const currentPeriodId = selectedPeriod || activePeriodId;
+  const listedTotal = expenses.reduce((s, e) => s + (e.total || 0), 0);
 
   return (
-    <SafeAreaView style={styles.root} edges={["top"]} testID="harcamalar-screen">
-      <View style={styles.header}>
-        <Pressable onPress={() => router.back()} hitSlop={12} testID="harcamalar-back">
-          <Ionicons name="chevron-back" size={26} color={colors.onSurface} />
-        </Pressable>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.title}>Harcamalar</Text>
-          <Text style={styles.subtitle}>Süzgeçler ile geçmişe göz at</Text>
-        </View>
-      </View>
-
-      <View style={styles.chipRowWrap}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-          <Chip label="Herkes" active={!memberFilter} onPress={() => setMemberFilter(undefined)} icon="people" testID="filter-all-members" />
-          {members.map((m) => (
-            <Chip
-              key={m.user_id}
-              label={m.name.split(" ")[0]}
-              active={memberFilter === m.user_id}
-              onPress={() => setMemberFilter(memberFilter === m.user_id ? undefined : m.user_id)}
-              testID={`filter-member-${m.user_id}`}
-            />
-          ))}
-        </ScrollView>
-      </View>
-
-      <View style={styles.chipRowWrap}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-          {periods.map((p, i) => (
-            <Chip
-              key={p.period_id}
-              label={periodLabel(p, i, periods.length)}
-              active={(selectedPeriod || activePeriodId) === p.period_id}
-              onPress={() => setSelectedPeriod(p.period_id === activePeriodId ? undefined : p.period_id)}
-              icon={p.status === "active" ? "flash" : "archive"}
-              testID={`filter-period-${p.period_id}`}
-            />
-          ))}
-        </ScrollView>
-      </View>
-
-      <ScrollView
-        contentContainerStyle={styles.scroll}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={colors.brand} />}
+    <View style={styles.root} testID="harcamalar-screen">
+      <ScreenHeader
+        overline="GEÇMİŞ"
+        title="Harcamalar"
+        right={
+          <Pressable onPress={() => router.back()} hitSlop={12} testID="harcamalar-back" style={styles.headBtn}>
+            <Ionicons name="close" size={20} color={colors.onDark} />
+          </Pressable>
+        }
       >
-        {currentPeriodId !== activePeriodId && (
-          <View style={styles.archivedBanner} testID="archived-banner">
-            <Ionicons name="archive-outline" size={16} color={colors.onBrandSoft} />
-            <Text style={styles.archivedTxt}>Kapatılmış dönem görüntüleniyor</Text>
-          </View>
-        )}
-        {loading ? (
-          <ActivityIndicator color={colors.brand} style={{ marginTop: spacing.xl }} />
-        ) : expenses.length === 0 ? (
-          <View style={styles.empty} testID="expenses-empty">
-            <Ionicons name="file-tray-outline" size={44} color={colors.onSurfaceTertiary} />
-            <Text style={styles.emptyTitle}>Bu dönemde harcama yok</Text>
-          </View>
-        ) : (
-          expenses.map((e) => {
-            const author = members.find((m) => m.user_id === e.added_by);
-            const targetChip = e.target_type === "household" ? { txt: "Ev", color: colors.brand, bg: colors.brandSoft }
-              : e.target_type === "self" ? { txt: "Kendim", color: colors.amber, bg: "#FEF3C7" }
-              : { txt: `→ ${members.find((m) => m.user_id === e.target_user_id)?.name?.split(" ")[0] || "?"}`, color: colors.sky, bg: "#DBEAFE" };
-            const expanded = expandedId === e.expense_id;
-            return (
-              <Pressable
-                key={e.expense_id}
-                onPress={() => setExpandedId(expanded ? null : e.expense_id)}
-                testID={`expense-item-${e.expense_id}`}
-              >
-                <Card style={styles.expCard}>
-                  <View style={styles.expTop}>
-                    <Avatar name={author?.name || "?"} size={40} avatarId={(author as any)?.avatar_id} userId={author?.user_id} photoVersion={(author as any)?.photo_version} />
-                    <View style={{ flex: 1, gap: 4 }}>
-                      <View style={styles.titleRow}>
-                        {/* Who paid goes in the title; the merchant lives in the
-                            coloured badge. They used to both show the merchant. */}
-                        <Text style={styles.expTitle} numberOfLines={1}>
-                          {author?.name || "Bilinmeyen"}
-                        </Text>
-                        {e.merchant
-                          ? <MerchantBadge name={e.merchant} />
-                          : <Text style={styles.expSubtle}>
-                              {e.category || (e.source === "receipt" ? "Fiş" : "Manuel")}
-                            </Text>}
-                      </View>
-                      <View style={styles.metaRow}>
-                        <View style={[styles.targetPill, { backgroundColor: targetChip.bg }]}>
-                          <Text style={[styles.targetPillTxt, { color: targetChip.color }]}>{targetChip.txt}</Text>
-                        </View>
-                        {e.expense_date && (
-                          <>
-                            <Text style={styles.expDot}>·</Text>
-                            <Text style={styles.expSubtle}>{formatDateTR(e.expense_date)}</Text>
-                          </>
-                        )}
-                      </View>
-                    </View>
-                    <Text style={styles.expAmount}>{formatEUR(e.total)}</Text>
-                  </View>
-                  {expanded && (
-                    <View style={styles.expDetails}>
-                      {(e.items || []).map((it, i) => (
-                        <View key={i} style={styles.itemRow}>
-                          <CategoryIcon category={it.category} size={16} />
-                          <View style={{ flex: 1 }}>
-                            <Text style={styles.itemName} numberOfLines={1}>{it.name}</Text>
-                            {(it.quantity || 1) !== 1 && (
-                              <Text style={styles.itemQty}>{it.quantity} adet × {formatEUR(it.price)}</Text>
+        <HeaderSplit
+          items={[
+            { label: "Süzülen toplam", value: formatEUR(listedTotal) },
+            { label: "Kayıt", value: `${expenses.length} harcama` },
+          ]}
+        />
+      </ScreenHeader>
+
+      <Sheet>
+        <ScrollView
+          contentContainerStyle={styles.scroll}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={colors.dark} />
+          }
+        >
+          <Text style={styles.groupLabel}>KİM</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+            <Chip label="Herkes" active={!memberFilter} onPress={() => setMemberFilter(undefined)} icon="people" testID="filter-all-members" />
+            {members.map((m) => (
+              <Chip
+                key={m.user_id}
+                label={m.name.split(" ")[0]}
+                active={memberFilter === m.user_id}
+                onPress={() => setMemberFilter(memberFilter === m.user_id ? undefined : m.user_id)}
+                testID={`filter-member-${m.user_id}`}
+              />
+            ))}
+          </ScrollView>
+
+          <Text style={styles.groupLabel}>DÖNEM</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+            {periods.map((p, i) => (
+              <Chip
+                key={p.period_id}
+                label={periodLabel(p, i, periods.length)}
+                active={(selectedPeriod || activePeriodId) === p.period_id}
+                onPress={() => setSelectedPeriod(p.period_id === activePeriodId ? undefined : p.period_id)}
+                icon={p.status === "active" ? "flash" : "archive"}
+                testID={`filter-period-${p.period_id}`}
+              />
+            ))}
+          </ScrollView>
+
+          {currentPeriodId !== activePeriodId && (
+            <View style={styles.archivedBanner} testID="archived-banner">
+              <Ionicons name="archive-outline" size={16} color={colors.accentDark} />
+              <Text style={styles.archivedTxt}>Kapatılmış dönem görüntüleniyor</Text>
+            </View>
+          )}
+
+          {loading ? (
+            <ActivityIndicator color={colors.dark} style={{ marginTop: spacing.xl }} />
+          ) : expenses.length === 0 ? (
+            <View style={styles.empty} testID="expenses-empty">
+              <View style={styles.emptyRing}>
+                <Ionicons name="file-tray-outline" size={30} color={colors.inkTertiary} />
+              </View>
+              <Text style={styles.emptyTitle}>Bu dönemde harcama yok</Text>
+            </View>
+          ) : (
+            <Card title="Tüm harcamalar">
+              {expenses.map((e, idx) => {
+                const author = members.find((m) => m.user_id === e.added_by);
+                const targetChip = e.target_type === "household"
+                  ? { txt: "Ev", color: colors.dark, bg: colors.surfaceSecondary }
+                  : e.target_type === "self"
+                    ? { txt: "Kendim", color: colors.onWarning, bg: colors.warningSoft }
+                    : { txt: `→ ${members.find((m) => m.user_id === e.target_user_id)?.name?.split(" ")[0] || "?"}`, color: colors.onInfo, bg: colors.infoSoft };
+                const expanded = expandedId === e.expense_id;
+                return (
+                  <View key={e.expense_id}>
+                    {idx > 0 && <Divider />}
+                    <Pressable
+                      onPress={() => setExpandedId(expanded ? null : e.expense_id)}
+                      testID={`expense-item-${e.expense_id}`}
+                      android_ripple={{ color: colors.divider }}
+                    >
+                      <View style={styles.expRow}>
+                        <Avatar
+                          name={author?.name || "?"} size={40}
+                          avatarId={(author as any)?.avatar_id}
+                          userId={author?.user_id}
+                          photoVersion={(author as any)?.photo_version}
+                        />
+                        <View style={{ flex: 1, gap: 3 }}>
+                          <View style={styles.titleRow}>
+                            {/* Who paid goes in the title; the merchant lives in the
+                                coloured badge. They used to both show the merchant. */}
+                            <Text style={styles.expTitle} numberOfLines={1}>
+                              {author?.name || "Bilinmeyen"}
+                            </Text>
+                            {e.merchant
+                              ? <MerchantBadge name={e.merchant} />
+                              : <Text style={styles.expSubtle}>
+                                  {e.category || (e.source === "receipt" ? "Fiş" : "Manuel")}
+                                </Text>}
+                          </View>
+                          <View style={styles.metaRow}>
+                            <Tag label={targetChip.txt} tint={targetChip.bg} color={targetChip.color} />
+                            {e.expense_date && (
+                              <Text style={styles.expSubtle}>· {formatDateTR(e.expense_date)}</Text>
                             )}
                           </View>
-                          <Text style={styles.itemPrice}>{formatEUR((it.quantity || 1) * it.price)}</Text>
                         </View>
-                      ))}
-                      {e.notes && <Text style={styles.notes}>💬 {e.notes}</Text>}
-                      {e.added_by === user?.user_id && (
-                        <View style={styles.ownerActions}>
-                          <Pressable
-                            style={styles.editBtn}
-                            onPress={() => router.push({ pathname: "/expense-edit", params: { expenseId: e.expense_id } })}
-                            testID={`edit-expense-${e.expense_id}`}
-                          >
-                            <Ionicons name="create-outline" size={14} color={colors.brand} />
-                            <Text style={styles.editTxt}>Düzenle</Text>
-                          </Pressable>
-                          <Pressable style={styles.deleteBtn} onPress={() => onDelete(e.expense_id)} testID={`delete-expense-${e.expense_id}`}>
-                            <Ionicons name="trash-outline" size={14} color={colors.error} />
-                            <Text style={styles.deleteTxt}>Sil</Text>
-                          </Pressable>
-                        </View>
-                      )}
-                    </View>
-                  )}
-                </Card>
-              </Pressable>
-            );
-          })
-        )}
-      </ScrollView>
-    </SafeAreaView>
+                        <Money value={e.total} />
+                      </View>
+                    </Pressable>
+
+                    {expanded && (
+                      <View style={styles.expDetails}>
+                        {(e.items || []).map((it, i) => (
+                          <View key={i} style={styles.itemRow}>
+                            <CategoryIcon category={it.category} size={30} />
+                            <View style={{ flex: 1 }}>
+                              <Text style={styles.itemName} numberOfLines={1}>{it.name}</Text>
+                              {(it.quantity || 1) !== 1 && (
+                                <Text style={styles.itemQty}>{it.quantity} adet × {formatEUR(it.price)}</Text>
+                              )}
+                            </View>
+                            <Text style={styles.itemPrice}>{formatEUR((it.quantity || 1) * it.price)}</Text>
+                          </View>
+                        ))}
+                        {e.notes && <Text style={styles.notes}>💬 {e.notes}</Text>}
+                        {e.added_by === user?.user_id && (
+                          <View style={styles.ownerActions}>
+                            <Pressable
+                              style={styles.editBtn}
+                              onPress={() => router.push({ pathname: "/expense-edit", params: { expenseId: e.expense_id } })}
+                              testID={`edit-expense-${e.expense_id}`}
+                            >
+                              <Ionicons name="create-outline" size={14} color={colors.dark} />
+                              <Text style={styles.editTxt}>Düzenle</Text>
+                            </Pressable>
+                            <Pressable style={styles.deleteBtn} onPress={() => onDelete(e.expense_id)} testID={`delete-expense-${e.expense_id}`}>
+                              <Ionicons name="trash-outline" size={14} color={colors.negative} />
+                              <Text style={styles.deleteTxt}>Sil</Text>
+                            </Pressable>
+                          </View>
+                        )}
+                      </View>
+                    )}
+                  </View>
+                );
+              })}
+            </Card>
+          )}
+        </ScrollView>
+      </Sheet>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.surfaceAlt },
-  header: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingHorizontal: spacing.lg, paddingTop: spacing.sm },
-  title: { fontSize: 26, fontWeight: font.weights.bold, color: colors.onSurface, letterSpacing: -0.3 },
-  subtitle: { fontSize: font.sizes.sm, color: colors.onSurfaceSecondary, marginTop: 2 },
-  chipRowWrap: { height: 56, justifyContent: "center", marginTop: spacing.sm },
-  chipRow: { gap: spacing.sm, paddingHorizontal: spacing.lg, alignItems: "center" },
-  scroll: { padding: spacing.lg, gap: spacing.sm, paddingBottom: 120 },
-  archivedBanner: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: colors.brandSoft, borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.sm },
-  archivedTxt: { color: colors.onBrandSoft, fontSize: font.sizes.base, fontWeight: font.weights.semibold },
-  empty: { alignItems: "center", paddingVertical: spacing.xxxl, gap: spacing.sm },
-  emptyTitle: { fontSize: font.sizes.lg, color: colors.onSurfaceSecondary, fontWeight: font.weights.semibold },
-  expCard: { padding: spacing.md, gap: spacing.md },
-  expTop: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  root: { flex: 1, backgroundColor: colors.dark },
+  headBtn: {
+    width: 36, height: 36, borderRadius: 18, backgroundColor: colors.darkSurface,
+    alignItems: "center", justifyContent: "center",
+  },
+  scroll: { padding: spacing.lg, paddingTop: spacing.sm, gap: spacing.md, paddingBottom: 120 },
+  groupLabel: { ...overline, marginTop: spacing.xs },
+  chipRow: { gap: spacing.sm, alignItems: "center", paddingRight: spacing.lg },
+  archivedBanner: {
+    flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: colors.accentSoft,
+    borderRadius: radius.md, padding: spacing.md,
+  },
+  archivedTxt: { ...T.bodySb, color: colors.accentDark },
+  empty: { alignItems: "center", paddingVertical: spacing.xxxl, gap: spacing.md },
+  emptyRing: {
+    width: 72, height: 72, borderRadius: 36, borderWidth: 1, borderColor: colors.border,
+    backgroundColor: colors.surface, alignItems: "center", justifyContent: "center",
+  },
+  emptyTitle: { ...T.body, color: colors.inkSecondary },
+  expRow: {
+    flexDirection: "row", alignItems: "center", gap: spacing.md,
+    paddingHorizontal: spacing.lg, paddingVertical: spacing.md,
+  },
   titleRow: { flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" },
-  expTitle: { fontSize: font.sizes.base, fontWeight: font.weights.semibold, color: colors.onSurface },
+  expTitle: { ...T.bodySb, color: colors.ink },
   metaRow: { flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" },
-  targetPill: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: radius.sm },
-  targetPillTxt: { fontSize: 11, fontWeight: font.weights.bold, letterSpacing: 0.3 },
-  expSubtle: { fontSize: font.sizes.sm, color: colors.onSurfaceTertiary },
-  expDot: { color: colors.onSurfaceTertiary },
-  expAmount: { fontSize: font.sizes.lg, fontWeight: font.weights.bold, color: colors.onSurface },
-  expDetails: { borderTopWidth: 1, borderTopColor: colors.divider, paddingTop: spacing.md, gap: spacing.sm },
-  itemRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  itemName: { fontSize: font.sizes.base, color: colors.onSurface },
-  itemQty: { fontSize: font.sizes.sm, color: colors.onSurfaceTertiary, marginTop: 1 },
-  itemPrice: { fontSize: font.sizes.base, color: colors.onSurface, fontWeight: font.weights.semibold },
-  notes: { fontSize: font.sizes.sm, color: colors.onSurfaceSecondary, fontStyle: "italic" },
+  expSubtle: { ...T.caption, color: colors.inkTertiary },
+  expDetails: {
+    backgroundColor: colors.surfaceAlt, paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md, gap: spacing.md,
+  },
+  itemRow: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  itemName: { ...T.body, color: colors.ink },
+  itemQty: { ...T.caption, color: colors.inkTertiary, marginTop: 1 },
+  itemPrice: { ...T.bodySb, color: colors.ink, fontVariant: ["tabular-nums"] },
+  notes: { ...T.caption, color: colors.inkSecondary, fontStyle: "italic" },
   ownerActions: { flexDirection: "row", gap: spacing.sm },
-  editBtn: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: spacing.md, paddingVertical: 6, borderRadius: radius.pill, backgroundColor: colors.brandSoft },
-  editTxt: { color: colors.onBrandSoft, fontWeight: font.weights.semibold, fontSize: font.sizes.sm },
-  deleteBtn: { flexDirection: "row", alignItems: "center", gap: 4, alignSelf: "flex-start", paddingHorizontal: spacing.md, paddingVertical: 6, borderRadius: radius.pill, backgroundColor: "#FEE2E2" },
-  deleteTxt: { color: colors.error, fontWeight: font.weights.semibold, fontSize: font.sizes.sm },
+  editBtn: {
+    flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: spacing.md,
+    paddingVertical: 7, borderRadius: radius.pill, backgroundColor: colors.surface,
+    borderWidth: 1, borderColor: colors.border,
+  },
+  editTxt: { ...T.captionSb, color: colors.dark },
+  deleteBtn: {
+    flexDirection: "row", alignItems: "center", gap: 4, alignSelf: "flex-start",
+    paddingHorizontal: spacing.md, paddingVertical: 7, borderRadius: radius.pill,
+    backgroundColor: colors.negativeSoft,
+  },
+  deleteTxt: { ...T.captionSb, color: colors.negative },
 });

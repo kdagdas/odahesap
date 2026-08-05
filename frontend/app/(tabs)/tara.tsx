@@ -9,7 +9,7 @@ import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import { apiPost } from "@/src/api";
 import { setQueue, clearQueue } from "@/src/pendingReviews";
-import { colors, spacing, radius, font } from "@/src/theme";
+import { colors, spacing, radius, type as T, fontFamily } from "@/src/theme";
 
 export default function Tara() {
   const router = useRouter();
@@ -77,14 +77,14 @@ export default function Tara() {
     await sendBatchToOCR(b64s);
   };
 
-  if (!permission) return <View style={styles.root}><ActivityIndicator color={colors.brand} /></View>;
+  if (!permission) return <View style={styles.root}><ActivityIndicator color={colors.onDark} /></View>;
 
   if (!permission.granted) {
     return (
       <SafeAreaView style={styles.rootLight} edges={["top", "bottom"]} testID="camera-permission">
         <View style={styles.permCenter}>
           <View style={styles.permIconWrap}>
-            <Ionicons name="camera-outline" size={44} color={colors.brand} />
+            <Ionicons name="camera-outline" size={40} color={colors.dark} />
           </View>
           <Text style={styles.permTitle}>Kamera izni gerekli</Text>
           <Text style={styles.permDesc}>Fişleri taramak için kameraya erişim izni ver. İstemezsen galeriden de seçebilirsin.</Text>
@@ -92,7 +92,7 @@ export default function Tara() {
             <Text style={styles.permBtnTxt}>İzin ver</Text>
           </Pressable>
           <Pressable style={styles.altBtn} onPress={pickImage} testID="pick-image-fallback">
-            <Ionicons name="images-outline" size={18} color={colors.brand} />
+            <Ionicons name="images-outline" size={18} color={colors.accentDark} />
             <Text style={styles.altBtnTxt}>Galeriden seç</Text>
           </Pressable>
         </View>
@@ -112,7 +112,7 @@ export default function Tara() {
           <View style={[styles.corner, styles.cornerBR]} />
         </View>
         <View style={styles.frameHint}>
-          <Ionicons name="scan-outline" size={16} color="#fff" />
+          <Ionicons name="scan-outline" size={16} color={colors.onDark} />
           <Text style={styles.frameHintTxt}>Fişi çerçeveye yerleştir</Text>
         </View>
       </View>
@@ -123,7 +123,7 @@ export default function Tara() {
 
       {processing && (
         <View style={styles.processing} testID="ocr-processing">
-          <ActivityIndicator size="large" color="#fff" />
+          <ActivityIndicator size="large" color={colors.onDark} />
           <Text style={styles.processingTxt}>{progressTxt || "Fatura okunuyor…"}</Text>
           <Text style={styles.processingSub}>Almanca fiş desteği ile</Text>
         </View>
@@ -136,16 +136,16 @@ export default function Tara() {
 
       <SafeAreaView style={styles.controls} edges={["bottom"]}>
         <Pressable style={styles.sideBtn} onPress={pickImage} testID="open-gallery-btn">
-          <Ionicons name="images-outline" size={24} color="#fff" />
+          <Ionicons name="images-outline" size={24} color={colors.onDark} />
           <View style={styles.multiBadge}><Text style={styles.multiBadgeTxt}>×N</Text></View>
         </Pressable>
         <Pressable style={styles.shutter} onPress={takePhoto} disabled={processing} testID="shutter-btn">
           <View style={styles.shutterInner}>
-            <Ionicons name="camera" size={28} color="#fff" />
+            <Ionicons name="camera" size={28} color={colors.dark} />
           </View>
         </Pressable>
         <Pressable style={styles.sideBtn} onPress={() => router.push("/manual")} testID="manual-from-camera">
-          <Ionicons name="create-outline" size={24} color="#fff" />
+          <Ionicons name="create-outline" size={24} color={colors.onDark} />
         </Pressable>
       </SafeAreaView>
     </View>
@@ -158,7 +158,7 @@ const CORNER = 24;
 const CONTROLS_HEIGHT = 150;
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#000" },
+  root: { flex: 1, backgroundColor: colors.black },
   rootLight: { flex: 1, backgroundColor: colors.surface },
   // Centre the guide inside the space *above* the button row — centring it in
   // the whole screen pushed the lower corners down among the buttons.
@@ -171,7 +171,7 @@ const styles = StyleSheet.create({
     gap: spacing.lg,
   },
   frameBox: { width: "74%", aspectRatio: 0.62, position: "relative" },
-  corner: { position: "absolute", width: CORNER, height: CORNER, borderColor: "#fff" },
+  corner: { position: "absolute", width: CORNER, height: CORNER, borderColor: colors.onDark },
   cornerTL: { top: 0, left: 0, borderTopWidth: 3, borderLeftWidth: 3, borderTopLeftRadius: 12 },
   cornerTR: { top: 0, right: 0, borderTopWidth: 3, borderRightWidth: 3, borderTopRightRadius: 12 },
   cornerBL: { bottom: 0, left: 0, borderBottomWidth: 3, borderLeftWidth: 3, borderBottomLeftRadius: 12 },
@@ -181,16 +181,16 @@ const styles = StyleSheet.create({
     flexDirection: "row", alignItems: "center", gap: 6,
     backgroundColor: "rgba(0,0,0,0.55)", paddingHorizontal: spacing.md, paddingVertical: 7, borderRadius: radius.pill,
   },
-  frameHintTxt: { color: "#fff", fontSize: font.sizes.base, fontWeight: font.weights.semibold },
+  frameHintTxt: { ...T.bodySb, color: colors.onDark },
   processing: {
-    ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(15,42,46,0.85)",
+    ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(15,27,51,0.88)",
     alignItems: "center", justifyContent: "center", gap: spacing.md,
   },
-  processingTxt: { color: "#fff", fontSize: font.sizes.lg, fontWeight: font.weights.semibold },
-  processingSub: { color: colors.brandSoft, fontSize: font.sizes.base },
+  processingTxt: { ...T.emph, color: colors.onDark },
+  processingSub: { ...T.caption, color: colors.accentOnDark },
   errorWrap: { position: "absolute", top: 60, left: 16, right: 16 },
-  errorInner: { backgroundColor: colors.error, padding: spacing.md, borderRadius: radius.md },
-  errorTxt: { color: "#fff", fontWeight: font.weights.semibold, textAlign: "center" },
+  errorInner: { backgroundColor: colors.negative, padding: spacing.md, borderRadius: radius.md },
+  errorTxt: { ...T.bodySb, color: colors.onDark, textAlign: "center" },
   controlsScrim: {
     position: "absolute", left: 0, right: 0, bottom: 0, height: CONTROLS_HEIGHT + 60,
     backgroundColor: "rgba(0,0,0,0.45)",
@@ -205,21 +205,32 @@ const styles = StyleSheet.create({
     alignItems: "center", justifyContent: "center",
   },
   multiBadge: {
-    position: "absolute", top: -6, right: -6, backgroundColor: colors.brand,
+    position: "absolute", top: -6, right: -6, backgroundColor: colors.accent,
     borderRadius: radius.pill, paddingHorizontal: 6, paddingVertical: 2, minWidth: 22, alignItems: "center",
   },
-  multiBadgeTxt: { color: "#fff", fontSize: 10, fontWeight: font.weights.bold },
+  multiBadgeTxt: { color: colors.onDark, fontSize: 10, lineHeight: 14, fontFamily: fontFamily.bold },
   shutter: {
-    width: 84, height: 84, borderRadius: 42, borderWidth: 4, borderColor: "#fff",
+    width: 84, height: 84, borderRadius: 42, borderWidth: 4, borderColor: colors.onDark,
     alignItems: "center", justifyContent: "center", padding: 4,
   },
-  shutterInner: { flex: 1, alignSelf: "stretch", borderRadius: 36, backgroundColor: colors.brand, alignItems: "center", justifyContent: "center" },
+  shutterInner: {
+    flex: 1, alignSelf: "stretch", borderRadius: 36, backgroundColor: colors.onDark,
+    alignItems: "center", justifyContent: "center",
+  },
   permCenter: { flex: 1, alignItems: "center", justifyContent: "center", padding: spacing.xl, gap: spacing.md },
-  permIconWrap: { width: 96, height: 96, borderRadius: 48, backgroundColor: colors.brandSoft, alignItems: "center", justifyContent: "center", marginBottom: spacing.sm },
-  permTitle: { fontSize: font.sizes.xl, fontWeight: font.weights.bold, color: colors.onSurface },
-  permDesc: { fontSize: font.sizes.base, color: colors.onSurfaceSecondary, textAlign: "center", marginBottom: spacing.md, lineHeight: 20 },
-  permBtn: { backgroundColor: colors.brand, paddingHorizontal: spacing.xl, paddingVertical: spacing.md, borderRadius: radius.pill, minHeight: 48 },
-  permBtnTxt: { color: colors.onBrand, fontWeight: font.weights.semibold, fontSize: font.sizes.lg },
+  permIconWrap: {
+    width: 96, height: 96, borderRadius: 48, backgroundColor: colors.surfaceSecondary,
+    borderWidth: 1, borderColor: colors.border,
+    alignItems: "center", justifyContent: "center", marginBottom: spacing.sm,
+  },
+  permTitle: { ...T.title, color: colors.ink },
+  permDesc: { ...T.body, color: colors.inkSecondary, textAlign: "center", marginBottom: spacing.md },
+  permBtn: {
+    backgroundColor: colors.brand, paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.md, borderRadius: radius.pill, minHeight: 52,
+    alignItems: "center", justifyContent: "center",
+  },
+  permBtnTxt: { ...T.emph, color: colors.onBrand },
   altBtn: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: spacing.lg, paddingVertical: spacing.md },
-  altBtnTxt: { color: colors.brand, fontWeight: font.weights.semibold },
+  altBtnTxt: { ...T.bodySb, color: colors.accentDark },
 });

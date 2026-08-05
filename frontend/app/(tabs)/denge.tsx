@@ -1,110 +1,105 @@
-import { useCallback, useState } from "react";
+/** Kasa — kişisel hesap. Ev toplamları Anasayfa'ya taşındı; burada senin
+ *  net durumun, seni ilgilendiren transferler ve dönem yönetimi var. */
+import { useCallback, useMemo, useState } from "react";
 import {
-  View, Text, StyleSheet, ScrollView, ActivityIndicator, Pressable, RefreshControl, TextInput,
+  View, Text, StyleSheet, ScrollView, ActivityIndicator, Pressable,
+  RefreshControl, TextInput, KeyboardAvoidingView, Platform,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { useFocusEffect, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { useFocusEffect, useRouter } from "expo-router";
+
 import { apiGet, apiPost, apiDelete } from "@/src/api";
 import { useAuth } from "@/src/auth";
 import { useHousehold } from "@/src/household";
-import { Card, Chip, Avatar, PrimaryButton, formatEUR } from "@/src/ui";
-import { colors, spacing, radius, font } from "@/src/theme";
+import {
+  ScreenHeader, HeaderSplit, Sheet, Card, Row, Divider, Avatar, Money,
+  IconPill, Chip, PrimaryButton, formatEUR,
+} from "@/src/ui";
+import { colors, spacing, radius, type as T } from "@/src/theme";
 
 type Transfer = { from: string; to: string; amount: number };
+type Period = { period_id: string; started_at: string; closed_at: string | null; status: string };
 type Settlement = {
   settlement_id: string; from_user_id: string; to_user_id: string;
-  amount: number; recorded_by: string;
+  amount: number; recorded_by: string; created_at: string;
 };
-type Period = { period_id: string; started_at: string; closed_at: string | null; status: string };
 
-const periodLabel = (p: Period, idx: number, total: number) => {
+const periodLabel = (p: Period, i: number, total: number) => {
   const d = new Date(p.started_at);
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const y = d.getFullYear();
-  return `${p.status === "active" ? "Aktif · " : ""}Dönem #${total - idx} (${m}.${y})`;
+  return `${p.status === "active" ? "Aktif · " : ""}Dönem #${total - i}` +
+    ` (${String(d.getMonth() + 1).padStart(2, "0")}.${d.getFullYear()})`;
+};
+
+const relativeDay = (iso: string) => {
+  const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
+  return days <= 0 ? "bugün" : days === 1 ? "dün" : `${days} gün önce`;
 };
 
 export default function Denge() {
   const { user } = useAuth();
   const { members, activePeriod, isAdmin, refresh: refreshHH } = useHousehold();
   const router = useRouter();
+
   const [periods, setPeriods] = useState<Period[]>([]);
-  const [selectedPeriod, setSelectedPeriod] = useState<string | undefined>(undefined);
+  const [selected, setSelected] = useState<string | undefined>(undefined);
   const [net, setNet] = useState<Record<string, number>>({});
-  const [totalsPaid, setTotalsPaid] = useState<Record<string, number>>({});
-  const [roommatePaid, setRoommatePaid] = useState<Record<string, number>>({});
   const [transfers, setTransfers] = useState<Transfer[]>([]);
   const [settlements, setSettlements] = useState<Settlement[]>([]);
-  const [payFor, setPayFor] = useState<Transfer | null>(null);
-  const [payAmount, setPayAmount] = useState("");
-  const [paying, setPaying] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [closing, setClosing] = useState(false);
-  const [confirmClose, setConfirmClose] = useState(false);
-  const [confirmReopen, setConfirmReopen] = useState(false);
-  const [reopening, setReopening] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [mode, setMode] = useState<"none" | "close" | "reopen">("none");
+  const [payFor, setPayFor] = useState<Transfer | null>(null);
+  const [payAmount, setPayAmount] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
-      const [pers, bal] = await Promise.all([
-        apiGet("/periods"),
-        apiGet(selectedPeriod ? `/balances?period_id=${selectedPeriod}` : "/balances"),
+      const q = selected ? `?period_id=${selected}` : "";
+      const [pers, bal, stl] = await Promise.all([
+        apiGet<{ periods: Period[] }>("/periods"),
+        apiGet<any>(`/balances${q}`),
+        apiGet<{ settlements: Settlement[] }>(`/settlements${q}`),
       ]);
       setPeriods(pers.periods || []);
       setNet(bal.net || {});
-      setTotalsPaid(bal.totals_paid || {});
-      setRoommatePaid(bal.roommate_paid || {});
       setTransfers(bal.transfers || []);
-      setSettlements(bal.settlements || []);
+      setSettlements(stl.settlements || []);
     } catch (e) { console.log(e); }
     finally { setLoading(false); setRefreshing(false); }
-  }, [selectedPeriod]);
+  }, [selected]);
+
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
-  const memberName = (id: string) => members.find((m) => m.user_id === id)?.name || "?";
-  const short = (id: string) => memberName(id).split(" ")[0];
+  const me = user?.user_id || "";
+  const member = (id: string) => members.find((m) => m.user_id === id);
+  const nameOf = (id: string) => member(id)?.name || "Bilinmeyen";
+  const first = (id: string) => nameOf(id).split(" ")[0];
 
-  const activePeriodId = activePeriod?.period_id;
-  const currentPeriodId = selectedPeriod || activePeriodId;
-  const isArchived = currentPeriodId !== activePeriodId;
+  const activeId = activePeriod?.period_id;
+  const currentId = selected || activeId;
+  const archived = currentId !== activeId;
 
-  const openMemberDetail = (memberId: string) => {
-    router.push({ pathname: "/member-detail", params: { memberId, periodId: currentPeriodId || "" } });
-  };
-
-  const onCloseAndReset = async () => {
-    setClosing(true); setMessage(null); setError(null);
-    try {
-      await apiPost("/periods/close", {});
-      await refreshHH();
-      setSelectedPeriod(undefined);
-      await load();
-      setMessage("Dönem başarıyla kapatıldı. Yeni dönem başladı 🎉");
-      setConfirmClose(false);
-    } catch (e: any) { setError(e.message || "İşlem başarısız"); }
-    finally { setClosing(false); }
-  };
-
-  // Only the two people involved may record a payment, so a transfer between
-  // two other housemates has no button — they settle it themselves.
-  const canRecord = (t: Transfer) =>
-    !isArchived && (t.from === user?.user_id || t.to === user?.user_id);
+  const myNet = Math.abs(net[me] || 0) < 0.005 ? 0 : (net[me] || 0);
+  const incoming = useMemo(() => transfers.filter((t) => t.to === me), [transfers, me]);
+  const outgoing = useMemo(() => transfers.filter((t) => t.from === me), [transfers, me]);
+  const others = useMemo(() => transfers.filter((t) => t.to !== me && t.from !== me), [transfers, me]);
+  const owedToMe = incoming.reduce((s, t) => s + t.amount, 0);
+  const iOwe = outgoing.reduce((s, t) => s + t.amount, 0);
 
   const openPay = (t: Transfer) => {
     setPayFor(t);
-    setPayAmount(String(t.amount).replace(".", ","));
+    setPayAmount(t.amount.toFixed(2).replace(".", ","));
     setError(null); setMessage(null);
   };
 
-  const recordPayment = async () => {
+  const confirmPay = async () => {
     if (!payFor) return;
-    const amount = parseFloat(payAmount.replace(",", ".")) || 0;
-    if (amount <= 0) { setError("Geçerli bir tutar girin"); return; }
-    setPaying(true); setError(null);
+    const amount = parseFloat(payAmount.replace(",", "."));
+    if (!Number.isFinite(amount) || amount <= 0) { setError("Geçerli bir tutar girin"); return; }
+    if (amount > payFor.amount + 0.005) { setError("Tutar borçtan büyük olamaz"); return; }
+    setBusy(true); setError(null);
     try {
       await apiPost("/settlements", {
         from_user_id: payFor.from, to_user_id: payFor.to, amount,
@@ -113,346 +108,362 @@ export default function Denge() {
       await load();
       setMessage("Ödeme kaydedildi");
     } catch (e: any) { setError(e?.message || "Kaydedilemedi"); }
-    finally { setPaying(false); }
+    finally { setBusy(false); }
   };
 
   const undoSettlement = async (id: string) => {
-    setError(null);
-    try { await apiDelete(`/settlements/${id}`); await load(); }
-    catch (e: any) { setError(e?.message || "Geri alınamadı"); }
+    setBusy(true); setError(null);
+    try { await apiDelete(`/settlements/${id}`); await load(); setMessage("Ödeme kaydı kaldırıldı"); }
+    catch (e: any) { setError(e?.message || "Kaldırılamadı"); }
+    finally { setBusy(false); }
   };
 
-  const onReopen = async () => {
-    setReopening(true); setMessage(null); setError(null);
+  const closePeriod = async () => {
+    setBusy(true); setError(null); setMessage(null);
+    try {
+      await apiPost("/periods/close", {});
+      await refreshHH(); setSelected(undefined); await load();
+      setMode("none"); setMessage("Dönem kapatıldı, yeni dönem başladı");
+    } catch (e: any) { setError(e?.message || "İşlem başarısız"); }
+    finally { setBusy(false); }
+  };
+
+  const reopenPeriod = async () => {
+    setBusy(true); setError(null); setMessage(null);
     try {
       await apiPost("/periods/reopen", {});
-      await refreshHH();
-      setSelectedPeriod(undefined);
-      await load();
-      setMessage("Dönem yeniden açıldı, harcamalar geri geldi.");
-      setConfirmReopen(false);
-    } catch (e: any) { setError(e.message || "Geri alınamadı"); }
-    finally { setReopening(false); }
+      await refreshHH(); setSelected(undefined); await load();
+      setMode("none"); setMessage("Dönem yeniden açıldı");
+    } catch (e: any) { setError(e?.message || "Geri alınamadı"); }
+    finally { setBusy(false); }
   };
 
-  // Only worth offering right after a close: the server refuses once the fresh
-  // period has expenses in it, so don't dangle a button that will just error.
-  const closedPeriods = periods.filter((p) => p.status === "closed");
-  const canReopen = isAdmin && closedPeriods.length > 0 && transfers.length === 0
-    && Object.values(totalsPaid).every((v) => Math.abs(v) < 0.01);
-
-  const settled = transfers.length === 0;
+  const canReopen = isAdmin && periods.some((p) => p.status === "closed")
+    && transfers.length === 0 && settlements.length === 0;
 
   return (
-    <SafeAreaView style={styles.root} edges={["top"]} testID="denge-screen">
-      <View style={styles.header}>
-        <Text style={styles.title}>Denge</Text>
-        <Text style={styles.subtitle}>Kim kime borçlu — basitleştirilmiş</Text>
-      </View>
-
-      <View style={styles.chipRowWrap}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-          {periods.map((p, i) => (
-            <Chip
-              key={p.period_id}
-              label={periodLabel(p, i, periods.length)}
-              active={currentPeriodId === p.period_id}
-              onPress={() => setSelectedPeriod(p.period_id === activePeriodId ? undefined : p.period_id)}
-              icon={p.status === "active" ? "flash" : "archive"}
-              testID={`denge-period-${p.period_id}`}
-            />
-          ))}
-        </ScrollView>
-      </View>
-
-      <ScrollView
-        contentContainerStyle={styles.scroll}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={colors.brand} />}
-      >
-        {isArchived && (
-          <View style={styles.archivedBanner} testID="denge-archived-banner">
-            <Ionicons name="archive-outline" size={16} color={colors.onBrandSoft} />
-            <Text style={styles.archivedTxt}>Kapatılmış dönem</Text>
-          </View>
-        )}
-
-        <Text style={styles.section}>Ev katkısı (kim ne kadar aldı)</Text>
-        <View style={styles.memberList}>
-          {members.map((m) => {
-            const paid = totalsPaid[m.user_id] || 0;
-            const roomP = roommatePaid[m.user_id] || 0;
-            return (
-              <Pressable
-                key={m.user_id}
-                onPress={() => openMemberDetail(m.user_id)}
-                testID={`member-detail-${m.user_id}`}
-              >
-                <Card style={styles.memberCard}>
-                  <Avatar name={m.name} size={44} avatarId={(m as any).avatar_id} userId={m.user_id} photoVersion={(m as any).photo_version} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.mName}>{m.name}{m.user_id === user?.user_id ? " (sen)" : ""}</Text>
-                    <View style={styles.mMeta}>
-                      <View style={styles.mMetaChip}>
-                        <Ionicons name="home-outline" size={12} color={colors.brand} />
-                        <Text style={styles.mMetaTxt}>Ev: {formatEUR(paid)}</Text>
-                      </View>
-                      {roomP > 0.01 && (
-                        <View style={[styles.mMetaChip, { backgroundColor: "#DBEAFE" }]}>
-                          <Ionicons name="person-outline" size={12} color={colors.sky} />
-                          <Text style={[styles.mMetaTxt, { color: colors.sky }]}>Kişisel: {formatEUR(roomP)}</Text>
-                        </View>
-                      )}
-                    </View>
-                  </View>
-                  <View style={{ alignItems: "flex-end" }}>
-                    <Text style={[
-                      styles.mNet,
-                      { color: (net[m.user_id] || 0) > 0.01 ? colors.positive : (net[m.user_id] || 0) < -0.01 ? colors.negative : colors.onSurfaceTertiary },
-                    ]}>
-                      {(net[m.user_id] || 0) > 0 ? "+" : ""}{formatEUR(net[m.user_id] || 0)}
-                    </Text>
-                    <Ionicons name="chevron-forward" size={16} color={colors.onSurfaceTertiary} />
-                  </View>
-                </Card>
-              </Pressable>
-            );
-          })}
-        </View>
-
-        <Text style={styles.section}>Önerilen ödemeler</Text>
-        {loading ? (
-          <ActivityIndicator color={colors.brand} style={{ marginTop: spacing.lg }} />
-        ) : settled ? (
-          <Card style={styles.settledCard} testID="everyone-settled">
-            <View style={styles.settledIconWrap}>
-              <Ionicons name="checkmark-circle" size={44} color={colors.mint} />
-            </View>
-            <Text style={styles.settledTitle}>Herkes ödeşmiş durumda!</Text>
-            <Text style={styles.settledDesc}>Şu an için hiç kimsenin borcu yok.</Text>
-          </Card>
-        ) : (
-          transfers.map((t, i) => (
-            <Card key={i} style={styles.transferCard} testID={`transfer-row-${i}`}>
-              <View style={styles.transferRow}>
-                <View style={styles.avatarBlock}>
-                  <Avatar name={memberName(t.from)} size={44} avatarId={(members.find((m) => m.user_id === t.from) as any)?.avatar_id} userId={t.from} photoVersion={(members.find((m) => m.user_id === t.from) as any)?.photo_version} />
-                  <Text style={styles.avatarName}>{short(t.from)}</Text>
-                </View>
-                <View style={styles.arrowWrap}>
-                  <Ionicons name="arrow-forward" size={22} color={colors.brand} />
-                  <View style={styles.amountPill}>
-                    <Text style={styles.amountTxt}>{formatEUR(t.amount)}</Text>
-                  </View>
-                </View>
-                <View style={styles.avatarBlock}>
-                  <Avatar name={memberName(t.to)} size={44} avatarId={(members.find((m) => m.user_id === t.to) as any)?.avatar_id} userId={t.to} photoVersion={(members.find((m) => m.user_id === t.to) as any)?.photo_version} />
-                  <Text style={styles.avatarName}>{short(t.to)}</Text>
-                </View>
-              </View>
-
-              {canRecord(t) && payFor !== t && (
-                <Pressable style={styles.payBtn} onPress={() => openPay(t)} testID={`mark-paid-${i}`}>
-                  <Ionicons name="checkmark-circle-outline" size={17} color={colors.brand} />
-                  <Text style={styles.payTxt}>
-                    {t.from === user?.user_id ? "Ödedim" : "Ödemeyi aldım"}
-                  </Text>
-                </Pressable>
-              )}
-
-              {payFor === t && (
-                <View style={styles.payForm}>
-                  <Text style={styles.payHint}>
-                    Ne kadar ödendi? Tamamı değilse tutarı değiştir — kalan borç durur.
-                  </Text>
-                  <View style={styles.payRow}>
-                    <Text style={styles.payCurrency}>€</Text>
-                    <TextInput
-                      style={styles.payInput}
-                      value={payAmount}
-                      onChangeText={(v) => setPayAmount(v.replace(/[^\d.,]/g, ""))}
-                      keyboardType="decimal-pad"
-                      autoFocus
-                      testID="pay-amount"
-                    />
-                  </View>
-                  <View style={styles.confirmRow}>
-                    <Pressable style={styles.cancelBtn} onPress={() => setPayFor(null)} testID="cancel-pay">
-                      <Text style={styles.cancelTxt}>Vazgeç</Text>
-                    </Pressable>
-                    <Pressable style={[styles.confirmBtn, paying && { opacity: 0.6 }]}
-                               onPress={recordPayment} disabled={paying} testID="confirm-pay">
-                      {paying ? <ActivityIndicator color={colors.onBrand} />
-                              : <Text style={styles.confirmBtnTxt}>Kaydet</Text>}
-                    </Pressable>
-                  </View>
-                </View>
-              )}
-            </Card>
-          ))
-        )}
-
-        {settlements.length > 0 && (
-          <>
-            <Text style={styles.section}>Kaydedilen ödemeler</Text>
-            {settlements.map((s) => {
-              const mine = s.from_user_id === user?.user_id || s.to_user_id === user?.user_id;
-              return (
-                <Card key={s.settlement_id} style={styles.settleCard} testID={`settlement-${s.settlement_id}`}>
-                  <Ionicons name="checkmark-circle" size={20} color={colors.mint} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.settleTxt}>
-                      {short(s.from_user_id)} → {short(s.to_user_id)} · {formatEUR(s.amount)}
-                    </Text>
-                    <Text style={styles.settleMeta}>{short(s.recorded_by)} işaretledi</Text>
-                  </View>
-                  {mine && !isArchived && (
-                    <Pressable onPress={() => undoSettlement(s.settlement_id)} hitSlop={10}
-                               testID={`undo-settlement-${s.settlement_id}`}>
-                      <Text style={styles.undoLink}>Geri al</Text>
-                    </Pressable>
-                  )}
-                </Card>
-              );
-            })}
-          </>
-        )}
-
-        {message && <Text style={styles.message}>{message}</Text>}
-        {error && <Text style={styles.errorMsg} testID="denge-error">{error}</Text>}
-      </ScrollView>
-
-      {!isArchived && !isAdmin && (
-        <View style={styles.footer}>
-          <View style={styles.memberNote}>
-            <Ionicons name="information-circle" size={16} color={colors.onBrandSoft} />
-            <Text style={styles.memberNoteTxt}>
-              Dönemi yalnızca ev yöneticisi kapatabilir.
+    <View style={styles.root} testID="denge-screen">
+      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
+        <ScrollView
+          contentContainerStyle={styles.scroll}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }}
+                            tintColor={colors.dark} progressBackgroundColor={colors.surface} />
+          }
+        >
+          <ScreenHeader overline="KASA" title="Senin hesabın">
+            <Text style={styles.heroLabel}>NET DURUMUN</Text>
+            <Text style={[styles.heroValue,
+                          { color: myNet >= 0 ? colors.accentOnDark : colors.negativeOnDark }]}>
+              {formatEUR(myNet, true)}
             </Text>
-          </View>
-        </View>
-      )}
+            <Text style={styles.heroHint}>
+              {myNet > 0.01 ? "Ev sana borçlu" : myNet < -0.01 ? "Eve borcun var" : "Ödeşmiş durumdasın"}
+            </Text>
+            <HeaderSplit items={[
+              { label: "Sana borçlu", value: formatEUR(owedToMe), accent: owedToMe > 0.01 },
+              { label: "Senin borcun", value: formatEUR(iOwe) },
+            ]} />
+          </ScreenHeader>
 
-      {!isArchived && isAdmin && (
-        <View style={styles.footer}>
-          {!confirmClose && !confirmReopen ? (
-            <>
-              <PrimaryButton
-                label="Dönemi Kapat & Denkleştir"
-                onPress={() => setConfirmClose(true)}
-                icon="checkmark-done"
-                testID="close-period-btn"
-              />
-              {canReopen && (
-                <Pressable
-                  style={styles.undoBtn}
-                  onPress={() => { setConfirmReopen(true); setError(null); }}
-                  testID="reopen-period-btn"
-                >
-                  <Ionicons name="arrow-undo" size={15} color={colors.onSurfaceSecondary} />
-                  <Text style={styles.undoTxt}>Son kapatmayı geri al</Text>
-                </Pressable>
-              )}
-            </>
-          ) : confirmReopen ? (
-            <View style={styles.confirmWrap}>
-              <Text style={styles.confirmTxt}>
-                Son kapatılan dönem yeniden açılacak ve harcamaları geri gelecek.
-                Yeni döneme harcama girildiyse bu işlem yapılamaz.
+          <Sheet>
+            {periods.length > 1 && (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}
+                          contentContainerStyle={styles.chips}>
+                {periods.map((p, i) => (
+                  <Chip key={p.period_id} label={periodLabel(p, i, periods.length)}
+                        active={currentId === p.period_id}
+                        icon={p.status === "active" ? "flash" : "archive"}
+                        onPress={() => setSelected(p.period_id === activeId ? undefined : p.period_id)}
+                        testID={`denge-period-${p.period_id}`} />
+                ))}
+              </ScrollView>
+            )}
+
+            {loading ? (
+              <ActivityIndicator color={colors.dark} style={{ marginTop: spacing.xxl }} />
+            ) : (
+              <View style={{ gap: spacing.lg }}>
+                {archived && (
+                  <View style={[styles.banner, styles.mx]} testID="denge-archived-banner">
+                    <Ionicons name="archive-outline" size={16} color={colors.inkSecondary} />
+                    <Text style={styles.bannerTxt}>Kapatılmış dönem — yalnızca görüntüleniyor</Text>
+                  </View>
+                )}
+
+                {transfers.length === 0 && (
+                  <Card style={styles.mx}>
+                    <Row
+                      leading={<IconPill name="checkmark-circle" color={colors.accent}
+                                         tint={colors.accentSoft} size={40} />}
+                      title="Herkes ödeşmiş"
+                      subtitle="Şu an kimsenin borcu yok"
+                      minHeight={72}
+                    />
+                  </Card>
+                )}
+
+                {incoming.length > 0 && (
+                  <Card title="Kimden alacaksın" style={styles.mx}>
+                    {incoming.map((t, i) => (
+                      <View key={`${t.from}-${i}`}>
+                        <Row
+                          minHeight={72}
+                          leading={<Avatar name={nameOf(t.from)} size={38}
+                                           avatarId={(member(t.from) as any)?.avatar_id}
+                                           userId={t.from}
+                                           photoVersion={(member(t.from) as any)?.photo_version} />}
+                          title={first(t.from)}
+                          subtitle={`sana ${formatEUR(t.amount)} ödeyecek`}
+                          right={!archived ? (
+                            <Pressable style={styles.actionSoft} onPress={() => openPay(t)}
+                                       testID={`mark-paid-${t.from}`}>
+                              <Text style={styles.actionSoftTxt}>Ödendi</Text>
+                            </Pressable>
+                          ) : <Money value={t.amount} />}
+                        />
+                        {i < incoming.length - 1 && <Divider />}
+                      </View>
+                    ))}
+                  </Card>
+                )}
+
+                {outgoing.length > 0 && (
+                  <Card title="Senin ödeyeceğin" style={styles.mx}>
+                    {outgoing.map((t, i) => (
+                      <View key={`${t.to}-${i}`}>
+                        <Row
+                          minHeight={72}
+                          leading={<Avatar name={nameOf(t.to)} size={38}
+                                           avatarId={(member(t.to) as any)?.avatar_id}
+                                           userId={t.to}
+                                           photoVersion={(member(t.to) as any)?.photo_version} />}
+                          title={first(t.to)}
+                          subtitle={`${formatEUR(t.amount)} borcun var`}
+                          right={!archived ? (
+                            <Pressable style={styles.actionDark} onPress={() => openPay(t)}
+                                       testID={`mark-paid-to-${t.to}`}>
+                              <Text style={styles.actionDarkTxt}>Ödedim</Text>
+                            </Pressable>
+                          ) : <Money value={t.amount} />}
+                        />
+                        {i < outgoing.length - 1 && <Divider />}
+                      </View>
+                    ))}
+                  </Card>
+                )}
+
+                {others.length > 0 && (
+                  <Card title="Diğer ödeşmeler" style={styles.mx}>
+                    {others.map((t, i) => (
+                      <View key={`o-${i}`}>
+                        <Row
+                          leading={<Avatar name={nameOf(t.from)} size={34}
+                                           avatarId={(member(t.from) as any)?.avatar_id}
+                                           userId={t.from}
+                                           photoVersion={(member(t.from) as any)?.photo_version} />}
+                          title={`${first(t.from)} → ${first(t.to)}`}
+                          subtitle="seni ilgilendirmiyor"
+                          right={<Money value={t.amount} color={colors.inkSecondary} />}
+                        />
+                        {i < others.length - 1 && <Divider inset={54} />}
+                      </View>
+                    ))}
+                  </Card>
+                )}
+
+                {settlements.length > 0 && (
+                  <Card title="Kaydedilen ödemeler" style={styles.mx}>
+                    {settlements.map((s, i) => {
+                      const mine = s.from_user_id === me || s.to_user_id === me;
+                      return (
+                        <View key={s.settlement_id}>
+                          <Row
+                            leading={<IconPill name="checkmark" color={colors.accent}
+                                               tint={colors.accentSoft} size={32} />}
+                            title={`${s.from_user_id === me ? "Sen" : first(s.from_user_id)} → ${
+                              s.to_user_id === me ? "Sen" : first(s.to_user_id)}`}
+                            subtitle={relativeDay(s.created_at)}
+                            right={
+                              <View style={styles.stlRight}>
+                                <Money value={s.amount} color={colors.inkSecondary} />
+                                {mine && !archived && (
+                                  <Pressable onPress={() => undoSettlement(s.settlement_id)}
+                                             hitSlop={10} testID={`undo-${s.settlement_id}`}>
+                                    <Text style={styles.undo}>Geri al</Text>
+                                  </Pressable>
+                                )}
+                              </View>
+                            }
+                          />
+                          {i < settlements.length - 1 && <Divider inset={52} />}
+                        </View>
+                      );
+                    })}
+                  </Card>
+                )}
+
+                {message && <Text style={[styles.msg, styles.mx]}>{message}</Text>}
+                {error && <Text style={[styles.err, styles.mx]} testID="denge-error">{error}</Text>}
+
+                {!archived && (
+                  <View style={[styles.mx, { gap: spacing.sm }]}>
+                    {!isAdmin ? (
+                      <View style={styles.banner}>
+                        <Ionicons name="information-circle" size={16} color={colors.inkSecondary} />
+                        <Text style={styles.bannerTxt}>Dönemi yalnızca ev yöneticisi kapatabilir.</Text>
+                      </View>
+                    ) : mode === "close" ? (
+                      <View style={styles.confirm}>
+                        <Text style={styles.confirmTxt}>
+                          Herkes gerçek hayatta ödeşti mi? Bu dönem arşivlenip yeni bir dönem başlayacak.
+                        </Text>
+                        <View style={styles.confirmRow}>
+                          <Pressable style={styles.ghost} onPress={() => setMode("none")}
+                                     testID="cancel-close-period">
+                            <Text style={styles.ghostTxt}>Vazgeç</Text>
+                          </Pressable>
+                          <Pressable style={styles.solid} onPress={closePeriod} disabled={busy}
+                                     testID="confirm-close-period">
+                            {busy ? <ActivityIndicator color={colors.onBrand} />
+                                  : <Text style={styles.solidTxt}>Evet, kapat</Text>}
+                          </Pressable>
+                        </View>
+                      </View>
+                    ) : mode === "reopen" ? (
+                      <View style={styles.confirm}>
+                        <Text style={styles.confirmTxt}>
+                          Son kapatılan dönem yeniden açılacak ve harcamaları geri gelecek.
+                        </Text>
+                        <View style={styles.confirmRow}>
+                          <Pressable style={styles.ghost} onPress={() => setMode("none")} testID="cancel-reopen">
+                            <Text style={styles.ghostTxt}>Vazgeç</Text>
+                          </Pressable>
+                          <Pressable style={styles.solid} onPress={reopenPeriod} disabled={busy}
+                                     testID="confirm-reopen">
+                            {busy ? <ActivityIndicator color={colors.onBrand} />
+                                  : <Text style={styles.solidTxt}>Evet, geri al</Text>}
+                          </Pressable>
+                        </View>
+                      </View>
+                    ) : (
+                      <>
+                        <PrimaryButton label="Dönemi Kapat & Denkleştir" icon="checkmark-done"
+                                       onPress={() => setMode("close")} testID="close-period-btn" />
+                        {canReopen && (
+                          <Pressable style={styles.undoBtn} onPress={() => setMode("reopen")}
+                                     testID="reopen-period-btn">
+                            <Ionicons name="arrow-undo" size={15} color={colors.inkSecondary} />
+                            <Text style={styles.undoBtnTxt}>Son kapatmayı geri al</Text>
+                          </Pressable>
+                        )}
+                      </>
+                    )}
+                    {activePeriod && (
+                      <Text style={styles.footNote}>
+                        Aktif dönem · {new Date(activePeriod.started_at).toLocaleDateString("tr-TR")}'ten beri
+                      </Text>
+                    )}
+                  </View>
+                )}
+              </View>
+            )}
+          </Sheet>
+        </ScrollView>
+
+        {payFor && (
+          <View style={styles.payWrap}>
+            <View style={styles.paySheet}>
+              <Text style={styles.payTitle}>
+                {payFor.from === me
+                  ? `${first(payFor.to)} kişisine ödeme`
+                  : `${first(payFor.from)} kişisinden tahsilat`}
               </Text>
+              <Text style={styles.payHint}>
+                Tutarı değiştirebilirsin — kısmi ödeme de kaydedilir.
+              </Text>
+              <View style={styles.payRow}>
+                <TextInput
+                  style={styles.payInput}
+                  value={payAmount}
+                  onChangeText={(t) => setPayAmount(t.replace(/[^\d.,]/g, ""))}
+                  keyboardType="decimal-pad"
+                  autoFocus
+                  testID="settlement-amount"
+                />
+                <Text style={styles.payCur}>€</Text>
+              </View>
+              {error && <Text style={styles.err}>{error}</Text>}
               <View style={styles.confirmRow}>
-                <Pressable style={styles.cancelBtn} onPress={() => setConfirmReopen(false)} testID="cancel-reopen">
-                  <Text style={styles.cancelTxt}>Vazgeç</Text>
+                <Pressable style={styles.ghost} onPress={() => { setPayFor(null); setError(null); }}
+                           testID="cancel-settlement">
+                  <Text style={styles.ghostTxt}>Vazgeç</Text>
                 </Pressable>
-                <Pressable style={[styles.confirmBtn, reopening && { opacity: 0.6 }]} onPress={onReopen} disabled={reopening} testID="confirm-reopen">
-                  {reopening ? <ActivityIndicator color={colors.onBrand} /> : <Text style={styles.confirmBtnTxt}>Evet, geri al</Text>}
+                <Pressable style={styles.solid} onPress={confirmPay} disabled={busy}
+                           testID="confirm-settlement">
+                  {busy ? <ActivityIndicator color={colors.onBrand} />
+                        : <Text style={styles.solidTxt}>Kaydet</Text>}
                 </Pressable>
               </View>
             </View>
-          ) : (
-            <View style={styles.confirmWrap}>
-              <Text style={styles.confirmTxt}>
-                Herkes gerçek hayatta ödeşti mi? Bu dönemi arşivleyip yeni bir dönem başlatacak.
-              </Text>
-              <View style={styles.confirmRow}>
-                <Pressable style={styles.cancelBtn} onPress={() => setConfirmClose(false)} testID="cancel-close-period">
-                  <Text style={styles.cancelTxt}>Vazgeç</Text>
-                </Pressable>
-                <Pressable style={[styles.confirmBtn, closing && { opacity: 0.6 }]} onPress={onCloseAndReset} disabled={closing} testID="confirm-close-period">
-                  {closing ? <ActivityIndicator color={colors.onBrand} /> : <Text style={styles.confirmBtnTxt}>Evet, kapat</Text>}
-                </Pressable>
-              </View>
-            </View>
-          )}
-        </View>
-      )}
-    </SafeAreaView>
+          </View>
+        )}
+      </KeyboardAvoidingView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.surfaceAlt },
-  header: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm },
-  title: { fontSize: 26, fontWeight: font.weights.bold, color: colors.onSurface, letterSpacing: -0.3 },
-  subtitle: { fontSize: font.sizes.sm, color: colors.onSurfaceSecondary, marginTop: 2 },
-  chipRowWrap: { height: 56, justifyContent: "center", marginTop: spacing.sm },
-  chipRow: { gap: spacing.sm, paddingHorizontal: spacing.lg, alignItems: "center" },
-  scroll: { padding: spacing.lg, gap: spacing.md, paddingBottom: 200 },
-  archivedBanner: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: colors.brandSoft, borderRadius: radius.md, padding: spacing.md },
-  archivedTxt: { color: colors.onBrandSoft, fontSize: font.sizes.base, fontWeight: font.weights.semibold },
-  section: { fontSize: font.sizes.sm, fontWeight: font.weights.semibold, color: colors.onSurfaceSecondary, textTransform: "uppercase", letterSpacing: 0.6, marginTop: spacing.sm },
-  memberList: { gap: spacing.sm },
-  memberCard: { flexDirection: "row", alignItems: "center", gap: spacing.md, padding: spacing.md },
-  mName: { fontSize: font.sizes.base, fontWeight: font.weights.semibold, color: colors.onSurface, marginBottom: 4 },
-  mMeta: { flexDirection: "row", gap: 6, flexWrap: "wrap" },
-  mMetaChip: { flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: colors.brandSoft, paddingHorizontal: 8, paddingVertical: 3, borderRadius: radius.sm },
-  mMetaTxt: { fontSize: 11, fontWeight: font.weights.semibold, color: colors.onBrandSoft },
-  mNet: { fontSize: font.sizes.lg, fontWeight: font.weights.bold, marginBottom: 2 },
-  settledCard: { alignItems: "center", padding: spacing.xl, gap: spacing.sm },
-  settledIconWrap: { width: 80, height: 80, borderRadius: 40, backgroundColor: "#DCFCE7", alignItems: "center", justifyContent: "center", marginBottom: spacing.sm },
-  settledTitle: { fontSize: font.sizes.lg, fontWeight: font.weights.bold, color: colors.onSurface },
-  settledDesc: { fontSize: font.sizes.base, color: colors.onSurfaceSecondary, textAlign: "center" },
-  transferCard: { padding: spacing.lg },
-  transferRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  avatarBlock: { alignItems: "center", gap: 6, width: 72 },
-  avatarName: { fontSize: font.sizes.sm, color: colors.onSurface, fontWeight: font.weights.semibold },
-  arrowWrap: { flex: 1, alignItems: "center", gap: 6 },
-  amountPill: { backgroundColor: colors.brand, paddingHorizontal: spacing.md, paddingVertical: 6, borderRadius: radius.pill },
-  amountTxt: { color: "#fff", fontWeight: font.weights.bold, fontSize: font.sizes.base },
-  payBtn: {
-    flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6,
-    marginTop: spacing.md, paddingVertical: spacing.sm, borderRadius: radius.pill,
-    borderWidth: 1, borderColor: colors.brand,
-  },
-  payTxt: { color: colors.brand, fontWeight: font.weights.semibold, fontSize: font.sizes.base },
-  payForm: { marginTop: spacing.md, gap: spacing.sm },
-  payHint: { fontSize: font.sizes.sm, color: colors.onSurfaceSecondary, lineHeight: 17 },
-  payRow: {
+  root: { flex: 1, backgroundColor: colors.dark },
+  scroll: { paddingBottom: 130, backgroundColor: colors.bg, flexGrow: 1 },
+  mx: { marginHorizontal: spacing.lg },
+  heroLabel: { fontSize: 11, lineHeight: 14, fontFamily: "IBMPlexSans-SemiBold",
+               letterSpacing: 1.1, color: colors.onDarkMuted },
+  heroValue: { ...T.hero, marginTop: spacing.xs },
+  heroHint: { ...T.body, color: colors.onDarkMuted, marginTop: 2 },
+  chips: { gap: spacing.sm, paddingHorizontal: spacing.lg, paddingBottom: spacing.lg },
+  banner: {
     flexDirection: "row", alignItems: "center", gap: spacing.sm,
-    backgroundColor: colors.surfaceSecondary, borderRadius: radius.md,
-    paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
+    backgroundColor: colors.surfaceSecondary, padding: spacing.md, borderRadius: radius.md,
   },
-  payCurrency: { fontSize: 22, color: colors.brand, fontWeight: font.weights.bold },
-  payInput: { flex: 1, fontSize: 24, fontWeight: font.weights.bold, color: colors.onSurface, padding: 0 },
-  settleCard: { flexDirection: "row", alignItems: "center", gap: spacing.md, padding: spacing.md },
-  settleTxt: { fontSize: font.sizes.base, fontWeight: font.weights.semibold, color: colors.onSurface },
-  settleMeta: { fontSize: font.sizes.sm, color: colors.onSurfaceTertiary, marginTop: 1 },
-  undoLink: { color: colors.onSurfaceTertiary, fontSize: font.sizes.sm, fontWeight: font.weights.semibold },
-  message: { color: colors.success, fontWeight: font.weights.semibold, textAlign: "center", marginTop: spacing.md },
-  errorMsg: { color: colors.error, fontWeight: font.weights.semibold, textAlign: "center", marginTop: spacing.md, lineHeight: 20 },
-  memberNote: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: colors.brandSoft, padding: spacing.md, borderRadius: radius.md },
-  memberNoteTxt: { flex: 1, fontSize: font.sizes.sm, color: colors.onBrandSoft },
-  undoBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: spacing.md, marginTop: spacing.sm },
-  undoTxt: { color: colors.onSurfaceSecondary, fontSize: font.sizes.sm, fontWeight: font.weights.semibold },
-  footer: {
-    position: "absolute", left: 0, right: 0, bottom: 0,
-    padding: spacing.lg, backgroundColor: colors.surfaceAlt,
-    borderTopWidth: 1, borderTopColor: colors.divider,
-  },
-  confirmWrap: { gap: spacing.md },
-  confirmTxt: { fontSize: font.sizes.base, color: colors.onSurfaceSecondary, textAlign: "center", lineHeight: 20 },
+  bannerTxt: { ...T.caption, color: colors.inkSecondary, flex: 1 },
+  actionSoft: { backgroundColor: colors.accentSoft, paddingHorizontal: spacing.lg,
+                paddingVertical: 8, borderRadius: radius.pill },
+  actionSoftTxt: { ...T.captionSb, color: colors.accentDark },
+  actionDark: { backgroundColor: colors.brand, paddingHorizontal: spacing.lg,
+                paddingVertical: 8, borderRadius: radius.pill },
+  actionDarkTxt: { ...T.captionSb, color: colors.onBrand },
+  stlRight: { alignItems: "flex-end", gap: 2 },
+  undo: { ...T.caption, color: colors.negative },
+  msg: { ...T.bodySb, color: colors.accentDark, textAlign: "center" },
+  err: { ...T.bodySb, color: colors.negative, textAlign: "center" },
+  confirm: { backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1,
+             borderColor: colors.border, padding: spacing.lg, gap: spacing.md },
+  confirmTxt: { ...T.body, color: colors.inkSecondary, textAlign: "center" },
   confirmRow: { flexDirection: "row", gap: spacing.md },
-  cancelBtn: { flex: 1, backgroundColor: colors.surfaceSecondary, borderRadius: radius.pill, minHeight: 52, alignItems: "center", justifyContent: "center" },
-  cancelTxt: { color: colors.onSurface, fontWeight: font.weights.semibold, fontSize: font.sizes.lg },
-  confirmBtn: { flex: 1, backgroundColor: colors.brand, borderRadius: radius.pill, minHeight: 52, alignItems: "center", justifyContent: "center" },
-  confirmBtnTxt: { color: colors.onBrand, fontWeight: font.weights.semibold, fontSize: font.sizes.lg },
+  ghost: { flex: 1, minHeight: 50, alignItems: "center", justifyContent: "center",
+           borderRadius: radius.pill, backgroundColor: colors.surfaceSecondary },
+  ghostTxt: { ...T.bodySb, color: colors.inkSecondary },
+  solid: { flex: 1, minHeight: 50, alignItems: "center", justifyContent: "center",
+           borderRadius: radius.pill, backgroundColor: colors.brand },
+  solidTxt: { ...T.bodySb, color: colors.onBrand },
+  undoBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center",
+             gap: 6, paddingVertical: spacing.md },
+  undoBtnTxt: { ...T.captionSb, color: colors.inkSecondary },
+  footNote: { ...T.caption, color: colors.inkTertiary, textAlign: "center", marginTop: spacing.xs },
+  payWrap: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(12,22,38,0.45)",
+             justifyContent: "flex-end" },
+  paySheet: { backgroundColor: colors.surface, borderTopLeftRadius: radius.xl,
+              borderTopRightRadius: radius.xl, padding: spacing.xl, gap: spacing.md },
+  payTitle: { ...T.title, color: colors.ink },
+  payHint: { ...T.caption, color: colors.inkTertiary },
+  payRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  payInput: {
+    flex: 1, backgroundColor: colors.surfaceSecondary, borderRadius: radius.md,
+    paddingHorizontal: spacing.lg, paddingVertical: spacing.md, minHeight: 56,
+    fontSize: 26, lineHeight: 32, fontFamily: "IBMPlexSans-Bold", color: colors.ink,
+  },
+  payCur: { ...T.screen, color: colors.inkSecondary },
 });

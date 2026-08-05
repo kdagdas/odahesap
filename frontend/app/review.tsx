@@ -4,15 +4,18 @@ import {
   View, Text, StyleSheet, ScrollView, TextInput, Pressable,
   KeyboardAvoidingView, Platform, ActivityIndicator,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { apiPost } from "@/src/api";
 import { popNext, remaining, totalCount, currentIndex, clearQueue } from "@/src/pendingReviews";
 import { useAuth } from "@/src/auth";
 import { useHousehold } from "@/src/household";
-import { Chip, CategoryIcon, MerchantBadge, formatEUR, formatDateTR, todayISO } from "@/src/ui";
-import { colors, spacing, radius, font, CATEGORY_ICONS, CATEGORY_LABEL_TR } from "@/src/theme";
+import {
+  Chip, CategoryIcon, MerchantBadge, ScreenHeader, formatEUR, formatDateTR, todayISO,
+} from "@/src/ui";
+import {
+  colors, spacing, radius, type as T, overline, CATEGORY_ICONS, CATEGORY_LABEL_TR,
+} from "@/src/theme";
 
 type Target = { type: "self" | "household" | "roommate"; user_id?: string };
 type Row = { name: string; price: string; quantity: string; category: string; target: Target };
@@ -150,26 +153,29 @@ export default function Review() {
   );
 
   return (
-    <SafeAreaView style={styles.root} edges={["top", "bottom"]} testID="review-screen">
+    <View style={styles.root} testID="review-screen">
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
-        <View style={styles.header}>
-          <Pressable onPress={() => router.back()} testID="review-back-btn" hitSlop={12}>
-            <Ionicons name="chevron-back" size={26} color={colors.onSurface} />
-          </Pressable>
-          <View style={{ flex: 1 }}>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-              <Text style={styles.title}>Fişi incele</Text>
-              {batchN > 1 && (
-                <View style={styles.batchPill} testID="batch-progress-pill">
-                  <Ionicons name="albums" size={12} color={colors.brand} />
-                  <Text style={styles.batchTxt}>{batchI || 1} / {batchN}</Text>
-                </View>
-              )}
+        <ScreenHeader
+          right={batchN > 1 ? (
+            <View style={styles.batchPill} testID="batch-progress-pill">
+              <Ionicons name="albums" size={12} color={colors.onDark} />
+              <Text style={styles.batchTxt}>{batchI || 1} / {batchN}</Text>
             </View>
-            <Text style={styles.headerSub}>Fiyat, adet ve kategoriyi düzenleyebilirsin</Text>
+          ) : undefined}
+        >
+          <View style={styles.headRow}>
+            <Pressable onPress={() => router.back()} testID="review-back-btn" hitSlop={14}
+                       style={styles.backBtn}>
+              <Ionicons name="chevron-back" size={20} color={colors.onDark} />
+            </Pressable>
+            <Text style={styles.headTitle}>Fişi incele</Text>
           </View>
-          <Text style={styles.headerTotal}>{formatEUR(total)}</Text>
-        </View>
+          <Text style={styles.headMeta}>
+            {merchant || "Market yok"} · {formatDateTR(fromDDMMYYYY(dateInput) || todayISO())}
+          </Text>
+          <Text style={styles.headTotal}>{formatEUR(total)}</Text>
+          <Text style={styles.headHint}>{rows.length} kalem · fiyat, adet ve kategoriyi düzenleyebilirsin</Text>
+        </ScreenHeader>
 
         <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.list} keyboardShouldPersistTaps="handled">
           <View style={styles.metaCard}>
@@ -229,7 +235,7 @@ export default function Review() {
                     onPress={() => updateRow(i, { category: nextCategory(r.category) })}
                     testID={`review-item-${i}-category`}
                   >
-                    <CategoryIcon category={r.category} size={22} />
+                    <CategoryIcon category={r.category} size={40} />
                   </Pressable>
                   <TextInput
                     style={styles.nameInput}
@@ -304,55 +310,103 @@ export default function Review() {
           </View>
         </View>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.surfaceAlt },
-  header: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingHorizontal: spacing.lg, paddingVertical: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.divider, backgroundColor: colors.surface },
-  title: { fontSize: font.sizes.xl, fontWeight: font.weights.bold, color: colors.onSurface },
-  headerSub: { fontSize: font.sizes.sm, color: colors.onSurfaceTertiary },
-  headerTotal: { fontSize: font.sizes.xl, fontWeight: font.weights.bold, color: colors.brand },
-  list: { padding: spacing.lg, gap: spacing.md, paddingBottom: spacing.xxxl },
-  metaCard: { backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.md, gap: spacing.md, borderWidth: 1, borderColor: colors.border },
+  root: { flex: 1, backgroundColor: colors.dark },
+  headRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, marginBottom: spacing.lg },
+  backBtn: {
+    width: 36, height: 36, borderRadius: 18, backgroundColor: colors.darkSurface,
+    alignItems: "center", justifyContent: "center",
+  },
+  headTitle: { ...T.emph, color: colors.onDark },
+  headMeta: { ...T.caption, color: colors.onDarkMuted },
+  headTotal: { ...T.hero, color: colors.onDark, marginTop: 2 },
+  headHint: { ...T.caption, color: colors.onDarkMuted, marginTop: spacing.xs },
+  batchPill: {
+    flexDirection: "row", alignItems: "center", gap: 5,
+    backgroundColor: colors.darkSurface, paddingHorizontal: spacing.md,
+    paddingVertical: 6, borderRadius: radius.pill,
+  },
+  batchTxt: { ...T.captionSb, color: colors.onDark },
+  list: {
+    backgroundColor: colors.bg, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl,
+    marginTop: -spacing.xl, padding: spacing.lg, gap: spacing.md, paddingBottom: spacing.xxxl,
+  },
+  metaCard: {
+    backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.lg,
+    gap: spacing.md, borderWidth: 1, borderColor: colors.border,
+  },
   metaField: { gap: spacing.xs },
-  metaLabelRow: { flexDirection: "row", alignItems: "center", gap: 4 },
-  metaLabel: { fontSize: font.sizes.sm, fontWeight: font.weights.semibold, color: colors.onSurfaceSecondary, textTransform: "uppercase", letterSpacing: 0.5 },
+  metaLabelRow: { flexDirection: "row", alignItems: "center", gap: 5 },
+  metaLabel: { ...overline },
   metaInputRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   metaInput: {
     flex: 1, backgroundColor: colors.surfaceSecondary, borderRadius: radius.md,
-    paddingHorizontal: spacing.md, paddingVertical: spacing.sm, fontSize: font.sizes.base, color: colors.onSurface, minHeight: 44,
+    paddingHorizontal: spacing.md, paddingVertical: spacing.sm, minHeight: 46,
+    ...T.body, color: colors.ink,
   },
-  bulkWrap: { backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.md, gap: spacing.sm, borderWidth: 1, borderColor: colors.border },
-  bulkLabel: { fontSize: font.sizes.sm, fontWeight: font.weights.semibold, color: colors.onSurfaceSecondary, textTransform: "uppercase", letterSpacing: 0.5 },
+  bulkWrap: {
+    backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.lg,
+    gap: spacing.md, borderWidth: 1, borderColor: colors.border,
+  },
+  bulkLabel: { ...overline },
   targetRow: { gap: spacing.sm, alignItems: "center", paddingRight: spacing.lg },
   empty: { alignItems: "center", padding: spacing.xxl, gap: spacing.sm },
-  emptyTitle: { fontSize: font.sizes.lg, fontWeight: font.weights.semibold, color: colors.onSurface },
-  emptyDesc: { fontSize: font.sizes.base, color: colors.onSurfaceSecondary },
-  itemCard: { backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.md, gap: spacing.md, borderWidth: 1, borderColor: colors.border },
-  itemHeader: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  nameInput: { flex: 1, backgroundColor: colors.surfaceSecondary, borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, fontSize: font.sizes.base, color: colors.onSurface, minHeight: 40 },
+  emptyTitle: { ...T.emph, color: colors.ink },
+  emptyDesc: { ...T.body, color: colors.inkSecondary },
+  itemCard: {
+    backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.lg,
+    gap: spacing.md, borderWidth: 1, borderColor: colors.border,
+  },
+  itemHeader: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  nameInput: {
+    flex: 1, backgroundColor: colors.surfaceSecondary, borderRadius: radius.md,
+    paddingHorizontal: spacing.md, paddingVertical: spacing.sm, minHeight: 44,
+    ...T.bodySb, color: colors.ink,
+  },
   itemBody: { flexDirection: "row", gap: spacing.sm },
   qtyBox: { width: 72 },
   priceBox: { flex: 1 },
-  totalBox: { width: 90, alignItems: "flex-end" },
-  subLabel: { fontSize: 11, color: colors.onSurfaceTertiary, textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 4, fontWeight: font.weights.semibold },
-  qtyInput: { backgroundColor: colors.surfaceSecondary, borderRadius: radius.md, paddingHorizontal: spacing.sm, paddingVertical: spacing.sm, fontSize: font.sizes.base, color: colors.onSurface, textAlign: "center", fontWeight: font.weights.semibold },
-  priceInput: { backgroundColor: colors.surfaceSecondary, borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, fontSize: font.sizes.base, color: colors.onSurface, textAlign: "right", fontWeight: font.weights.semibold },
-  rowTotal: { fontSize: font.sizes.lg, fontWeight: font.weights.bold, color: colors.brand, marginTop: spacing.sm },
-  catLabel: { fontSize: font.sizes.sm, color: colors.onSurfaceTertiary, marginLeft: 46 },
-  addBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderStyle: "dashed", borderColor: colors.borderStrong },
-  addTxt: { color: colors.brand, fontWeight: font.weights.semibold, fontSize: font.sizes.base },
-  footer: { padding: spacing.lg, borderTopWidth: 1, borderTopColor: colors.divider, gap: spacing.sm, backgroundColor: colors.surface },
-  footerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  footerLabel: { fontSize: font.sizes.sm, color: colors.onSurfaceSecondary, fontWeight: font.weights.semibold },
-  footerTotal: { fontSize: 26, fontWeight: font.weights.bold, color: colors.onSurface, letterSpacing: -0.5 },
-  saveBtn: { backgroundColor: colors.brand, borderRadius: radius.pill, paddingHorizontal: spacing.xl, minHeight: 52, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 6 },
-  saveTxt: { color: colors.onBrand, fontWeight: font.weights.semibold, fontSize: font.sizes.lg },
-  error: { color: colors.error, fontWeight: font.weights.semibold, textAlign: "center" },
-  batchPill: { flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: colors.brandSoft, paddingHorizontal: spacing.sm, paddingVertical: 3, borderRadius: radius.pill },
-  batchTxt: { color: colors.onBrandSoft, fontSize: 11, fontWeight: font.weights.bold },
-  skipBtn: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: spacing.md, paddingVertical: spacing.sm + 2, borderRadius: radius.pill, backgroundColor: colors.surfaceSecondary, borderWidth: 1, borderColor: colors.border },
-  skipTxt: { color: colors.onSurfaceSecondary, fontWeight: font.weights.semibold, fontSize: font.sizes.sm },
+  totalBox: { width: 92, alignItems: "flex-end" },
+  subLabel: { ...overline, marginBottom: 4 },
+  qtyInput: {
+    backgroundColor: colors.surfaceSecondary, borderRadius: radius.md,
+    paddingHorizontal: spacing.sm, paddingVertical: spacing.sm, minHeight: 44,
+    ...T.bodySb, color: colors.ink, textAlign: "center",
+  },
+  priceInput: {
+    backgroundColor: colors.surfaceSecondary, borderRadius: radius.md,
+    paddingHorizontal: spacing.md, paddingVertical: spacing.sm, minHeight: 44,
+    ...T.bodySb, color: colors.ink, textAlign: "right",
+  },
+  rowTotal: { ...T.emph, color: colors.ink, marginTop: spacing.sm, fontVariant: ["tabular-nums"] },
+  catLabel: { ...T.caption, color: colors.inkTertiary, marginLeft: 52 },
+  addBtn: {
+    flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6,
+    padding: spacing.md, borderRadius: radius.lg, borderWidth: 1,
+    borderStyle: "dashed", borderColor: colors.borderStrong, minHeight: 52,
+  },
+  addTxt: { ...T.bodySb, color: colors.accentDark },
+  footer: {
+    padding: spacing.lg, borderTopWidth: 1, borderTopColor: colors.border,
+    gap: spacing.sm, backgroundColor: colors.surface,
+  },
+  footerRow: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  footerLabel: { ...T.caption, color: colors.inkSecondary },
+  footerTotal: { ...T.screen, color: colors.ink, fontVariant: ["tabular-nums"] },
+  saveBtn: {
+    backgroundColor: colors.brand, borderRadius: radius.pill, paddingHorizontal: spacing.xl,
+    minHeight: 54, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 6,
+  },
+  saveTxt: { ...T.emph, color: colors.onBrand },
+  error: { ...T.bodySb, color: colors.negative, textAlign: "center" },
+  skipBtn: {
+    flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: spacing.lg,
+    minHeight: 54, borderRadius: radius.pill, backgroundColor: colors.surfaceSecondary,
+    justifyContent: "center",
+  },
+  skipTxt: { ...T.bodySb, color: colors.inkSecondary },
 });
