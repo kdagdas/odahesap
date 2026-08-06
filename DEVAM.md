@@ -124,9 +124,13 @@ Kaybolmuşsa [IMZALAMA.md](IMZALAMA.md) içindeki adımları tekrar uygulayın.
 
 ### Üretilen APK'lar
 
-`frontend/android/app/build/outputs/apk/release/` altında üç mimari çıkar.
-Dağıtılan `app-arm64-v8a-release.apk` (~38 MB) — 2016 sonrası her telefon.
-Tek dosyada birleşik APK ~98 MB olur ve WhatsApp'ın sınırını aşar.
+`frontend/android/app/build/outputs/apk/release/` altında tek dosya çıkar:
+`app-arm64-v8a-release.apk` (~40 MB). Tek dosyada birleşik APK ~98 MB olur ve
+WhatsApp'ın sınırını aşar, o yüzden mimari başına ayrılıyor.
+
+Yalnızca **arm64-v8a** derleniyor: evdeki üç telefon da 64 bit ve 32 bitlik
+sürüm hiç kurulmadı. 32 bit bir telefon katılırsa `android/app/build.gradle`
+içindeki `splits.abi.include` satırına `"armeabi-v7a"` geri eklenmeli.
 
 ---
 
