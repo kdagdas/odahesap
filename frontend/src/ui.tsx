@@ -32,15 +32,20 @@ export function Overline({ children, style }: { children: React.ReactNode; style
 /**
  * Para. Rakamlar eşit genişlikte, böylece alt alta tutarlar hizalanır.
  *
- * `numberOfLines` ve `flexShrink: 0` şart: satırın ortasındaki metin esnek
- * olduğu için market rozeti uzayınca tutar sıkışıp "€" işaretini alt satıra
- * atıyordu — tek haneli tutarlarda gözle görülür şekilde bozuluyordu.
+ * `numberOfLines={1}` KULLANILMAZ: Android metni önce ölçüp sonra `tnum`
+ * özelliğini uyguluyor, tablo rakamları dar rakamlardan (1, 7) geniş olduğu
+ * için metin ölçülen kutusuna sığmayıp "…" ile kırpılıyordu — € işareti
+ * yerine üç nokta çıkmasının sebebi buydu.
+ *
+ * Satır sonu sorunu bunun yerine iki yerden çözülüyor: `flexShrink: 0` tutarın
+ * sıkışmasını, `formatEUR` içindeki bölünmez boşluk da "€"nin alt satıra
+ * düşmesini engelliyor.
  */
 export function Money({
   value, style, sign = false, color,
 }: { value?: number | null; style?: StyleProp<TextStyle>; sign?: boolean; color?: string }) {
   return (
-    <Text numberOfLines={1} style={[styles.money, color ? { color } : null, style]}>
+    <Text style={[styles.money, color ? { color } : null, style]}>
       {formatEUR(value, sign)}
     </Text>
   );
@@ -318,14 +323,26 @@ export function PrimaryButton({
 
 /* ------------------------------------------------------------- biçimleyici */
 
+/**
+ * Türkçe biçim: binlik "." , kuruş ",". Rakam ile "€" arasındaki boşluk
+ * bölünmez (U+00A0) — normal boşluk olduğunda dar bir satırda "€" tek başına
+ * alt satıra düşüyordu. İşaret ile rakam arası da aynı sebeple bölünmez.
+ */
+const NBSP = " ";
+
 export function formatEUR(n: number | null | undefined, sign = false) {
-  if (n === null || n === undefined || isNaN(n as number)) return "0,00 €";
+  if (n === null || n === undefined || isNaN(n as number)) return `0,00${NBSP}€`;
   const v = Number(n);
   const abs = Math.abs(v);
   const [int, dec] = abs.toFixed(2).split(".");
   const grouped = int.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
-  const prefix = sign ? (v >= 0 ? "+ " : "− ") : (v < 0 ? "−" : "");
-  return `${prefix}${grouped},${dec} €`;
+  const prefix = sign ? (v >= 0 ? `+${NBSP}` : `−${NBSP}`) : (v < 0 ? "−" : "");
+  return `${prefix}${grouped},${dec}${NBSP}€`;
+}
+
+/** Dar yerlerde kuruşu düşürür: "1.240,00 €" -> "1.240 €". */
+export function formatEURShort(n: number | null | undefined) {
+  return formatEUR(n).replace(`,00${NBSP}€`, `${NBSP}€`);
 }
 
 export function formatDateTR(iso?: string | null) {

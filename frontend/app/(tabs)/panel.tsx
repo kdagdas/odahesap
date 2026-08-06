@@ -10,7 +10,7 @@ import { useAuth } from "@/src/auth";
 import { useHousehold } from "@/src/household";
 import {
   ScreenHeader, HeaderSplit, TrendBadge, Sheet, Card, Row, Divider, Avatar,
-  Money, IconPill, CategoryIcon, categoryLabel, formatEUR,
+  Money, IconPill, CategoryIcon, categoryLabel, formatEUR, formatEURShort,
 } from "@/src/ui";
 import { colors, spacing, type as T, overline, fontFamily, metrics, CATEGORY_ICONS } from "@/src/theme";
 
@@ -152,7 +152,7 @@ export default function Panel() {
                     <View style={styles.donutWrap}>
                       <Donut parts={cats} />
                       <View style={styles.donutCenter}>
-                        <Text style={styles.donutTotal}>{formatEUR(stats?.total ?? 0).replace(",00 €", " €")}</Text>
+                        <Text style={styles.donutTotal}>{formatEURShort(stats?.total ?? 0)}</Text>
                         <Text style={styles.donutSub}>{stats?.expense_count} harcama</Text>
                       </View>
                     </View>
