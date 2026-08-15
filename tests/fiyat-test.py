@@ -146,8 +146,9 @@ if BASE:
             "total": sum(i["price"] * i.get("quantity", 1) for i in items),
             "items": items})
 
-    def sor(items):
-        return c.post(f"{API}/price-memory", headers=H, json={"items": items}).json()["memory"]
+    def sor(merchant, items):
+        return c.post(f"{API}/price-memory", headers=H,
+                      json={"merchant": merchant, "items": items}).json()["memory"]
 
     print("\n-- 8. /price-memory ucu --")
     fis("ALDI", "2026-07-12", [{"name": "PAPRIKA ROT 500G", "price": 1.49,
@@ -157,23 +158,41 @@ if BASE:
     fis("LIDL", "2026-08-10", [{"name": "Paprika rot 500 g", "price": 1.59,
                                 "quantity": 1, "category": "meyve_sebze"}])
 
-    m = sor([{"name": "PAPRIKA ROT 500G", "price": 2.49, "quantity": 1,
-              "category": "meyve_sebze"}])
+    # ALDI'de iki ayri tarihte alinmis ayni urun -- karsilastirilabilir seri.
+    fis("ALDI", "2026-08-05", [{"name": "Paprika rot 500 g", "price": 1.79,
+                                "quantity": 1, "category": "meyve_sebze"}])
+
+    m = sor("ALDI", [{"name": "PAPRIKA ROT 500G", "price": 2.49, "quantity": 1,
+                      "category": "meyve_sebze"}])
     p = m.get("PAPRIKA ROT 500G")
     check("gecmis bulundu", p is not None, str(m))
-    check("farkli yazimlar ayni urun sayildi", p and p["count"] == 3, str(p and p["count"]))
+    # ALDI'de iki kayit var; REWE ve LIDL'inkiler seriye GIRMEMELI.
+    check("yalnizca ayni marketin kayitlari", p and p["count"] == 2, str(p and p["count"]))
+    check("farkli yazimlar ayni urun sayildi",
+          p and all(x["merchant"] == "ALDI" for x in p["history"]), str(p and p["history"]))
     check("birim fiyat kg cinsinden", p and near(p["unit_price"], 4.98), str(p))
-    check("onceki = en yeni kayit (LIDL)", p and p["previous"]["merchant"] == "LIDL", str(p))
-    check("artis 3,18 -> 4,98 = %57", p and p["delta_pct"] == 57, str(p and p["delta_pct"]))
-    check("en ucuz ALDI 2,98", p and p["cheapest"]["merchant"] == "ALDI"
-          and near(p["cheapest"]["unit_price"], 2.98), str(p and p["cheapest"]))
+    check("onceki = ayni marketteki en yeni (05.08)",
+          p and p["previous"]["expense_date"] == "2026-08-05", str(p and p["previous"]))
+    check("artis 3,58 -> 4,98 = %39", p and p["delta_pct"] == 39, str(p and p["delta_pct"]))
+    check("en ucuz = bu markette gorulen en dusuk (2,98)",
+          p and near(p["cheapest"]["unit_price"], 2.98), str(p and p["cheapest"]))
+
+    # Marketler arasi karsilastirma BILEREK yapilmiyor: sut her markette kendi
+    # markasi altinda, ayni gramajli biber birinde tepside otekinde acik.
+    m = sor("REWE", [{"name": "PAPRIKA ROT 500G", "price": 2.49, "quantity": 1,
+                      "category": "meyve_sebze"}])
+    p = m.get("PAPRIKA ROT 500G")
+    check("REWE sorgusunda yalnizca REWE gecmisi", p and p["count"] == 1, str(p and p["count"]))
+    check("marketi bilinmeyen sorgu bos donuyor",
+          sor("", [{"name": "PAPRIKA ROT 500G", "price": 2.49, "quantity": 1,
+                    "category": "meyve_sebze"}]) == {})
 
     # Acik alinan urun paketli seriyle KARISTIRILMAMALI: yoksa "fiyat iki
     # katina cikti" denir, oysa degisen fiyat degil ambalajdir.
     fis("LIDL", "2026-08-11", [{"name": "Paprika rot", "price": 4.99, "quantity": 0.4,
                                 "unit": "kg", "category": "meyve_sebze"}])
-    m = sor([{"name": "Paprika rot", "price": 5.49, "quantity": 0.3, "unit": "kg",
-              "category": "meyve_sebze"}])
+    m = sor("LIDL", [{"name": "Paprika rot", "price": 5.49, "quantity": 0.3, "unit": "kg",
+                      "category": "meyve_sebze"}])
     p = m.get("Paprika rot")
     check("acik urun kendi sinifiyla karsilastirildi",
           p and p["pack_type"] == "acik" and p["previous"]["pack_type"] == "acik", str(p))
@@ -181,10 +200,11 @@ if BASE:
     check("acik artis %10", p and p["delta_pct"] == 10, str(p and p["delta_pct"]))
 
     check("gecmisi olmayan urun bos donuyor",
-          sor([{"name": "YOKBOYLEBIRSEY", "price": 3.0, "quantity": 1,
-                "category": "diger"}]) == {})
+          sor("ALDI", [{"name": "YOKBOYLEBIRSEY", "price": 3.0, "quantity": 1,
+                        "category": "diger"}]) == {})
     check("bos istek bos donuyor",
-          c.post(f"{API}/price-memory", headers=H, json={"items": []}).json()["memory"] == {})
+          c.post(f"{API}/price-memory", headers=H,
+                 json={"merchant": "ALDI", "items": []}).json()["memory"] == {})
 
     c.post(f"{API}/households/leave", headers=H)
     c.post(f"{API}/auth/logout", headers=H)

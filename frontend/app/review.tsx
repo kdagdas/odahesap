@@ -120,33 +120,6 @@ export default function Review() {
     return () => { alive = false; clearTimeout(timer); };
   }, [total, dateInput, merchant]);
 
-  /**
-   * Evin KENDİ geçmiş fişlerinden bu kalemlerin fiyatı.
-   *
-   * Karşılaştırmayı sunucu yapıyor, burada değil: birim fiyat hesabının
-   * ikinci bir kopyası olsaydı iki taraf farklı sonuç verdiğinde kullanıcı
-   * yanlış bir "fiyat arttı" uyarısı görürdü.
-   */
-  const [memory, setMemory] = useState<Record<string, any>>({});
-  const memoKey = rows.map((r) => `${r.name}|${r.price}|${r.quantity}|${r.unit}`).join("~");
-  useEffect(() => {
-    const items = rows
-      .filter((r) => r.name.trim() && parsedPrice(r.price) > 0)
-      .map((r) => ({
-        name: r.name.trim(), price: parsedPrice(r.price),
-        quantity: parsedQty(r.quantity), unit: r.unit, category: r.category,
-      }));
-    if (!items.length) { setMemory({}); return; }
-    let alive = true;
-    const timer = setTimeout(async () => {
-      try {
-        const res = await apiPost<{ memory: Record<string, any> }>("/price-memory", { items });
-        if (alive) setMemory(res.memory || {});
-      } catch { /* fiyat hafızası isteğe bağlı; başarısız olursa sessiz kal */ }
-    }, 600);
-    return () => { alive = false; clearTimeout(timer); };
-  }, [memoKey]);
-
   // Consume the queue: after saving/skipping current receipt, jump to next.
   const goToNextOrExit = () => {
     const next = popNext();
@@ -404,32 +377,6 @@ export default function Review() {
                   </View>
                 </View>
                 <Text style={styles.catLabel}>{CATEGORY_LABEL_TR[r.category]}</Text>
-                {(() => {
-                  const mem = memory[r.name.trim()];
-                  if (!mem) return null;
-                  const d = mem.delta_pct;
-                  // %5 altındaki oynama gürültü: fiş yuvarlaması ve gramaj
-                  // farkı bile bunu üretir, her seferinde uyarmak körleştirir.
-                  const tone = d == null || Math.abs(d) < 5
-                    ? { bg: colors.surfaceSecondary, fg: colors.inkSecondary, icon: null }
-                    : d > 0
-                      ? { bg: colors.negativeSoft, fg: colors.negative, icon: "arrow-up" as const }
-                      : { bg: colors.accentSoft, fg: colors.accentDark, icon: "arrow-down" as const };
-                  return (
-                    <View style={[styles.memoryRow, { backgroundColor: tone.bg }]}
-                          testID={`review-item-${i}-memory`}>
-                      {tone.icon && <Ionicons name={tone.icon} size={13} color={tone.fg} />}
-                      <Text style={[styles.memoryTxt, { color: tone.fg }]} numberOfLines={2}>
-                        {tone.icon ? `%${Math.abs(d)} ${d > 0 ? "pahalı" : "ucuz"} · ` : ""}
-                        {mem.previous.merchant} {formatEUR(mem.previous.unit_price)}/{mem.previous.price_unit}
-                        {mem.cheapest.merchant !== mem.previous.merchant
-                          ? ` · en ucuz ${mem.cheapest.merchant} ${formatEUR(mem.cheapest.unit_price)}`
-                          : ""}
-                        {mem.pack_type === "acik" ? " · açık" : mem.pack_type === "paketli" ? " · paketli" : ""}
-                      </Text>
-                    </View>
-                  );
-                })()}
                 {renderSplit(r.split, (sp) => updateRow(i, { split: sp }), "BÖLÜŞÜM", rowTotal(r), `item-${i}`)}
               </View>
             );
@@ -512,12 +459,6 @@ const styles = StyleSheet.create({
     ...T.body, color: colors.ink,
   },
   bulkWrap: { marginBottom: spacing.xs },
-  memoryRow: {
-    flexDirection: "row", alignItems: "center", gap: 5,
-    borderRadius: radius.sm, paddingHorizontal: spacing.sm, paddingVertical: 5,
-    marginTop: spacing.sm,
-  },
-  memoryTxt: { ...T.caption, flex: 1, lineHeight: 16 },
   splitBox: {
     borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface,
     borderRadius: radius.md, marginTop: spacing.sm, overflow: "hidden",

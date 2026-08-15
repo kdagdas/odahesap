@@ -2452,6 +2452,8 @@ async def balances(period_id: Optional[str] = None, user=Depends(get_current_use
 
 # ---------- Fiyat hafızası ----------
 class PriceMemoryReq(BaseModel):
+    # Market ZORUNLU: karşılaştırma yalnızca aynı marketin içinde yapılıyor.
+    merchant: str
     # Kalemin tamamı geliyor, sadece adı değil: birim fiyat hesabı burada
     # kalmalı. İstemcide ikinci bir kopyası olsaydı iki taraf farklı sonuç
     # verdiğinde kullanıcı yanlış bir "fiyat arttı" uyarısı görürdü.
@@ -2460,18 +2462,34 @@ class PriceMemoryReq(BaseModel):
 
 @api.post("/price-memory")
 async def price_memory(body: PriceMemoryReq, user=Depends(get_current_user)):
-    """Bu evin KENDİ fişlerinden ürün fiyatı geçmişi.
+    """Bu evin KENDİ fişlerinden ürün fiyatı geçmişi — **aynı market içinde.**
 
-    Anonim `price_points` koleksiyonuna dokunmuyor — kaynak evin kendi
-    harcamaları. Yani ortada bir mahremiyet sorusu yok: kullanıcı zaten
-    görebildiği veriyi görüyor, sadece derlenmiş hâlde.
+    Anonim `price_points` koleksiyonuna dokunmuyor: kaynak evin kendi
+    harcamaları, yani kullanıcı zaten görebildiği veriyi derlenmiş hâlde
+    görüyor.
 
-    Karşılaştırma **paket sınıfı içinde** yapılıyor. Açık alınan üzümle
-    paketli üzümü aynı seriye koymak "fiyat iki katına çıktı" der; oysa
-    değişen fiyat değil ambalajdır.
+    ### Neden marketler arası karşılaştırma yok
+
+    "REWE'de 2 €, ALDI'de 1 €" cümlesi çoğu zaman fiyat farkını değil **ürün
+    farkını** ölçer. Süt her markette kendi markası altında satılıyor
+    (`MILSANI`, `MILBONA`, `JA!`) — bunlar farklı ürünler. Aynı gramajlı biber
+    birinde tepside, ötekinde açık. Fiş metinleri de her kasa sisteminde başka
+    türlü yazılıyor.
+
+    Aynı marketin içinde ise metni o marketin kendi kasası üretiyor:
+    `MILSANI H-MILCH 3,5% 1L` bu hafta da gelecek hafta da aynı dizgi. Yani
+    karşılaştırılan şey gerçekten aynı ürün, tahmin değil.
+
+    Marketler arası karşılaştırma ancak barkod (EAN) ile sağlam olurdu; Alman
+    fişleri onu genelde basmıyor. Yapısal olarak zor, bilerek yapılmıyor.
+
+    Ayrıca **paket sınıfı** da ayrı tutuluyor: açık alınan üzümle paketli
+    üzümü aynı seriye koymak "fiyat iki katına çıktı" der, oysa değişen
+    ambalajdır.
     """
     hh = await get_user_household(user["user_id"])
-    if not hh:
+    mkey = normalize_merchant(body.merchant)
+    if not hh or not mkey:
         return {"memory": {}}
 
     # Sorulan kalemlerin kendi birim fiyatı da aynı fonksiyondan geçiyor,
@@ -2493,6 +2511,9 @@ async def price_memory(body: PriceMemoryReq, user=Depends(get_current_user)):
          "merchant": {"$ne": None}},
         {"_id": 0, "merchant": 1, "expense_date": 1, "items": 1},
     ).sort("expense_date", -1).to_list(2000)
+    # Aynı markete ait fişler — yazım farkları normalleştiriliyor
+    # ("Bizim Fleisher GmbH" ile "Bizim Fleischer" aynı yer).
+    exps = [e for e in exps if normalize_merchant(e.get("merchant")) == mkey]
 
     found: Dict[str, list] = {}
     for e in exps:
@@ -2522,6 +2543,8 @@ async def price_memory(body: PriceMemoryReq, user=Depends(get_current_user)):
             same = [r for r in rows if r["pack_type"] == cur["pack_type"]]
             if not same:
                 continue
+            # "En ucuz" artık bir market önerisi değil, bu markette görülmüş
+            # en düşük fiyat: "bunu burada 2,98'e de görmüştük".
             cheapest = min(same, key=lambda r: r["unit_price"])
             prev = same[0]
             delta = None

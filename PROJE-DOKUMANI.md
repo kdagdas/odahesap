@@ -221,6 +221,7 @@ silinebilir.
 | `settlements` | `settlement_id`, `household_id`, `period_id`, `from_user_id`, `to_user_id`, `amount`, `recorded_by`, `created_at` |
 | `shopping_items` | `item_id`, `household_id`, `scope` (`household`/`self`), `text`, `added_by`, `done`, `done_by`, `created_at` |
 | `avatars` | `user_id` (tekil), `data` (ham JPEG), `mime`, `updated_at` |
+| `price_points` | `merchant_key`, `merchant`, `product_key`, `product`, `pack_type`, `size_amount`, `size_unit`, `unit_price`, `price_unit`, `currency`, `country`, `week`, `category` — **kimlik alanı yoktur**, bkz. §12 |
 | `devices` | `token` (tekil, FCM), `user_id`, `platform`, `updated_at` |
 
 ---
@@ -388,6 +389,7 @@ Tümü `/api` önekiyle. Sağlık ucu dışında hepsi `Authorization: Bearer <j
 `GET /members/{id}/expenses` · `POST /ocr/receipt`
 
 **Denge ve dönem**
+`POST /price-memory` — evin kendi fişlerinden, aynı market içinde ürün fiyatı geçmişi
 `GET /balances` · `GET /periods` · `POST /periods/close` · `POST /periods/reopen`
 `GET /settlements` · `POST /settlements` · `DELETE /settlements/{id}`
 
@@ -573,6 +575,55 @@ Aşağıdaki sıra ev sahibiyle konuşulup kabul edildi. İki bağımlılık **k
    üye çıkarma ve yönetici atama yalnızca kurucuda. Böylece iki yöneticinin
    birbirini çıkarıp evi kilitlemesi mümkün olmuyor.
 6. Ev/Grup ayrımı ve bir kullanıcının birden çok alanda olabilmesi
+
+### Fiyat verisi — ne toplanıyor, ne toplanmıyor, ne zaman
+
+Tur 4'ten sonra her fiş harcaması `price_points` koleksiyonuna anonim birim
+fiyat kayıtları da yazıyor (bkz. §5). Amaç iki katmanlı: kullanıcıya kendi
+fiyat hafızası, ileride ölçeğe ulaşıldığında toplu bir fiyat veri seti.
+
+**Kimlik yazma anında kopuk.** `household_id` / `user_id` / `expense_id` hiç
+yazılmıyor — sonradan temizlenen değil, hiç var olmayan alanlar. Sonradan
+silinen bir alan yedeklerde ve günlüklerde yaşamaya devam eder. Tarih hafta
+çözünürlüğünde: gün + nadir ürün + market üçlüsü tek bir fişe kadar
+izlenebilir, hafta izlenemez.
+
+**Karşılaştırma yalnızca aynı marketin içinde.** "REWE'de 2 €, ALDI'de 1 €"
+çoğu zaman fiyat farkını değil *ürün farkını* ölçer: süt her markette kendi
+markası altında (`MILSANI`, `MILBONA`, `JA!`), aynı gramajlı biber birinde
+tepside ötekinde açık. Aynı marketin içinde ise fiş metnini o marketin kasası
+üretir, yani dizgi haftadan haftaya sabittir. Marketler arası karşılaştırma
+ancak barkod (EAN) ile sağlam olurdu; Alman fişleri onu genelde basmıyor.
+**Yapısal olarak zor, bilerek yapılmıyor.**
+
+**Genele açmadan ÖNCE açılması gerekenler.** Şube adresi (zincir + sokak +
+PLZ + şehir) ve ödeme yöntemi sınıfı (nakit / kart) fişte basılı ve OCR
+okuyabilir. İkisi de bugün *istenmiyor*, dolayısıyla veritabanında yoklar.
+
+> **Geriye dönük doldurulamazlar.** Fiş fotoğrafları sunucuda saklanmıyor
+> (telefonun galerisine kaydedilip bırakılıyor, bilinçli bir gizlilik kararı).
+> Yani bugün çıkarılmayan hiçbir bilgi sonradan çıkarılamaz. Bu alanlar
+> genele açılıştan **önce** açılmazsa ilk ayların fişleri eksik kalır.
+
+Ödeme yönteminde yalnızca *sınıf* alınmalı. Kart satırının etrafında maskeli
+kart numarası, terminal kimliği ve işlem izleme numarası basılıyor; bunlar
+ödeme verisi, toplanmamalı ve OCR istemine açık yasak yazılmalı.
+
+**Hane ↔ konum bağlantısı ayrı bir karardır.** Şube adresini *mağazanın
+özelliği* olarak saklamak kişisel veri değildir ve ticari değerin neredeyse
+tamamını verir — "hangi bölgede ne kadar alışveriş" sorusu şube başına fiş
+sayısından zaten çıkar. Ama aynı adresi *bir haneyi konumlandırmak* için
+kullanmak, ad silinse bile kişisel veri işlemektir. Gerekirse:
+**açık rıza (opt-in, önceden işaretli kutu değil)**, amaç sınırlaması,
+saklama süresi, silme yolu ve muhtemelen bir etki değerlendirmesi (DPIA).
+Ortakla paylaşılan veri geri çağrılamaz — IBAN kararının aynısı: cihazdan
+sunucuya geçmek kolay, tersi zordur.
+
+**Test verisi fiyat kayıtlarını kirletir ve ayıklanamaz.** Kimlik alanı
+taşımadıkları için hangi kaydın testten geldiği sonradan anlaşılamıyor. Tek
+çare koleksiyonu sıfırlayıp kaynak fişlerden yeniden üretmek
+(`tests/fiyat-doldur.py --sifirla --yaz`). Bu yüzden testler ayrı
+veritabanında çalıştırılmalı: `DB_NAME=odahesap_test`. Ayrıntı: DEVAM.md.
 
 ### Kararlaştırılmış tasarım notları
 
