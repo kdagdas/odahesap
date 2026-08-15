@@ -2450,6 +2450,98 @@ async def balances(period_id: Optional[str] = None, user=Depends(get_current_use
     return result
 
 
+# ---------- Fiyat hafızası ----------
+class PriceMemoryReq(BaseModel):
+    # Kalemin tamamı geliyor, sadece adı değil: birim fiyat hesabı burada
+    # kalmalı. İstemcide ikinci bir kopyası olsaydı iki taraf farklı sonuç
+    # verdiğinde kullanıcı yanlış bir "fiyat arttı" uyarısı görürdü.
+    items: List[ExpenseItem] = Field(default_factory=list, max_length=200)
+
+
+@api.post("/price-memory")
+async def price_memory(body: PriceMemoryReq, user=Depends(get_current_user)):
+    """Bu evin KENDİ fişlerinden ürün fiyatı geçmişi.
+
+    Anonim `price_points` koleksiyonuna dokunmuyor — kaynak evin kendi
+    harcamaları. Yani ortada bir mahremiyet sorusu yok: kullanıcı zaten
+    görebildiği veriyi görüyor, sadece derlenmiş hâlde.
+
+    Karşılaştırma **paket sınıfı içinde** yapılıyor. Açık alınan üzümle
+    paketli üzümü aynı seriye koymak "fiyat iki katına çıktı" der; oysa
+    değişen fiyat değil ambalajdır.
+    """
+    hh = await get_user_household(user["user_id"])
+    if not hh:
+        return {"memory": {}}
+
+    # Sorulan kalemlerin kendi birim fiyatı da aynı fonksiyondan geçiyor,
+    # böylece karşılaştırma elma ile elma.
+    asked: Dict[str, list] = {}
+    now_price: Dict[str, dict] = {}
+    for it in body.items[:200]:
+        p = price_of_item(it.model_dump())
+        if not p:
+            continue
+        asked.setdefault(p["product_key"], []).append(it.name)
+        now_price[it.name] = p
+    if not asked:
+        return {"memory": {}}
+    wanted = asked
+
+    exps = await db.expenses.find(
+        {"household_id": hh["household_id"], "source": "receipt",
+         "merchant": {"$ne": None}},
+        {"_id": 0, "merchant": 1, "expense_date": 1, "items": 1},
+    ).sort("expense_date", -1).to_list(2000)
+
+    found: Dict[str, list] = {}
+    for e in exps:
+        for item in e.get("items") or []:
+            p = price_of_item(item)
+            if not p or p["product_key"] not in wanted:
+                continue
+            found.setdefault(p["product_key"], []).append({
+                "merchant": e["merchant"],
+                "expense_date": e.get("expense_date"),
+                "unit_price": p["unit_price"],
+                "price_unit": p["price_unit"],
+                "pack_type": p["pack_type"],
+                "product": p["product"],
+            })
+
+    memory: Dict[str, dict] = {}
+    for key, rows in found.items():
+        rows.sort(key=lambda r: r["expense_date"] or "", reverse=True)
+        for raw in wanted[key]:
+            cur = now_price.get(raw)
+            if not cur:
+                continue
+            # Karşılaştırma yalnızca AYNI paket sınıfı içinde. Açık alınan
+            # üzümle paketli üzümü aynı seriye koymak "fiyat iki katına çıktı"
+            # der; oysa değişen fiyat değil ambalajdır.
+            same = [r for r in rows if r["pack_type"] == cur["pack_type"]]
+            if not same:
+                continue
+            cheapest = min(same, key=lambda r: r["unit_price"])
+            prev = same[0]
+            delta = None
+            if prev["unit_price"] > 0:
+                delta = round(
+                    (cur["unit_price"] - prev["unit_price"]) / prev["unit_price"] * 100
+                )
+            memory[raw] = {
+                "unit_price": cur["unit_price"],
+                "price_unit": cur["price_unit"],
+                "pack_type": cur["pack_type"],
+                "previous": prev,
+                "cheapest": cheapest,
+                "delta_pct": delta,
+                "count": len(same),
+                "history": same[:8],
+            }
+    return {"memory": memory}
+
+
 # ---------- Stats ----------
 # Ev ya da dönem yoksa dönen iskelet. Alanların hepsi burada da bulunmalı:
 # istemci eksik anahtarı undefined okuyup grafiği boş yerine çökmüş çiziyordu.

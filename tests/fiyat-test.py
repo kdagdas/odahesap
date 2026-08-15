@@ -6,7 +6,12 @@ karsilastirmasinin tamami birim fiyata dayaniyor ve birim fiyat yanlissa
 kullaniciya "fiyat iki katina cikti" diye yanlis uyari gider.
 
     cd backend
-    .venv/Scripts/python.exe ../tests/fiyat-test.py
+    .venv/Scripts/python.exe ../tests/fiyat-test.py                    # saf fonksiyonlar
+    .venv/Scripts/python.exe ../tests/fiyat-test.py http://127.0.0.1:8094   # + /price-memory ucu
+
+Ikinci bicimde sunucuya da baglaniyor. Sunucuyu AYRI veritabaniyla baslatin
+(DB_NAME=odahesap_test), yoksa uretimdeki fiyat kayitlari kirlenir ve
+kimlik alani tasimadiklari icin sonradan ayiklanamazlar.
 """
 import os
 import sys
@@ -119,6 +124,70 @@ check("ayni haftanin iki gunu ayni kova",
       f"{server._iso_week('2026-08-10')} vs {server._iso_week('2026-08-16')}")
 check("bozuk tarih dusurmuyor", server._iso_week("abc").startswith("20"))
 check("bos tarih dusurmuyor", server._iso_week(None).startswith("20"))
+
+BASE = next((a for a in sys.argv[1:] if a.startswith("http")), None)
+if BASE:
+    import uuid
+
+    import httpx
+
+    API = f"{BASE.rstrip('/')}/api"
+    TAG = uuid.uuid4().hex[:8]
+    c = httpx.Client(timeout=90.0)
+    r = c.post(f"{API}/auth/register", json={
+        "email": f"fy_{TAG}@odahesap-e2e.com", "password": "sifre123", "name": "Fiyat"})
+    H = {"Authorization": f"Bearer {r.json()['session_token']}"}
+    c.post(f"{API}/households", headers=H, json={"name": f"Fiyat Ev {TAG}"})
+
+    def fis(merchant, day, items):
+        c.post(f"{API}/expenses", headers=H, json={
+            "target_type": "household", "source": "receipt", "merchant": merchant,
+            "expense_date": day,
+            "total": sum(i["price"] * i.get("quantity", 1) for i in items),
+            "items": items})
+
+    def sor(items):
+        return c.post(f"{API}/price-memory", headers=H, json={"items": items}).json()["memory"]
+
+    print("\n-- 8. /price-memory ucu --")
+    fis("ALDI", "2026-07-12", [{"name": "PAPRIKA ROT 500G", "price": 1.49,
+                                "quantity": 1, "category": "meyve_sebze"}])
+    fis("REWE", "2026-08-01", [{"name": "PAPRIKA ROT 500G", "price": 1.99,
+                                "quantity": 1, "category": "meyve_sebze"}])
+    fis("LIDL", "2026-08-10", [{"name": "Paprika rot 500 g", "price": 1.59,
+                                "quantity": 1, "category": "meyve_sebze"}])
+
+    m = sor([{"name": "PAPRIKA ROT 500G", "price": 2.49, "quantity": 1,
+              "category": "meyve_sebze"}])
+    p = m.get("PAPRIKA ROT 500G")
+    check("gecmis bulundu", p is not None, str(m))
+    check("farkli yazimlar ayni urun sayildi", p and p["count"] == 3, str(p and p["count"]))
+    check("birim fiyat kg cinsinden", p and near(p["unit_price"], 4.98), str(p))
+    check("onceki = en yeni kayit (LIDL)", p and p["previous"]["merchant"] == "LIDL", str(p))
+    check("artis 3,18 -> 4,98 = %57", p and p["delta_pct"] == 57, str(p and p["delta_pct"]))
+    check("en ucuz ALDI 2,98", p and p["cheapest"]["merchant"] == "ALDI"
+          and near(p["cheapest"]["unit_price"], 2.98), str(p and p["cheapest"]))
+
+    # Acik alinan urun paketli seriyle KARISTIRILMAMALI: yoksa "fiyat iki
+    # katina cikti" denir, oysa degisen fiyat degil ambalajdir.
+    fis("LIDL", "2026-08-11", [{"name": "Paprika rot", "price": 4.99, "quantity": 0.4,
+                                "unit": "kg", "category": "meyve_sebze"}])
+    m = sor([{"name": "Paprika rot", "price": 5.49, "quantity": 0.3, "unit": "kg",
+              "category": "meyve_sebze"}])
+    p = m.get("Paprika rot")
+    check("acik urun kendi sinifiyla karsilastirildi",
+          p and p["pack_type"] == "acik" and p["previous"]["pack_type"] == "acik", str(p))
+    check("acik seriye paketliler girmedi", p and p["count"] == 1, str(p and p["count"]))
+    check("acik artis %10", p and p["delta_pct"] == 10, str(p and p["delta_pct"]))
+
+    check("gecmisi olmayan urun bos donuyor",
+          sor([{"name": "YOKBOYLEBIRSEY", "price": 3.0, "quantity": 1,
+                "category": "diger"}]) == {})
+    check("bos istek bos donuyor",
+          c.post(f"{API}/price-memory", headers=H, json={"items": []}).json()["memory"] == {})
+
+    c.post(f"{API}/households/leave", headers=H)
+    c.post(f"{API}/auth/logout", headers=H)
 
 print(f"\n===== {ok} basarili, {fail} basarisiz =====")
 sys.exit(1 if fail else 0)
