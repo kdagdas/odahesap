@@ -5,7 +5,46 @@
 > ihtiyaç duymaz. Günlük operasyon için [DEVAM.md](DEVAM.md), kurulum için
 > [README.md](README.md).
 >
-> Son güncelleme: 4 Ağustos 2026 · Uygulama sürümü 1.0.0 (versionCode 11)
+> Son güncelleme: 15 Ağustos 2026 · Uygulama sürümü 1.0.0 (versionCode 18)
+
+---
+
+## 0. v11 sonrası ne değişti
+
+Bu bölüm, dokümanın ilk yazıldığı andan (versionCode 11) bugüne kadarki
+değişiklikleri özetler. Aşağıdaki bölümler güncellendi; burası "neyin ne zaman
+geldiğini" tek bakışta görmek içindir.
+
+**Tasarım (v12–v15).** Arayüz baştan yazıldı: lacivert + yeşil finans dili,
+her ekranda tam genişlikte koyu bir başlık ve üstüne kavisle binen beyaz
+yüzey. Kart başlıkları kartın içinde, liste satırları tek kap içinde saç teli
+çizgilerle ayrılıyor. Yazı tipi IBM Plex Sans → **Inter** oldu. Yoğunluk
+ölçeği `theme.ts` içindeki `metrics` sabitinden yönetiliyor.
+
+**Tur 1+2 (v17).**
+- Kapanmış dönemler donduruldu — bkz. §5 "Dönem yaşam döngüsü"
+- Harcama düzenleme geçmişi (`expense_revisions`) ve bildirimi
+- Kalemlere birim alanı (adet / kg / lt / paket)
+- Aynı fiş uyarısı (market + tarih + toplam)
+- Market ismi birleştirme: ticari unvan ekleri + bilinen zincir listesi +
+  benzerlik ölçümü
+- Çekilen fiş telefonun galerisine kaydediliyor (sunucuda saklanmıyor)
+- `tests/sifre-sifirla.py` — uygulamada "şifremi unuttum" hâlâ yok
+
+**Tur 3 (v18).**
+- Profil üçe ayrıldı: **Profil** (sana ait) / **Ev ayarları** (ortak) /
+  **Uygulama ayarları** (uygulamaya ait). Yeni bir özelliğin yeri artık
+  "bu kime ait?" sorusuyla belirleniyor.
+- Ev bazlı **ülke ve para birimi** (DE/EUR, TR/TRY). Dönüşüm yok; bir ev tek
+  para birimi kullanır, farklı birimler toplanamaz.
+- **Aktivite** sayfası ve Anasayfa'daki zil. Bildirimler artık `notifications`
+  koleksiyonunda saklanıyor ve bu kayıt push'tan bağımsız yazılıyor.
+
+**Test sayısı:** 189 → **281**. Yeni dosyalar: `donem-dondurma-test.py`,
+`duzenleme-gecmisi-test.py`, `market-tekrar-test.py`, `para-birimi-test.py`,
+`aktivite-test.py`.
+
+**Sıradaki işler ve gerekçeleri** için §12'ye bakın.
 
 ---
 
@@ -462,18 +501,66 @@ dokunmaz. Yardımcılar: `fcm-verify.py` (Firebase kimlik bilgisi gerçekten
 
 ## 12. Yapılmadan bırakılanlar
 
-Konuşulmuş, tahmini çıkarılmış, henüz yapılmamış:
+### Kararlaştırılmış sıra
+
+Aşağıdaki sıra ev sahibiyle konuşulup kabul edildi. İki bağımlılık **katı**:
+
+1. **`{kişi: tutar}` bölüşme modeli** — seçili kişiler, kişiye özel kira
+   tutarları, evden ayrılma akışının yeniden tasarımı.
+   *Bakiye motoruna dokunan tek iş; yalnız ve ayrı bir dalda yapılmalı.*
+   Kira üç ayrı senaryo demek: (a) herkes kendi kirasını ev sahibine öder →
+   kişisel harcama, bugün de çalışıyor; (b) kira eşit bölüşülür → normal ev
+   harcaması, bugün de çalışıyor; (c) farklı tutarlar, bir kişi toplar →
+   bugünkü `self` + `roommate` kayıtlarının toplamı olarak **hesap motoruna
+   dokunmadan** çıkarılabilir.
+2. **Düzenli ödemeler** — takvim tarihli (dönem değil: dönem 3 hafta da
+   sürebilir 7 hafta da, elektrik hep ayın 15'inde gelir). Vadesi gelince
+   "Onayla / Düzenle / Sonra". *Kapatmak asla sessizce eklememeli* — yanlış
+   eklenen bir kira, arkadaşlar arasında yanlış borç demek.
+   Ev gideri: biri onaylar, diğerlerine bildirim. Kişisel: herkesin kendisi.
+3. **İstatistikler sayfası** — **takvim ayı** bazlı, `[Ev]` / `[Kişisel]`
+   sekmeli. Kasa'ya değil kendi sayfasına: Kasa bir *eylem* ekranı
+   ("kim kime borçlu, dönemi kapat"), istatistik *gezinme* ekranı.
+   **Mutlaka 1 ve 2'den sonra**: kirli veriyle (yanlış birim, ayrışmamış
+   sabit gider) kurulursa güzel görünen ama yanlış bir ekran çıkar.
+4. Arama (market + ürün + kişi), CSV ve logolu PDF dışa aktarma, dönem
+   hatırlatması, ödeme yolları, avatarlar
+5. Çoklu yönetici + **kurucu** kavramı — yöneticiler işletme işlerini yapar,
+   üye çıkarma ve yönetici atama yalnızca kurucuda. Böylece iki yöneticinin
+   birbirini çıkarıp evi kilitlemesi mümkün olmuyor.
+6. Ev/Grup ayrımı ve bir kullanıcının birden çok alanda olabilmesi
+
+### Kararlaştırılmış tasarım notları
+
+- **Ödeme:** "Öde" (banka/IBAN/QR yolunu açar, kayıt oluşturmaz) ve "Ödedim"
+  (nakit/uygulama dışı ödemeyi kaydeder) ayrı düğmeler. İkisi de **aynı tutar
+  sayfasından** çıkar, böylece kısmi ödeme tek yerde giriliyor. "Öde"den
+  dönünce "kaydedeyim mi?" diye sorulmalı, yoksa insanlar ödeyip işaretlemeyi
+  unutuyor.
+- **IBAN cihazda saklanır**, sunucuda değil. Cihazdan sunucuya geçmek kolay,
+  tersi zordur: sunucudan silmek duyuru ve güven kaybı demek.
+- **Ödeme yolunu paylaşma** uygulama bağlantısıyla yapılır (WhatsApp mesajının
+  içinde), böylece bilgi bizim sunucumuza hiç uğramaz.
+- **Banka uygulamasına yönlendirme güvenilir değildir.** Ortak bir derin
+  bağlantı standardı yok. Çalışan yollar: IBAN'ı panoya kopyalayıp bankayı
+  açmak, WhatsApp'tan paylaşmak, aynı odadayken EPC/Girocode karekodu,
+  ve PayPal.me bağlantısı.
+- **Tüketim karşılaştırması konmayacak** ("kim ne kadar tüketti"). Kimin daha
+  çok alışveriş yaptığını değil kimin daha müsait olduğunu ölçer ve ev
+  arkadaşları arasında gereksiz sürtünme üretir.
+
+### Tahminler
 
 | İş | Tahmin | Not |
 |---|---|---|
-| Düzenli harcamalar (kira, fatura) | ~2 sa | Ev sahibi kendi eklemeyi tercih etti |
+| Düzenli harcamalar (kira, fatura) | ~4-6 sa | Yukarıdaki sırada 2. madde; takvim tarihli ve onaylı |
 | Harcama dağılımı grafiği (ev + kişisel) | ~3 sa | "Kendim" verisi kaydediliyor ama hiç gösterilmiyor |
 | Çevrimdışı kuyruk | ~2 sa | Uyanma ekranı riskin çoğunu azalttı |
 | Karanlık tema | ~4-5 sa | Renkler `theme.ts`'te sabit; her ekran `StyleSheet.create` ile modül yüklenirken stilini üretiyor. Dinamik tema ~600 satır stilin bileşen içine taşınmasını gerektirir |
 | Google ile giriş | ~4 sa | Firebase projesi zaten var. Doğrulanmış e-posta getirir: şifre sıfırlama ve yazım hatası sorunlarını bitirir |
 | Hız sınırlaması | ~2 sa | Genele açmadan **önce** şart |
 | Hesap silme + veri dışa aktarma | ~3 sa | GDPR asgarisi |
-| Çoklu ev/grup üyeliği | ~8-12 sa | `get_user_household()` 20 yerde çağrılıyor; tek ev varsayımı derine işlemiş |
+| Çoklu ev/grup üyeliği | ~8-12 sa | Sırada 6. madde.  `get_user_household()` 20 yerde çağrılıyor; tek ev varsayımı derine işlemiş |
 | Ev içi sohbet | ~4-5 sa | **Önerilmedi** — WhatsApp zaten var, alınacaklar listesi ihtiyacı daha iyi karşılıyor |
 
 ---
