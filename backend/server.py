@@ -11,6 +11,7 @@ import asyncio
 import base64
 import difflib
 import os
+import re
 import uuid
 import random
 import secrets
@@ -141,6 +142,11 @@ class ExpenseItem(BaseModel):
     # kaydedilmediği için bu "590 adet" olarak görünüyordu — hem saçma, hem de
     # "kaç kez süt alındı" gibi bir sayım yapılamaz hale getiriyordu.
     unit: Literal["adet", "kg", "lt", "paket"] = "adet"
+    # Paket boyutu kilogram ya da litre cinsinden. Fiyat karsilastirmasi birim
+    # fiyata dayaniyor ve miktar cogu zaman urun adinin icinde sikismis durumda
+    # ("ZWIEBELN 2KG"); bu alan onu ayri tutuyor.
+    size_amount: Optional[float] = None
+    size_unit: Optional[Literal["kg", "lt"]] = None
     category: str = "diger"
 
 
@@ -1041,6 +1047,15 @@ Rules:
    - Quantity: if you see "2 x 1,49" or "3 Stk" or "2X" style, set quantity accordingly and use the unit price. If unclear, quantity = 1 and price = total for that line.
    - Unit: weighed goods print a separate line under the item, e.g. "0,590 kg x 10,99 EUR/kg" or "0,284 kg" — that line belongs to the item ABOVE it, never to a new item. When you see one, set "unit":"kg", "quantity":0.590 and "price":10.99 (the per-kilo price). Same for litres ("1,5 l", "0,75 L") with "unit":"lt". Multi-packs counted in pieces stay "unit":"adet". Never turn a weight into a piece count: 0,590 kg is not 590 pieces.
    - German items often have "A" or "B" (VAT class) at end — strip it.
+   - Package size: if the printed name carries a pack size ("ZWIEBELN 2KG",
+     "PAPRIKA ROT 500G", "6x0,33L", "Milch 1,5L"), ALSO return it separately as
+     "size_amount" (a number in kilograms or litres, so 500 g is 0.5) and
+     "size_unit" ("kg" or "lt"). Keep the size in "name" as printed — do not
+     rewrite the name. If the item is weighed at the till, leave size_amount
+     null and set "unit":"kg" as described above; the per-kilo price is already
+     in "price". If there is no size anywhere, leave both null.
+     This is used to compare prices per kilo between shops, so a wrong size is
+     worse than a missing one: when unsure, return null.
 5. Discount lines: markers include "Rabatt", "RABATT", "-%", "Preisnachlass", "PAYBACK Rabatt", lines starting with "-", or negative prices. If a discount is clearly associated with an item, subtract from that item's price. Otherwise return as a separate item with negative price.
 6. Ignore non-item lines: "MwSt", "Summe", "Zwischensumme", "Gesamtsumme", "Bar", "EC", "Karte", "Rueckgeld", and their Turkish equivalents "TOPLAM", "ARA TOPLAM", "KDV", "NAKİT", "KREDİ KARTI", "PARA ÜSTÜ", "FİŞ NO", store address, times, cashier numbers, "vielen Dank", "teşekkür ederiz".
 7. Item names stay in the language printed on the receipt — do NOT translate.
@@ -1069,7 +1084,8 @@ Return JSON EXACTLY in this schema:
   "total": number | null,
   "currency": "EUR" | "TRY",
   "items": [
-    { "name": string, "price": number, "quantity": number, "unit": "adet" | "kg" | "lt" | "paket", "category": string }
+    { "name": string, "price": number, "quantity": number, "unit": "adet" | "kg" | "lt" | "paket",
+      "size_amount": number | null, "size_unit": "kg" | "lt" | null, "category": string }
   ]
 }
 
@@ -1217,12 +1233,29 @@ async def ocr_receipt(body: OCRRequest, user=Depends(get_current_user)):
             # Model birim vermediyse tartıya benzeyen miktarı adet saymayalım:
             # tam sayı olmayan bir miktar fişte neredeyse her zaman kilogramdır.
             unit = "kg" if 0 < qty < 1 or (qty % 1) else "adet"
+        # Modelin verdigi boyut, ada bakan ayristiriciya tercih edilir; ikisi de
+        # yoksa alan bos kalir ve kalem yine normal kaydedilir. Bos boyut, yanlis
+        # boyuttan iyidir: yanlis olan dogrudan yanlis birim fiyat demek.
+        size_amount, size_unit = None, None
+        try:
+            sa = it.get("size_amount")
+            su = str(it.get("size_unit") or "").strip().lower()
+            if sa is not None and su in ("kg", "lt") and float(sa) > 0:
+                size_amount, size_unit = round(float(sa), 4), su
+        except (TypeError, ValueError):
+            pass
+        if size_amount is None:
+            got = parse_size(name)
+            if got:
+                size_amount, size_unit = got[0], got[1]
         items.append(
             {
                 "name": name,
                 "price": round(price, 2),
                 "quantity": qty if qty > 0 else 1,
                 "unit": unit,
+                "size_amount": size_amount,
+                "size_unit": size_unit,
                 "category": cat,
             }
         )
@@ -1428,6 +1461,9 @@ async def create_expense(body: ExpenseCreate, user=Depends(get_current_user)):
         "created_at": now_utc(),
     }
     await db.expenses.insert_one(doc.copy())
+    # Fiyat kaydi harcamadan SONRA ve tamamen ayri: icerideki her sey yutuluyor,
+    # yazilamamasi harcamanin kaydedilmesini engellemiyor.
+    await record_price_points(doc, hh)
 
     # Kimin haberi olacağı, kimin payı olduğundan çıkıyor: listede olan herkes
     # (ekleyen hariç) duyar. Kişisel harcamada liste yalnızca ekleyeni içerdiği
@@ -1655,6 +1691,190 @@ async def resolve_merchant(household_id: str, name: Optional[str]) -> Optional[s
         return brand
     known = await db.expenses.distinct("merchant", {"household_id": household_id})
     return match_known_merchant(clean, [k for k in known if k]) or clean
+
+
+# ---------- Fiyat normalleştirme ----------
+# Fiyat karşılaştırmasının tamamı BİRİM fiyata dayanır. Fişte ham fiyat var
+# ama miktar çoğu zaman ürün adının içinde sıkışmış:
+#
+#     ZWIEBELN 2KG      1,69   ->  0,85 EUR/kg
+#     PAPRIKA ROT 500G  1,59   ->  3,18 EUR/kg
+#
+# Ham fiyatları toplamak hiçbir işe yaramaz: "soğan 1,69" ile "soğan 1,11"
+# karşılaştırılamaz, biri iki kilo diğeri belli değil.
+
+# Çoklu paket önce denenir: "6x0,33L" tek başına "0,33 L" değil 1,98 L.
+_MULTI_SIZE_RE = re.compile(
+    r"(?<![a-z0-9])(\d+)\s*[x×*]\s*(\d+(?:[.,]\d+)?)\s*(kg|gr|g|ml|cl|lt|l)(?![a-z])",
+    re.IGNORECASE,
+)
+_SIZE_RE = re.compile(
+    r"(?<![a-z0-9])(\d+(?:[.,]\d+)?)\s*(kg|gr|g|ml|cl|lt|l)(?![a-z])",
+    re.IGNORECASE,
+)
+# Her şey kg ve lt'ye indirgeniyor; iki farklı ölçekte seri tutmak
+# karşılaştırmayı yine imkânsız kılardı.
+_SIZE_FACTORS = {
+    "kg": (1.0, "kg"), "g": (0.001, "kg"), "gr": (0.001, "kg"),
+    "lt": (1.0, "lt"), "l": (1.0, "lt"), "ml": (0.001, "lt"), "cl": (0.01, "lt"),
+}
+
+
+def parse_size(name: str) -> Optional[tuple]:
+    """Ürün adından paket boyutunu ayıkla → (miktar, "kg"|"lt", eşleşen metin).
+
+    Kütüphanesiz ve belirlenimci: aynı ad her zaman aynı sonucu verir ve
+    kullanıcı sayısı arttıkça jeton maliyeti doğurmaz — market ismi
+    birleştirmede kullanılan yaklaşımın aynısı.
+    """
+    if not name:
+        return None
+    for rx, multi in ((_MULTI_SIZE_RE, True), (_SIZE_RE, False)):
+        m = rx.search(name)
+        if not m:
+            continue
+        try:
+            count = float(m.group(1).replace(",", ".")) if multi else 1.0
+            amount = float(m.group(2 if multi else 1).replace(",", "."))
+        except ValueError:
+            continue
+        factor, base = _SIZE_FACTORS[m.group(3 if multi else 2).lower()]
+        total = count * amount * factor
+        if total <= 0:
+            continue
+        return round(total, 4), base, m.group(0)
+    return None
+
+
+def product_key(name: str) -> Optional[str]:
+    """Ürün adını karşılaştırılabilir bir anahtara indirger.
+
+    Boyut anahtarın DIŞINDA bırakılıyor. İçeri alınsaydı 1 kg'lık file ile
+    2 kg'lık file ayrı seriler olur ve az veriyle her ikisi de anlamsız
+    kalırdı; boyut ayrı alanda durup birim fiyata dönüşüyor.
+    """
+    if not name:
+        return None
+    s = name
+    got = parse_size(s)
+    if got:
+        s = s.replace(got[2], " ")
+    s = _fold_german(s).translate(_FOLD)
+    s = "".join(ch if ch.isalnum() or ch.isspace() else " " for ch in s)
+    return " ".join(s.split()) or None
+
+
+def price_of_item(item: dict) -> Optional[dict]:
+    """Bir fiş kaleminden karşılaştırılabilir birim fiyat çıkar.
+
+    Üç durum var ve ayrımı korumak şart:
+
+    - **açık**: kasada tartılan ürün. Fiş `0,590 kg x 10,99 EUR/kg` yazar,
+      yani `price` zaten kilo fiyatıdır.
+    - **paketli**: boyut adın içinde. `price` paketin fiyatı, kilo fiyatı
+      bölmeyle çıkar. `quantity` sadeleşir — üç paket almak birim fiyatı
+      değiştirmez.
+    - **adet**: boyutu bilinmeyen sayılabilir ürün. Kilo fiyatı üretilemez,
+      adet fiyatı olarak saklanır ve yalnızca kendi sınıfıyla karşılaştırılır.
+
+    Açık ile paketliyi aynı seride toplamak "fiyat iki katına çıktı" gibi
+    yanlış uyarılar üretir: değişen fiyat değil ambalajdır.
+    """
+    name = str(item.get("name") or "").strip()
+    key = product_key(name)
+    if not key:
+        return None
+    try:
+        price = float(item.get("price") or 0)
+    except (TypeError, ValueError):
+        return None
+    if price <= 0:
+        return None
+
+    # Önce kalemin kendi alanı (OCR'ın verdiği), sonra addan ayıklama. Sıra
+    # önemli: model fişin tamamını görüyor, ayrıştırıcı yalnızca adı.
+    size = None
+    try:
+        sa, su = item.get("size_amount"), str(item.get("size_unit") or "").lower()
+        if sa is not None and su in ("kg", "lt") and float(sa) > 0:
+            size = (round(float(sa), 4), su, "")
+    except (TypeError, ValueError):
+        size = None
+    if size is None:
+        size = parse_size(name)
+    unit = str(item.get("unit") or "").strip().lower()
+
+    if size:
+        amount, base, _ = size
+        return {"product_key": key, "product": name, "pack_type": "paketli",
+                "size_amount": amount, "size_unit": base,
+                "unit_price": round(price / amount, 4), "price_unit": base}
+    if unit in ("kg", "lt"):
+        return {"product_key": key, "product": name, "pack_type": "acik",
+                "size_amount": None, "size_unit": unit,
+                "unit_price": round(price, 4), "price_unit": unit}
+    return {"product_key": key, "product": name, "pack_type": "adet",
+            "size_amount": None, "size_unit": "adet",
+            "unit_price": round(price, 4), "price_unit": "adet"}
+
+
+def _iso_week(day: Optional[str]) -> str:
+    """"2026-08-15" → "2026-W33". Gün değil hafta kaydediliyor.
+
+    Gün + nadir bir ürün + market üçlüsü tek bir fişe kadar izlenebilir;
+    hafta izlenemez. Fiyat eğilimi için hafta zaten yeterli çözünürlük.
+    """
+    try:
+        d = date.fromisoformat((day or "")[:10])
+    except ValueError:
+        d = now_utc().date()
+    y, w, _ = d.isocalendar()
+    return f"{y}-W{w:02d}"
+
+
+async def record_price_points(expense: dict, household: dict) -> None:
+    """Bir harcamanın kalemlerinden anonim fiyat kayıtları üret.
+
+    **Kimlikten yazma anında kopuk.** `household_id`, `user_id`, `expense_id`
+    hiç yazılmıyor — sonradan temizlenen değil, hiç var olmayan alanlar. Bu
+    ikisi arasındaki fark hem teknik hem hukuki olarak belirleyici: sonradan
+    silinen bir alan yedeklerde ve günlüklerde yaşamaya devam eder.
+
+    Ham ürün adı da saklanıyor: yarın daha iyi bir normalleştirici yazılırsa
+    anahtarlar yeniden üretilebilsin, veri kaybolmasın.
+
+    **Asla istisna fırlatmaz.** `notify()` ile aynı kural — fiyat kaydının
+    tutmaması bir harcamanın kaydedilmesini engellememeli.
+    """
+    try:
+        if expense.get("source") != "receipt" or not expense.get("merchant"):
+            return
+        merchant = expense["merchant"]
+        mkey = normalize_merchant(merchant)
+        if not mkey:
+            return
+        week = _iso_week(expense.get("expense_date"))
+        rows = []
+        for item in expense.get("items") or []:
+            p = price_of_item(item)
+            if not p:
+                continue
+            rows.append({
+                "price_id": new_id("prc"),
+                "merchant_key": mkey,
+                "merchant": merchant,
+                "country": household.get("country") or "DE",
+                "currency": expense.get("currency") or household.get("currency") or "EUR",
+                "week": week,
+                "category": item.get("category") or "diger",
+                "source": "receipt",
+                "created_at": now_utc(),
+                **p,
+            })
+        if rows:
+            await db.price_points.insert_many(rows)
+    except Exception as exc:      # noqa: BLE001 — bilerek yutuluyor
+        logger.warning("fiyat kaydi yazilamadi: %s", exc)
 
 
 async def _record_revision(before: dict, patch: dict, user: dict, action: str) -> None:
@@ -2515,6 +2735,12 @@ async def on_startup():
     await db.shopping_items.create_index("item_id", unique=True)
     await db.shopping_items.create_index([("household_id", 1), ("scope", 1)])
     await db.shopping_items.create_index([("added_by", 1), ("scope", 1)])
+    # Fiyat kayıtlarında kimlik alanı yok, indeks de sorgunun kendisine göre:
+    # "şu ürün, şu ülkede, şu paket sınıfında, hangi markette kaça".
+    await db.price_points.create_index(
+        [("product_key", 1), ("country", 1), ("pack_type", 1), ("week", -1)]
+    )
+    await db.price_points.create_index([("merchant_key", 1), ("week", -1)])
     check = await asyncio.to_thread(push.self_check)
     if check["token"]:
         logger.info("OdaHesap backend started (bildirimler: hazir)")
