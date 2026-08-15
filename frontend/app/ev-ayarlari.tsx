@@ -392,7 +392,9 @@ const styles = StyleSheet.create({
   rejectBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: colors.negativeSoft, alignItems: "center", justifyContent: "center" },
 
   homeNameRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: spacing.md },
-  homeName: { ...T.emph, color: colors.ink },
+  // Kart başlığıyla aynı punto ve renkteydi, ikisi tek satır gibi okunuyordu.
+  // Yeşil, "bu bir başlık değil, senin girdiğin veri" diyor.
+  homeName: { ...T.emph, color: colors.accentDark, flex: 1 },
   inviteBox: {
     backgroundColor: colors.dark, borderRadius: radius.lg,
     paddingVertical: spacing.lg, paddingHorizontal: spacing.lg, alignItems: "center",

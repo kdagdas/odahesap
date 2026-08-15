@@ -100,7 +100,15 @@ check("farkli yazilan ayni market de yakalandi", len(d2["duplicates"]) >= 1, str
 d3 = c.get(f"{API}/expenses/duplicate-check",
            headers=hdr(alice), params={"total": 999.0, "expense_date": "04.03.2026",
                                        "merchant": "Bizim Fleischer"}).json()
-check("farkli tutar uyarmiyor", d3["duplicates"] == [], str(d3["duplicates"]))
+# Olcut tutar DEGIL market+tarih: OCR ayni fisin iki fotografindan farkli kalem
+# listesi cikarabiliyor ve toplam birkac kurus kayinca tam eslesme kaciyordu.
+check("tutar farkli olsa da ayni market+tarih uyariyor",
+      len(d3["duplicates"]) >= 1, str(len(d3["duplicates"])))
+
+d3b = c.get(f"{API}/expenses/duplicate-check",
+            headers=hdr(alice), params={"total": 25.0, "expense_date": "04.03.2026",
+                                        "merchant": "Hic Gitmedigimiz Market"}).json()
+check("farkli market uyarmiyor", d3b["duplicates"] == [], str(d3b["duplicates"]))
 
 d4 = c.get(f"{API}/expenses/duplicate-check",
            headers=hdr(alice), params={"total": 25.0, "expense_date": "09.09.2026",

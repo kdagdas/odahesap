@@ -64,7 +64,7 @@ r = c.post(f"{API}/expenses", headers=hdr(bob), json={
 check("harcama TRY olarak kaydedildi", r.json()["expense"]["currency"] == "TRY",
       str(r.json()["expense"]["currency"]))
 
-print("\n== ayarlardan degistirme ==")
+print("\n== harcama YOKKEN degistirilebiliyor ==")
 r = c.patch(f"{API}/households", headers=hdr(alice), json={"country": "TR"})
 check("ulke degisti", r.json()["household"]["country"] == "TR", str(r.json()["household"]))
 check("para birimi de degisti", r.json()["household"]["currency"] == "TRY", str(r.json()["household"]))
@@ -74,6 +74,21 @@ check("para birimi ayrica secilebiliyor", r.json()["household"]["currency"] == "
       str(r.json()["household"]["currency"]))
 check("ulke degismedi", r.json()["household"]["country"] == "TR",
       str(r.json()["household"]["country"]))
+
+print("\n== harcama VARKEN para birimi kilitli ==")
+# Kur cevrimi yapmiyoruz: degistirmek "40 EUR" yazan kaydi "40 TL" diye
+# gostermek demek. Tutar ayni kalir, anlami degisir.
+c.post(f"{API}/expenses", headers=hdr(alice), json={
+    "target_type": "household", "total": 10.0, "source": "manual", "items": []})
+r = c.patch(f"{API}/households", headers=hdr(alice), json={"currency": "TRY"})
+check("harcama varken reddediliyor", r.status_code == 400, str(r.status_code))
+check("sebep aciklaniyor", "harcama" in r.text.lower(), r.text[:120])
+r = c.patch(f"{API}/households", headers=hdr(alice), json={"country": "DE"})
+check("ulke yine de degistirilebiliyor", r.status_code == 200, str(r.status_code))
+check("para birimi bozulmadi", r.json()["household"]["currency"] == "EUR",
+      str(r.json()["household"]["currency"]))
+r = c.patch(f"{API}/households", headers=hdr(alice), json={"currency": "EUR"})
+check("ayni degeri yazmak sorun degil", r.status_code == 200, str(r.status_code))
 
 print("\n== ad degistirme hala calisiyor ==")
 r = c.patch(f"{API}/households", headers=hdr(alice), json={"name": "Yeni Ad"})
@@ -94,6 +109,15 @@ c.post(f"{API}/households/join", headers=hdr(carol), json={"invite_code": kod})
 c.post(f"{API}/households/approve", headers=hdr(alice), json={"user_id": carol_id})
 r = c.patch(f"{API}/households", headers=hdr(carol), json={"currency": "TRY"})
 check("uye para birimini degistiremiyor", r.status_code == 403, str(r.status_code))
+
+print("\n== kurucu olmayan yonetici de degistiremez ==")
+# Yoneticilik devredilebiliyor ama para birimi evin kuralini degistiriyor;
+# yalnizca evi KURAN kisiye ait olmali.
+c.post(f"{API}/households/transfer-admin", headers=hdr(alice), json={"user_id": carol_id})
+r = c.patch(f"{API}/households", headers=hdr(carol), json={"currency": "TRY"})
+check("yeni yonetici para birimini degistiremiyor", r.status_code in (400, 403), str(r.status_code))
+r = c.patch(f"{API}/households", headers=hdr(carol), json={"name": "Carol Evi"})
+check("yeni yonetici adi degistirebiliyor", r.status_code == 200, str(r.status_code))
 
 print("\n== temizlik ==")
 for t in (alice, bob, carol):

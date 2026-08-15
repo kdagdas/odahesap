@@ -368,6 +368,69 @@ export function HintCard({
   );
 }
 
+/**
+ * Seçim satırı + alttan açılan liste.
+ *
+ * İki seçenek için iki düğme yeterliydi ama liste büyüyecek (yeni ülkeler,
+ * yeni para birimleri). Yan yana düğme üçten sonra taşıyor; liste büyüdükçe
+ * ekranı yeniden tasarlamamak için baştan açılır liste.
+ */
+export function SelectRow<T extends string>({
+  label, value, options, onSelect, disabled, testID,
+}: {
+  label: string;
+  value: T;
+  options: { value: T; label: string; hint?: string }[];
+  onSelect: (v: T) => void;
+  disabled?: boolean;
+  testID?: string;
+}) {
+  const [open, setOpen] = React.useState(false);
+  const current = options.find((o) => o.value === value);
+  return (
+    <>
+      <Pressable
+        style={[styles.selectRow, disabled && { opacity: 0.5 }]}
+        onPress={() => !disabled && setOpen(true)}
+        disabled={disabled}
+        testID={testID}
+      >
+        <View style={{ flex: 1 }}>
+          <Text style={styles.selectLabel}>{label}</Text>
+          <Text style={styles.selectValue}>{current?.label ?? value}</Text>
+        </View>
+        <Ionicons name="chevron-down" size={18} color={colors.inkTertiary} />
+      </Pressable>
+
+      {open && (
+        <Pressable style={styles.sheetScrim} onPress={() => setOpen(false)}>
+          <Pressable style={styles.pickSheet} onPress={() => {}}>
+            <Text style={styles.pickTitle}>{label}</Text>
+            {options.map((o, i) => (
+              <React.Fragment key={o.value}>
+                {i > 0 && <View style={styles.divider} />}
+                <Pressable
+                  style={styles.pickRow}
+                  onPress={() => { setOpen(false); if (o.value !== value) onSelect(o.value); }}
+                  testID={testID ? `${testID}-${o.value}` : undefined}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.pickLabel}>{o.label}</Text>
+                    {o.hint ? <Text style={styles.pickHint}>{o.hint}</Text> : null}
+                  </View>
+                  {o.value === value && (
+                    <Ionicons name="checkmark" size={20} color={colors.accent} />
+                  )}
+                </Pressable>
+              </React.Fragment>
+            ))}
+          </Pressable>
+        </Pressable>
+      )}
+    </>
+  );
+}
+
 /* --------------------------------------------------------------- rozetler */
 
 export function Tag({
@@ -554,6 +617,27 @@ const styles = StyleSheet.create({
     backgroundColor: colors.infoSoft, borderRadius: radius.md, padding: spacing.md,
   },
   hintTxt: { ...T.caption, color: colors.onInfo, flex: 1, lineHeight: 18 },
+  selectRow: {
+    flexDirection: "row", alignItems: "center", gap: spacing.md,
+    paddingHorizontal: spacing.lg, paddingVertical: spacing.md, minHeight: metrics.rowHeight,
+  },
+  selectLabel: { ...T.caption, color: colors.inkTertiary },
+  selectValue: { ...T.bodySb, color: colors.ink, marginTop: 1 },
+  sheetScrim: {
+    ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(12,22,38,0.45)",
+    justifyContent: "flex-end",
+  },
+  pickSheet: {
+    backgroundColor: colors.surface, borderTopLeftRadius: radius.xl,
+    borderTopRightRadius: radius.xl, paddingTop: spacing.lg, paddingBottom: spacing.xxl,
+  },
+  pickTitle: { ...overline, paddingHorizontal: spacing.lg, marginBottom: spacing.sm },
+  pickRow: {
+    flexDirection: "row", alignItems: "center", gap: spacing.md,
+    paddingHorizontal: spacing.lg, minHeight: 56,
+  },
+  pickLabel: { ...T.emph, color: colors.ink },
+  pickHint: { ...T.caption, color: colors.inkTertiary, marginTop: 1 },
   avatar: { alignItems: "center", justifyContent: "center" },
   tag: { paddingHorizontal: spacing.sm + 2, paddingVertical: 3, borderRadius: radius.pill, alignSelf: "flex-start" },
   tagTxt: { fontSize: 11, lineHeight: 14, fontFamily: fontFamily.medium },

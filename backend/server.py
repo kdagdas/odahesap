@@ -689,12 +689,40 @@ async def rename_household(body: HouseholdRename, user=Depends(get_current_user)
     patch: dict = {}
     if body.name is not None:
         patch["name"] = body.name.strip()
+
+    # Ülke zararsız: yalnızca fiş okumada hangi market ve fiş düzeninin
+    # bekleneceğini belirliyor, kayıtlı hiçbir tutara dokunmuyor.
     if body.country is not None:
         patch["country"] = body.country
-        # Ülke para birimini de belirler; kullanıcı isterse ayrıca değiştirir.
-        patch.setdefault("currency", COUNTRY_CURRENCY[body.country])
-    if body.currency is not None:
-        patch["currency"] = body.currency
+
+    # Para birimi öyle değil. Kur çevrimi yapmıyoruz; değiştirmek "40 €" yazan
+    # kaydı "40 ₺" diye göstermek demek. Tutar aynı kalır, anlamı değişir —
+    # geçmiş bütün hesaplaşmalar sessizce yanlış okunur.
+    #
+    # Bu yüzden iki koşul: yalnızca evi KURAN kişi, ve yalnızca evde henüz
+    # harcama yokken. Kurulurken seçilir, sonradan değil.
+    wanted = body.currency or (COUNTRY_CURRENCY[body.country] if body.country else None)
+    if wanted:
+        patch["currency"] = wanted
+    # Kısıtlar yalnızca GERÇEK bir değişiklikte işliyor: zaten seçili olan
+    # düğmeye basmak hata vermemeli.
+    if wanted and wanted != hh.get("currency", "EUR"):
+        if hh.get("created_by") != user["user_id"]:
+            raise HTTPException(
+                status_code=403,
+                detail="Para birimini yalnızca evi kuran kişi değiştirebilir.",
+            )
+        used = await db.expenses.count_documents({"household_id": hh["household_id"]})
+        if used:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Bu evde {used} harcama kayıtlı. Para birimi değişince "
+                       "eski tutarlar çevrilmez, yalnızca simgeleri değişir ve "
+                       "geçmiş hesaplaşmalar yanlış okunur. Başka bir para "
+                       "birimi kullanacaksanız yeni bir ev kurun.",
+            )
+        patch["currency"] = wanted
+
     if not patch:
         raise HTTPException(status_code=400, detail="Değiştirilecek bir şey yok")
     await db.households.update_one({"household_id": hh["household_id"]}, {"$set": patch})
@@ -1555,26 +1583,36 @@ async def duplicate_check(
     """Bu fiş zaten kayıtlı mı?
 
     Dosya karşılaştırması işe yaramıyor: aynı fişi iki kez çeken kişi iki
-    farklı fotoğraf üretir. Fişin kendisine bakmak gerekiyor — market, tarih
-    ve toplam üçlüsü. Engellemiyor, yalnızca uyarıyor: aynı gün aynı marketten
-    aynı tutarda iki alışveriş gerçekten olur.
+    farklı fotoğraf üretir. Fişin kendisine bakmak gerekiyor.
+
+    Ölçüt TUTAR DEĞİL, market + tarih. Sebebi şu: taslağın toplamı kalemlerin
+    toplamı, ve OCR aynı fişin iki fotoğrafından farklı kalem listesi
+    çıkarabiliyor — indirim satırını bir seferinde ayrı kalem yapıp öbüründe
+    ürüne işleyince toplam birkaç kuruş kayıyor ve tam eşleşme kaçıyordu.
+    Aynı gün aynı marketten alışveriş zaten seyrek; tutarı kullanıcıya
+    gösterip kararı ona bırakmak, sessizce kaçırmaktan iyi.
+
+    Engellemiyor, uyarıyor: aynı gün aynı marketten iki alışveriş olabilir.
     """
     hh = await get_user_household(user["user_id"])
     if not hh:
         return {"duplicates": []}
     day = parse_date(expense_date) if expense_date else None
-    q: dict = {
-        "household_id": hh["household_id"],
-        "total": {"$gte": round(total - 0.01, 2), "$lte": round(total + 0.01, 2)},
-    }
+    q: dict = {"household_id": hh["household_id"]}
     if day:
         q["expense_date"] = day
-    rows = await db.expenses.find(q, {"_id": 0}).to_list(50)
+    rows = await db.expenses.find(q, {"_id": 0}).sort("created_at", -1).to_list(100)
+
     if merchant and merchant.strip():
         # Kayıtlı adlar zaten tek yazıma indirgenmiş; sorguyu da aynı yoldan
         # geçirmezsek "Bizim Fleisher GmbH" ile "Bizim Fleischer" eşleşmiyordu.
         key = normalize_merchant(await resolve_merchant(hh["household_id"], merchant))
         rows = [r for r in rows if normalize_merchant(r.get("merchant")) == key]
+    else:
+        # Market yoksa elimizde yalnızca tarih kalıyor; o tek başına çok geniş.
+        # Tutara geri dönüyoruz ama gevşek bir payla.
+        rows = [r for r in rows if abs(float(r.get("total", 0)) - total) <= 0.5]
+
     return {"duplicates": rows[:5]}
 
 

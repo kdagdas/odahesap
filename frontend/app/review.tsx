@@ -2,8 +2,9 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   View, Text, StyleSheet, ScrollView, TextInput, Pressable,
-  KeyboardAvoidingView, Platform, ActivityIndicator,
+  KeyboardAvoidingView, Platform, ActivityIndicator, Alert,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { apiGet, apiPost } from "@/src/api";
@@ -37,6 +38,7 @@ const fromDDMMYYYY = (s: string): string | null => {
 export default function Review() {
   const { payload, batchTotal, batchIndex } = useLocalSearchParams<{ payload?: string; batchTotal?: string; batchIndex?: string }>();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const { members } = useHousehold();
 
@@ -122,7 +124,29 @@ export default function Review() {
   };
   const skipReceipt = () => goToNextOrExit();
 
-  const save = async () => {
+  /**
+   * Sarı bant tek başına yetmiyor — kaydırıp geçilebiliyor. Kesme anı burası:
+   * uyarı pasif kalsın, ama geri dönüşü olan son noktada bir kez sorulsun.
+   * Engellemek değil, "gerçekten mi" demek.
+   */
+  const save = () => {
+    if (dupe && !dupeDismissed) {
+      Alert.alert(
+        "Bu fiş zaten kayıtlı olabilir",
+        `${dupe.merchant || "Market yok"} · ${formatDateTR(dupe.expense_date)} · ${formatEUR(dupe.total)}\n\n` +
+        "Aynı gün aynı marketten iki alışveriş olabilir. Yine de kaydedilsin mi?",
+        [
+          { text: "Vazgeç", style: "cancel" },
+          { text: "Yine de kaydet", style: "destructive",
+            onPress: () => { setDupeDismissed(true); doSave(); } },
+        ],
+      );
+      return;
+    }
+    doSave();
+  };
+
+  const doSave = async () => {
     setError(null);
     const valid = rows.filter((r) => r.name.trim() && parsedPrice(r.price) > 0);
     if (valid.length === 0) { setError("Kaydedilecek geçerli kalem yok"); return; }
@@ -339,7 +363,9 @@ export default function Review() {
         </View>
         </ScrollView>
 
-        <View style={styles.footer}>
+        {/* Alt cubuk telefonun gezinme cubugunun altinda kaliyordu: kenardan
+            kenara cizim acik oldugu icin guvenli alan payini elle eklemek sart. */}
+        <View style={[styles.footer, { paddingBottom: spacing.lg + insets.bottom }]}>
           {error && <Text style={styles.error} testID="review-error">{error}</Text>}
           <View style={styles.footerRow}>
             {/* minWidth:0 + tek satır şart: birden fazla fiş varken "Atla"
