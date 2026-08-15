@@ -124,6 +124,15 @@ class MemberActionReq(BaseModel):
     user_id: str
 
 
+class ApproveReq(BaseModel):
+    user_id: str
+    # Bölüşme listesi kayıt anında donduğu için yeni üye kendiliğinden geçmiş
+    # harcamalara girmiyor. Ama gerçek hayatta girmesi gereken bir durum var:
+    # kişi fiziksel olarak dönem başından beri evde, uygulamaya sonradan
+    # katıldı. Karar kullanıcınındır, varsayılan "katılmasın".
+    include_open_period: bool = False
+
+
 class ExpenseItem(BaseModel):
     name: str
     price: float  # unit price in EUR
@@ -135,9 +144,17 @@ class ExpenseItem(BaseModel):
     category: str = "diger"
 
 
+TargetType = Literal["self", "household", "roommate", "custom"]
+
+
 class ExpenseCreate(BaseModel):
-    target_type: Literal["self", "household", "roommate"]
+    # `target_type` artık kural değil etiket: parayı `split_with` belirliyor.
+    # Yine de girdi olarak kabul ediliyor — eski uygulama sürümleri ve testler
+    # bunu gönderiyor, sunucu ondan bir katılımcı listesi türetiyor.
+    target_type: Optional[TargetType] = None
     target_user_id: Optional[str] = None
+    split_mode: Optional[Literal["equal", "exact"]] = None
+    split_with: Optional[Dict[str, float]] = None
     items: List[ExpenseItem] = []
     total: float
     source: Literal["manual", "receipt"] = "manual"
@@ -149,8 +166,10 @@ class ExpenseCreate(BaseModel):
 
 
 class ExpenseUpdate(BaseModel):
-    target_type: Optional[Literal["self", "household", "roommate"]] = None
+    target_type: Optional[TargetType] = None
     target_user_id: Optional[str] = None
+    split_mode: Optional[Literal["equal", "exact"]] = None
+    split_with: Optional[Dict[str, float]] = None
     items: Optional[List[ExpenseItem]] = None
     total: Optional[float] = None
     category: Optional[str] = None
@@ -794,10 +813,42 @@ async def remove_member(body: MemberActionReq, user=Depends(get_current_user)):
 
 
 @api.post("/households/approve")
-async def approve_member(body: MemberActionReq, user=Depends(get_current_user)):
+async def approve_member(body: ApproveReq, user=Depends(get_current_user)):
     hh = await require_admin(user["user_id"])
     if body.user_id not in hh.get("pending_member_ids", []):
         raise HTTPException(status_code=404, detail="Bekleyen üye bulunamadı")
+
+    active = await get_active_period(hh["household_id"])
+    joined = 0
+    if active:
+        # Listesi yazılmamış eski kayıtlar burada dondurulıyor — ÜYE EKLENMEDEN
+        # ÖNCE, yani liste katılımdan önceki kadroyu gösteriyor. Yapılmazsa
+        # bu kayıtlar her hesaplamada o günkü üye listesine bölünmeye devam
+        # eder ve "kat / katma" sorusunun cevabı onlarda hiç uygulanmazdı.
+        legacy = await db.expenses.find(
+            {"household_id": hh["household_id"], "period_id": active["period_id"],
+             "split_with": {"$in": [None, {}]}},
+            {"_id": 0, "expense_id": 1, "added_by": 1, "total": 1,
+             "target_type": 1, "target_user_id": 1},
+        ).to_list(5000)
+        for e in legacy:
+            mode, sw = split_of(e, hh["member_ids"])
+            await db.expenses.update_one(
+                {"expense_id": e["expense_id"]},
+                {"$set": {"split_mode": mode, "split_with": sw}},
+            )
+
+        if body.include_open_period:
+            # Yalnızca eşit bölüşülen EV harcamaları. Kişiye özel tutarlara
+            # dokunmak toplamı bozar; ikili ve kişisel harcamalar zaten yeni
+            # üyeyi ilgilendirmiyor.
+            res = await db.expenses.update_many(
+                {"household_id": hh["household_id"], "period_id": active["period_id"],
+                 "target_type": "household", "split_mode": "equal"},
+                {"$set": {f"split_with.{body.user_id}": 1.0}},
+            )
+            joined = res.modified_count
+
     await db.households.update_one(
         {"household_id": hh["household_id"]},
         {
@@ -807,7 +858,6 @@ async def approve_member(body: MemberActionReq, user=Depends(get_current_user)):
     )
     # Yeni üye yalnızca AÇIK döneme yazılır. Kapalı dönemlerin listesi dondu;
     # bugün eve katılan biri aylar önce kapanmış bir hesaba karışmamalı.
-    active = await get_active_period(hh["household_id"])
     if active:
         await db.periods.update_one(
             {"period_id": active["period_id"]},
@@ -820,7 +870,7 @@ async def approve_member(body: MemberActionReq, user=Depends(get_current_user)):
         "join_request",
         {"household_id": hh["household_id"]},
     )
-    return {"ok": True}
+    return {"ok": True, "joined_expenses": joined}
 
 
 @api.post("/households/reject")
@@ -1190,6 +1240,148 @@ async def ocr_receipt(body: OCRRequest, user=Depends(get_current_user)):
     }
 
 
+# ---------- Bölüşme ----------
+# Üç ayrı özel durum (`household` / `self` / `roommate`) tek mekanizmaya indi:
+# her harcama kendi katılımcı listesini taşır.
+#
+#     split_mode "equal"  → split_with = {user_id: ağırlık}   (bugün hep 1)
+#     split_mode "exact"  → split_with = {user_id: tutar}
+#
+# Liste yalnızca parayı değil, **görünürlüğü ve bildirimi de** belirliyor:
+# harcamayı ekleyen ve listede olanlar görür, listede olanlara haber gider.
+# Böylece eski üç durum kendiliğinden çıkıyor — herkes listede = ev, sadece
+# ben = kişisel, tek başkası = ona ait.
+#
+# Liste kayıt anında donuyor. Sonradan eve katılan biri geçmiş harcamaların
+# payını kendiliğinden üstlenmiyor; katılım onayında açıkça soruluyor.
+
+
+def _split_from_target(target_type: Optional[str], target_user_id: Optional[str],
+                       payer: str, total: float, member_ids: List[str]) -> tuple:
+    """Eski `target_type` girdisinden katılımcı listesi türet.
+
+    İki yerde lazım: `split_with` göndermeyen bir istemci (eski APK, testler)
+    ve `split_with` alanı hiç yazılmamış eski kayıtlar.
+    """
+    if target_type == "roommate" and target_user_id:
+        return "exact", {target_user_id: round(float(total), 2)}
+    if target_type == "self":
+        return "exact", {payer: round(float(total), 2)}
+    # Varsayılan ev harcaması. Ağırlıklar 1: "eşit bölüş" demenin yolu.
+    return "equal", {m: 1.0 for m in member_ids} or {payer: 1.0}
+
+
+def split_of(e: dict, participants: List[str]) -> tuple:
+    """Bir harcamanın bölüşme kipi ve listesi.
+
+    `split_with` yazılmamış eski kayıtlar için `target_type`'tan türetiliyor.
+    Bu yedek yol kalıcıdır: tek seferlik bir göç betiği kaçırdığı her kaydı
+    sessizce dengeden düşürürdü, burada böyle bir kayıp mümkün değil.
+    """
+    sw = e.get("split_with")
+    if isinstance(sw, dict) and sw:
+        mode = e.get("split_mode") or "equal"
+        return mode, {u: float(v) for u, v in sw.items()}
+    return _split_from_target(
+        e.get("target_type"), e.get("target_user_id"),
+        e["added_by"], float(e.get("total") or 0), participants,
+    )
+
+
+def expense_shares(e: dict, participants: List[str]) -> Dict[str, float]:
+    """Kim bu harcamadan ne kadar borçlandı.
+
+    Eşit bölüşmede paylar yuvarlanmadan dağıtılıyor; yuvarlama en sonda, net
+    bakiye üzerinde bir kez yapılıyor. Kişi başına yuvarlamak 10,00 €'yu üç
+    kişide 9,99 ya da 10,02 yapar ve toplam ödenen ile bölüşülen tutmaz.
+    """
+    mode, sw = split_of(e, participants)
+    total = float(e.get("total") or 0)
+    if mode == "exact":
+        return {u: float(a) for u, a in sw.items() if float(a) != 0}
+    weights = {u: float(w) for u, w in sw.items() if float(w) > 0}
+    denom = sum(weights.values())
+    if denom <= 0:
+        return {}
+    return {u: total * w / denom for u, w in weights.items()}
+
+
+def derive_target_type(payer: str, split_with: Dict[str, float], member_ids: List[str]) -> str:
+    """Listeden okunan etiket. Süzgeçler ve ekrandaki rozet bunu kullanıyor.
+
+    Sıra önemli: tek kişilik bir evde "herkes" ile "sadece ben" aynı listedir,
+    ve orada doğru cevap ev harcamasıdır — kişisel harcama kimseden gizlenmiyor.
+    """
+    keys = set(split_with)
+    if keys and keys == set(member_ids):
+        return "household"
+    if keys == {payer}:
+        return "self"
+    if len(keys) == 1:
+        return "roommate"
+    return "custom"
+
+
+def validate_split(mode: str, split_with: Dict[str, float], total: float,
+                   allowed: List[str]) -> Dict[str, float]:
+    """Kaydetmeden önce listeyi doğrula ve temizle."""
+    if not split_with:
+        raise HTTPException(status_code=400, detail="Bölüşülecek kişi seçilmedi")
+    clean: Dict[str, float] = {}
+    for uid, val in split_with.items():
+        if uid not in allowed:
+            raise HTTPException(status_code=400, detail="Bölüşme listesinde evin üyesi olmayan biri var")
+        v = round(float(val), 2)
+        if v <= 0:
+            continue
+        clean[uid] = v
+    if not clean:
+        raise HTTPException(status_code=400, detail="Bölüşülecek kişi seçilmedi")
+    if mode == "exact":
+        # 0,01 tolerans: kullanıcı 1200'ü 400/400/400 diye böldüğünde sorun yok
+        # ama 1000'i üçe bölerken 333,33 × 3 = 999,99 kalıyor.
+        if abs(sum(clean.values()) - round(float(total), 2)) > 0.01 + 1e-9:
+            raise HTTPException(
+                status_code=400,
+                detail="Girilen tutarların toplamı harcama tutarını tutmuyor",
+            )
+    return clean
+
+
+def resolve_split(body, payer: str, total: float, member_ids: List[str],
+                  fallback: Optional[dict] = None) -> tuple:
+    """İstekten bölüşme kipi ve listesini çıkar.
+
+    `split_with` geldiyse o kullanılır; gelmediyse `target_type`'tan türetilir.
+    """
+    if body.split_with is not None:
+        mode = body.split_mode or "equal"
+        allowed = list(dict.fromkeys(list(member_ids) + [payer]))
+        return mode, validate_split(mode, body.split_with, total, allowed)
+    if body.target_type is not None or fallback is None:
+        return _split_from_target(
+            body.target_type, body.target_user_id, payer, total, member_ids
+        )
+    # Ne liste ne etiket geldi: düzenlemede bölüşmeye dokunulmamış demektir.
+    stored = fallback.get("split_with")
+    if not (isinstance(stored, dict) and stored):
+        # Eski kayıt: liste `target_type`'tan türetiliyor, yani tutarı takip eder.
+        return _split_from_target(
+            fallback.get("target_type"), fallback.get("target_user_id"),
+            payer, total, member_ids,
+        )
+    mode, sw = split_of(fallback, member_ids)
+    if mode == "exact" and abs(sum(sw.values()) - round(float(total), 2)) > 0.01 + 1e-9:
+        # Kişiye özel tutarlar toplamı tutmuyor. Oransal olarak yeniden
+        # dağıtmak sessizce yanlış borç üretir — 1200 €'luk kirada A'nın 350'si
+        # kimsenin onaylamadığı bir sayıya kayar. Kullanıcı yeniden bölüştürsün.
+        raise HTTPException(
+            status_code=400,
+            detail="Tutar değişti, kişiye özel bölüşüm artık tutmuyor. Bölüşümü yeniden düzenleyin.",
+        )
+    return mode, sw
+
+
 # ---------- Expenses ----------
 @api.post("/expenses")
 async def create_expense(body: ExpenseCreate, user=Depends(get_current_user)):
@@ -1206,14 +1398,25 @@ async def create_expense(body: ExpenseCreate, user=Depends(get_current_user)):
         if body.target_user_id == user["user_id"]:
             raise HTTPException(status_code=400, detail="Kendinize atayamazsınız")
 
+    split_mode, split_with = resolve_split(
+        body, user["user_id"], body.total, hh["member_ids"]
+    )
+    target_type = derive_target_type(user["user_id"], split_with, hh["member_ids"])
+
     expense_id = new_id("exp")
     doc = {
         "expense_id": expense_id,
         "household_id": hh["household_id"],
         "period_id": period["period_id"],
         "added_by": user["user_id"],
-        "target_type": body.target_type,
-        "target_user_id": body.target_user_id,
+        "target_type": target_type,
+        # Tek kişiye ait harcamalarda korunuyor: eski kayıtlarla aynı şekilde
+        # süzülebilsin ve eski APK sürümleri hedefi okumaya devam edebilsin.
+        # Listeden okunuyor, gövdeden değil — istemci `split_with` gönderip
+        # `target_user_id` göndermemiş olabilir.
+        "target_user_id": next(iter(split_with)) if target_type == "roommate" else None,
+        "split_mode": split_mode,
+        "split_with": split_with,
         "items": [i.model_dump() for i in body.items],
         "total": round(body.total, 2),
         "source": body.source,
@@ -1226,37 +1429,38 @@ async def create_expense(body: ExpenseCreate, user=Depends(get_current_user)):
     }
     await db.expenses.insert_one(doc.copy())
 
-    # Who hears about it follows who it affects: household expenses go to
-    # everyone else, a roommate expense only to the person it lands on, and a
-    # "self" expense to nobody — it is private by definition.
-    label = body.merchant or body.category or ("Fiş" if body.source == "receipt" else "Harcama")
-    amount = f"{doc['total']:.2f}".replace(".", ",")
-    if body.target_type == "household":
-        await notify(
-            [m for m in hh["member_ids"] if m != user["user_id"]],
-            "Yeni ev harcaması",
-            f"{user['name']} · {label} · {amount} €",
-            "new_expense",
-            {"expense_id": expense_id},
-        )
-    elif body.target_type == "roommate" and body.target_user_id:
-        await notify(
-            [body.target_user_id],
-            "Senin için bir harcama",
-            f"{user['name']} senin için {label} aldı · {amount} €",
-            "new_expense",
-            {"expense_id": expense_id},
-        )
+    # Kimin haberi olacağı, kimin payı olduğundan çıkıyor: listede olan herkes
+    # (ekleyen hariç) duyar. Kişisel harcamada liste yalnızca ekleyeni içerdiği
+    # için kimseye gitmez — gizli olması gereken şey varlığını da duyurmamalı.
+    audience = [u for u in split_with if u != user["user_id"]]
+    if audience:
+        label = body.merchant or body.category or ("Fiş" if body.source == "receipt" else "Harcama")
+        amount = f"{doc['total']:.2f}".replace(".", ",")
+        if target_type == "household":
+            title, msg = "Yeni ev harcaması", f"{user['name']} · {label} · {amount} €"
+        elif target_type == "roommate":
+            title, msg = "Senin için bir harcama", f"{user['name']} senin için {label} aldı · {amount} €"
+        else:
+            title = "Ortak bir harcama"
+            msg = f"{user['name']} · {label} · {amount} € · {len(split_with)} kişi bölüşüyor"
+        await notify(audience, title, msg, "new_expense", {"expense_id": expense_id})
     return {"expense": doc}
 
 
 def _visible_filter(user_id: str) -> dict:
+    """Bu kişinin görebileceği harcamalar: eklediği ya da payı olduğu.
+
+    Kural bölüşme listesinden okunuyor. `split_with` yazılmamış eski kayıtlar
+    için eski `target_type` maddeleri duruyor — sorgu veritabanında çalıştığı
+    için `split_of()` yedek yolu burada kullanılamıyor.
+    """
+    legacy = {"split_with": {"$in": [None, {}]}}
     return {
         "$or": [
-            {"target_type": "household"},
-            {"target_type": "self", "added_by": user_id},
-            {"target_type": "roommate", "added_by": user_id},
-            {"target_type": "roommate", "target_user_id": user_id},
+            {"added_by": user_id},
+            {f"split_with.{user_id}": {"$exists": True}},
+            {**legacy, "target_type": "household"},
+            {**legacy, "target_type": "roommate", "target_user_id": user_id},
         ]
     }
 
@@ -1341,7 +1545,7 @@ async def _get_editable_expense(expense_id: str, user: dict) -> dict:
 # Kimin payını değiştiren alanlar. Nottaki bir yazım hatası kimseyi
 # ilgilendirmiyor; telefon her düzeltmede titrerse insanlar bildirimleri
 # kapatır ve asıl önemli olanı da kaçırır.
-MATERIAL_FIELDS = ("total", "target_type", "target_user_id")
+MATERIAL_FIELDS = ("total", "target_type", "target_user_id", "split_with")
 
 
 # Fişin üstündeki ticari unvan ekleri. "BIM BIRLESIK MAGAZALAR A.Ş." ile
@@ -1488,18 +1692,16 @@ async def _notify_expense_change(before: dict, patch: dict, user: dict, action: 
     if not hh:
         return
 
-    target_type = patch.get("target_type", before.get("target_type"))
-    target_user = patch.get("target_user_id", before.get("target_user_id"))
-    if target_type == "household":
-        audience = [m for m in hh["member_ids"] if m != user["user_id"]]
-    elif target_type == "roommate" and target_user:
-        audience = [target_user]
+    after = {**before, **patch}
+    target_type = after.get("target_type")
+    if target_type == "self":
+        audience: List[str] = []   # kişisel harcama kimseyi ilgilendirmiyor
     else:
-        audience = []           # kişisel harcama kimseyi ilgilendirmiyor
-    # Harcama başkasına devredildiyse eski taraf da haberdar olmalı.
-    old_target = before.get("target_user_id")
-    if old_target and old_target != target_user and old_target != user["user_id"]:
-        audience.append(old_target)
+        audience = list(expense_shares(after, hh["member_ids"]))
+    # Bölüşümden çıkarılan kişi de haberdar olmalı: borcu düştü ve bunu ancak
+    # kendisi görüp fark ederse öğrenir.
+    if before.get("target_type") != "self":
+        audience += list(expense_shares(before, hh["member_ids"]))
     audience = [a for a in dict.fromkeys(audience) if a != user["user_id"]]
     if not audience:
         return
@@ -1522,25 +1724,37 @@ async def update_expense(expense_id: str, body: ExpenseUpdate, user=Depends(get_
         raise HTTPException(status_code=400, detail="Ev bulunamadı")
 
     patch: dict = {}
-    target_type = body.target_type or doc["target_type"]
-    if body.target_type is not None or body.target_user_id is not None:
+    if body.target_type == "roommate":
         target_user = body.target_user_id if body.target_user_id is not None else doc.get("target_user_id")
-        if target_type == "roommate":
-            if not target_user or target_user not in hh["member_ids"]:
-                raise HTTPException(status_code=400, detail="Geçersiz oda arkadaşı")
-            if target_user == user["user_id"]:
-                raise HTTPException(status_code=400, detail="Kendinize atayamazsınız")
-        else:
-            target_user = None
+        if not target_user or target_user not in hh["member_ids"]:
+            raise HTTPException(status_code=400, detail="Geçersiz oda arkadaşı")
+        if target_user == user["user_id"]:
+            raise HTTPException(status_code=400, detail="Kendinize atayamazsınız")
+
+    # Tutar bölüşmeden önce çözülüyor: eşit bölüşmede paylar tutarın kendisinden,
+    # kişiye özel bölüşmede ise doğrulama yeni tutara karşı yapılıyor.
+    new_total = round(body.total, 2) if body.total is not None else float(doc["total"])
+    if body.total is not None and body.total <= 0:
+        raise HTTPException(status_code=400, detail="Tutar sıfırdan büyük olmalı")
+
+    touches_split = (
+        body.split_with is not None or body.target_type is not None
+        or body.target_user_id is not None or body.total is not None
+    )
+    if touches_split:
+        split_mode, split_with = resolve_split(
+            body, doc["added_by"], new_total, hh["member_ids"], fallback=doc
+        )
+        target_type = derive_target_type(doc["added_by"], split_with, hh["member_ids"])
+        patch["split_mode"] = split_mode
+        patch["split_with"] = split_with
         patch["target_type"] = target_type
-        patch["target_user_id"] = target_user
+        patch["target_user_id"] = next(iter(split_with)) if target_type == "roommate" else None
 
     if body.items is not None:
         patch["items"] = [i.model_dump() for i in body.items]
     if body.total is not None:
-        if body.total <= 0:
-            raise HTTPException(status_code=400, detail="Tutar sıfırdan büyük olmalı")
-        patch["total"] = round(body.total, 2)
+        patch["total"] = new_total
     if body.merchant is not None:
         # Düzenleme yolunda da çalışması şart: yalnızca kayıtta normalleştirseydik
         # aynı adı elle yazan kullanıcı yine ayrı bir market yaratırdı.
@@ -1876,13 +2090,17 @@ async def period_participants(household_id: str, period_id: str, member_ids: Lis
 
     rows = await db.expenses.find(
         {"household_id": household_id, "period_id": period_id},
-        {"_id": 0, "added_by": 1, "target_user_id": 1},
+        {"_id": 0, "added_by": 1, "target_user_id": 1, "split_with": 1},
     ).to_list(5000)
     extra = set()
     for r in rows:
         extra.add(r["added_by"])
         if r.get("target_user_id"):
             extra.add(r["target_user_id"])
+        # Bölüşme listesindekiler de katılımcıdır. Evden çıkarılmış biri hâlâ
+        # bir harcamanın listesinde olabilir; payı o kayda yazılı olduğu için
+        # hesaba katılmazsa harcamanın toplamı bölüşülenden büyük kalırdı.
+        extra.update((r.get("split_with") or {}).keys())
     # Someone can settle up and only then be removed from the household; their
     # payment still has to count in that period's maths.
     for s in await db.settlements.find(
@@ -1904,38 +2122,37 @@ async def _compute_balances(household_id: str, period_id: str) -> dict:
     if not hh:
         return {"net": {}, "transfers": [], "totals_paid": {}}
     members = await period_participants(household_id, period_id, hh["member_ids"])
-    n = len(members)
     net: Dict[str, float] = {m: 0.0 for m in members}
     totals_paid: Dict[str, float] = {m: 0.0 for m in members}
     roommate_paid: Dict[str, float] = {m: 0.0 for m in members}
 
+    # Kişisel harcamalar dışında hepsi geliyor. Süzgeç `target_type` değil
+    # etiket üzerinden: bölüşme listesi artık tek doğru kaynak ve "custom"
+    # gibi yeni etiketler sorguya eklenmeyi unutulacak bir yer bırakmamalı.
     exps = await db.expenses.find(
-        {
-            "household_id": household_id,
-            "period_id": period_id,
-            "target_type": {"$in": ["household", "roommate"]},
-        },
+        {"household_id": household_id, "period_id": period_id},
         {"_id": 0},
     ).to_list(5000)
 
     for e in exps:
         payer = e["added_by"]
         total = float(e["total"])
-        if e["target_type"] == "household" and n > 0:
+        shares = expense_shares(e, members)
+        if not shares:
+            continue
+        # Kişisel harcama dengeye hiç girmez. Ödeyenin kendi payı zaten tutarın
+        # tamamı — net etkisi sıfır — ama "ödenen toplam" gibi göstergelerde de
+        # görünmemeli: kimseyi ilgilendirmiyor.
+        if set(shares) == {payer} and e.get("target_type") == "self":
+            continue
+        # Ödeyen listede yoksa harcamanın tamamı başkaları için yapılmış demek.
+        if payer in shares:
             totals_paid[payer] = totals_paid.get(payer, 0) + total
-            share = total / n
-            for m in members:
-                if m == payer:
-                    net[m] = net.get(m, 0) + (total - share)
-                else:
-                    net[m] = net.get(m, 0) - share
-        elif e["target_type"] == "roommate":
-            other = e.get("target_user_id")
-            if not other or other not in net:
-                continue
+        else:
             roommate_paid[payer] = roommate_paid.get(payer, 0) + total
-            net[payer] = net.get(payer, 0) + total
-            net[other] = net.get(other, 0) - total
+        net[payer] = net.get(payer, 0) + total
+        for m, amount in shares.items():
+            net[m] = net.get(m, 0) - amount
 
     # Recorded payments move the payer back towards zero and the receiver away
     # from it — the exact inverse of a roommate expense. Applied after the
@@ -2014,8 +2231,10 @@ EMPTY_STATS = {
 async def stats(period_id: Optional[str] = None, user=Depends(get_current_user)):
     """Household numbers for the home screen.
 
-    Only household expenses count: "self" is private and "roommate" is a debt
-    between two people, neither is money the house spent together.
+    Ortak harcanan para sayılıyor: `household` (herkes) ve `custom` (evin bir
+    bölümü, örneğin fişteki yumurtayı iki kişinin bölüşmesi). Dışarıda kalan
+    ikisi ortak harcama değil — `self` kişiseldir, `roommate` iki kişi
+    arasındaki borçtur.
     """
     hh = await get_user_household(user["user_id"])
     if not hh:
@@ -2030,7 +2249,7 @@ async def stats(period_id: Optional[str] = None, user=Depends(get_current_user))
 
     exps = await db.expenses.find(
         {"household_id": hh["household_id"], "period_id": period["period_id"],
-         "target_type": "household"},
+         "target_type": {"$in": ["household", "custom"]}},
         {"_id": 0},
     ).to_list(5000)
 
@@ -2101,7 +2320,7 @@ async def stats(period_id: Optional[str] = None, user=Depends(get_current_user))
     if previous:
         prev_exps = await db.expenses.find(
             {"household_id": hh["household_id"], "period_id": previous[0]["period_id"],
-             "target_type": "household"},
+             "target_type": {"$in": ["household", "custom"]}},
             {"_id": 0, "total": 1},
         ).to_list(5000)
         prev_total = sum(float(e["total"]) for e in prev_exps)

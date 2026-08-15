@@ -11,12 +11,13 @@ import { useAuth } from "@/src/auth";
 import { useHousehold } from "@/src/household";
 import {
   ScreenHeader, HeaderSplit, TrendBadge, Sheet, Card, Row, Divider, Avatar,
-  Money, IconPill, CategoryIcon, categoryLabel, formatEUR, formatEURShort,
+  Money, IconPill, CategoryIcon, categoryLabel, splitBadge, formatEUR, formatEURShort,
 } from "@/src/ui";
 import { colors, spacing, type as T, overline, fontFamily, metrics, CATEGORY_ICONS } from "@/src/theme";
 
 type Expense = {
   expense_id: string; added_by: string; target_type: string; target_user_id?: string;
+  split_mode?: string; split_with?: Record<string, number> | null;
   total: number; merchant?: string; category?: string; source: string; expense_date?: string;
 };
 type Stats = {
@@ -226,9 +227,7 @@ export default function Panel() {
                 ) : (
                   expenses.slice(0, 5).map((e, i) => {
                     const author = member(e.added_by);
-                    const target = e.target_type === "household" ? "Ev"
-                      : e.target_type === "self" ? "Kendim"
-                      : `→ ${firstName(e.target_user_id)}`;
+                    const target = splitBadge(e, members, user?.user_id).txt;
                     return (
                       <View key={e.expense_id}>
                         <Row

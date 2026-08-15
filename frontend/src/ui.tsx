@@ -13,7 +13,7 @@
 import React from "react";
 import {
   View, Text, Pressable, StyleSheet, ViewStyle, StyleProp, Image, TextStyle,
-  Keyboard, Platform, Modal, Alert,
+  Keyboard, Platform, Modal, Alert, TextInput,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -463,6 +463,289 @@ export function SelectRow<T extends string>({
   );
 }
 
+/* --------------------------------------------------------------- bölüşme */
+
+export type Split = { mode: "equal" | "exact"; with: Record<string, number> };
+
+export type SplitMember = { user_id: string; name: string };
+
+/** Herkes eşit bölüşen liste — yeni harcamanın varsayılanı. */
+export const splitAll = (members: SplitMember[]): Split => ({
+  mode: "equal",
+  with: Object.fromEntries(members.map((m) => [m.user_id, 1])),
+});
+
+/**
+ * Kayıttan bölüşme listesini çıkarır — sunucudaki `split_of()`'un eşi.
+ *
+ * `split_with` alanı yazılmamış eski kayıtlar `target_type`'tan türetiliyor.
+ * Tek yerde durması şart: rozet, düzenleme ekranı ve özet aynı cevabı
+ * vermezse kullanıcı ekranlar arasında farklı bölüşüm görür.
+ */
+export function splitFromExpense(
+  e: {
+    added_by: string; total: number; target_type?: string; target_user_id?: string | null;
+    split_mode?: string; split_with?: Record<string, number> | null;
+  },
+  members: SplitMember[],
+): Split {
+  if (e.split_with && Object.keys(e.split_with).length) {
+    return { mode: e.split_mode === "exact" ? "exact" : "equal", with: { ...e.split_with } };
+  }
+  if (e.target_type === "roommate" && e.target_user_id) {
+    return { mode: "exact", with: { [e.target_user_id]: Number(e.total) } };
+  }
+  if (e.target_type === "self") {
+    return { mode: "exact", with: { [e.added_by]: Number(e.total) } };
+  }
+  return splitAll(members);
+}
+
+/**
+ * Harcama listelerindeki bölüşme rozeti.
+ *
+ * Üç ekran bunu ayrı ayrı hesaplıyordu ve üçü de yalnızca eski üç durumu
+ * biliyordu; "seçili kişiler" hepsinde yanlış etikete düşüyordu.
+ */
+export function splitBadge(
+  e: Parameters<typeof splitFromExpense>[0],
+  members: SplitMember[],
+  meId?: string,
+  /** Başkasının dökümüne bakarken "Kendim" değil "Kendisi" doğru. */
+  selfLabel = "Kendim",
+): { txt: string; color: string; bg: string } {
+  const split = splitFromExpense(e, members);
+  const ids = Object.keys(split.with);
+  if (ids.length === 1 && ids[0] === e.added_by)
+    return { txt: selfLabel, color: colors.onWarning, bg: colors.warningSoft };
+  if (ids.length === 1) {
+    const who = members.find((m) => m.user_id === ids[0])?.name?.split(" ")[0] || "?";
+    return { txt: `→ ${who}`, color: colors.onInfo, bg: colors.infoSoft };
+  }
+  if (ids.length === members.length && members.length > 0)
+    return { txt: "Ev", color: colors.dark, bg: colors.surfaceSecondary };
+  return { txt: splitSummary(split, members, meId), color: colors.accentDark, bg: colors.accentSoft };
+}
+
+const parseAmount = (s: string) => parseFloat((s || "").replace(",", ".")) || 0;
+const showAmount = (n: number) => n.toFixed(2).replace(".", ",");
+
+/** Bölüşme listesini tek satırda özetler: "Tüm ev", "Sen + Salih", "→ Ali". */
+export function splitSummary(split: Split, members: SplitMember[], meId?: string): string {
+  const ids = Object.keys(split.with || {});
+  if (!ids.length) return "Seçilmedi";
+  const suffix = split.mode === "exact" && ids.length > 1 ? " · kişiye özel" : "";
+  if (ids.length === members.length && members.length > 0) return "Tüm ev" + suffix;
+  if (ids.length === 1) {
+    if (ids[0] === meId) return "Sadece ben";
+    const who = members.find((m) => m.user_id === ids[0]);
+    return `→ ${who?.name?.split(" ")[0] || "?"}`;
+  }
+  const names = ids.map((id) =>
+    id === meId ? "Sen" : members.find((m) => m.user_id === id)?.name?.split(" ")[0] || "?"
+  );
+  // Üçten sonra isimler satıra sığmıyor ve okunmuyor; sayı daha bilgilendirici.
+  return (names.length <= 3 ? names.join(" + ") : `${names.length} kişi`) + suffix;
+}
+
+/**
+ * Kimlerin bölüştüğünü seçen alt sayfa.
+ *
+ * Beş durumun hepsi tek ekranda: herkes işaretli = ev, sadece ben = kişisel,
+ * tek kişi = ona ait, bir kısmı = seçili kişiler, "Tutar gir" = kişiye özel.
+ * İki aşamalı bir listeye bölünmedi çünkü fiş inceleme ekranında her kalem
+ * için ayrı ayrı açılıyor — orada her fazladan dokunuş on beşle çarpılıyor.
+ *
+ * Seçim sayfa kapanana kadar yereldedir: yarım kalmış bir tutar girişi
+ * (toplamı tutmayan bölüşüm) dışarıya sızmamalı.
+ */
+export function SplitPicker({
+  label = "BÖLÜŞÜM", value, onChange, members, meId, total, allowExact = true, testID,
+}: {
+  label?: string;
+  value: Split;
+  onChange: (s: Split) => void;
+  members: SplitMember[];
+  meId?: string;
+  total: number;
+  /** Fiş kaleminde kapalı: kalemin fiyatı belli, sorulan tek şey kimler bölüşüyor. */
+  allowExact?: boolean;
+  testID?: string;
+}) {
+  const [open, setOpen] = React.useState(false);
+  const [mode, setMode] = React.useState<Split["mode"]>(value.mode);
+  const [picked, setPicked] = React.useState<string[]>(Object.keys(value.with || {}));
+  const [amounts, setAmounts] = React.useState<Record<string, string>>({});
+  const [err, setErr] = React.useState<string | null>(null);
+  const insets = useSafeAreaInsets();
+
+  const start = () => {
+    const ids = Object.keys(value.with || {});
+    setMode(value.mode);
+    setPicked(ids);
+    setAmounts(
+      Object.fromEntries(
+        members.map((m) => [
+          m.user_id,
+          value.mode === "exact" && value.with[m.user_id] != null
+            ? showAmount(Number(value.with[m.user_id]))
+            : ids.includes(m.user_id) && ids.length
+              ? showAmount(total / ids.length)
+              : "",
+        ])
+      )
+    );
+    setErr(null);
+    setOpen(true);
+  };
+
+  const toggle = (id: string) => {
+    setErr(null);
+    setPicked((p) => {
+      const next = p.includes(id) ? p.filter((x) => x !== id) : [...p, id];
+      // Eşit bölüşmede kişi sayısı değişince önizlenen paylar da değişmeli.
+      if (mode === "equal" && next.length) {
+        setAmounts((a) =>
+          Object.fromEntries(
+            members.map((m) => [m.user_id, next.includes(m.user_id) ? showAmount(total / next.length) : ""])
+          )
+        );
+      }
+      return next;
+    });
+  };
+
+  const switchMode = (m: Split["mode"]) => {
+    setErr(null);
+    setMode(m);
+    if (m === "exact" && picked.length) {
+      // Eşit paylarla doldur: çoğu kira bu rakamların yakınından başlıyor.
+      setAmounts((a) =>
+        Object.fromEntries(
+          members.map((mem) => [
+            mem.user_id,
+            picked.includes(mem.user_id) ? (a[mem.user_id] || showAmount(total / picked.length)) : "",
+          ])
+        )
+      );
+    }
+  };
+
+  const entered = picked.reduce((s, id) => s + parseAmount(amounts[id]), 0);
+  const remaining = Math.round((total - entered) * 100) / 100;
+
+  const confirm = () => {
+    if (!picked.length) { setErr("En az bir kişi seçin"); return; }
+    if (mode === "exact") {
+      if (Math.abs(remaining) > 0.01) {
+        setErr(`Tutarların toplamı ${showAmount(total)} olmalı · ${showAmount(Math.abs(remaining))} ${remaining > 0 ? "eksik" : "fazla"}`);
+        return;
+      }
+      onChange({ mode: "exact", with: Object.fromEntries(picked.map((id) => [id, parseAmount(amounts[id])])) });
+    } else {
+      onChange({ mode: "equal", with: Object.fromEntries(picked.map((id) => [id, 1])) });
+    }
+    setOpen(false);
+  };
+
+  return (
+    <>
+      <Pressable style={styles.selectRow} onPress={start} testID={testID}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.selectLabel}>{label}</Text>
+          <Text style={styles.selectValue}>{splitSummary(value, members, meId)}</Text>
+        </View>
+        <Ionicons name="chevron-down" size={18} color={colors.inkTertiary} />
+      </Pressable>
+
+      <Modal visible={open} transparent animationType="slide" onRequestClose={() => setOpen(false)}>
+        <Pressable style={styles.sheetScrim} onPress={() => setOpen(false)}>
+          <Pressable style={[styles.pickSheet, { paddingBottom: spacing.lg + insets.bottom }]} onPress={() => {}}>
+            <View style={styles.pickGrab} />
+            <View style={styles.splitHead}>
+              <Text style={overline}>KİMLER BÖLÜŞÜYOR?</Text>
+              <Text style={styles.splitTotal}>{formatEUR(total)}</Text>
+            </View>
+
+            {allowExact && (
+              <View style={styles.segment}>
+                {(["equal", "exact"] as const).map((m) => (
+                  <Pressable
+                    key={m}
+                    style={[styles.segBtn, mode === m && styles.segBtnOn]}
+                    onPress={() => switchMode(m)}
+                    testID={testID ? `${testID}-mode-${m}` : undefined}
+                  >
+                    <Text style={[styles.segTxt, mode === m && styles.segTxtOn]}>
+                      {m === "equal" ? "Eşit" : "Tutar gir"}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            )}
+
+            {members.map((m, i) => {
+              const on = picked.includes(m.user_id);
+              return (
+                <React.Fragment key={m.user_id}>
+                  {i > 0 && <View style={[styles.divider, { marginLeft: spacing.lg }]} />}
+                  <Pressable
+                    style={styles.pickRow}
+                    onPress={() => toggle(m.user_id)}
+                    testID={testID ? `${testID}-member-${m.user_id}` : undefined}
+                  >
+                    <Ionicons
+                      name={on ? "checkbox" : "square-outline"}
+                      size={22}
+                      color={on ? colors.accent : colors.inkTertiary}
+                    />
+                    <Text style={[styles.pickLabel, { flex: 1 }, !on && { color: colors.inkTertiary }]}>
+                      {m.name}{m.user_id === meId ? " (sen)" : ""}
+                    </Text>
+                    {!on ? (
+                      <Text style={styles.splitShare}>—</Text>
+                    ) : mode === "exact" ? (
+                      <TextInput
+                        style={styles.splitInput}
+                        value={amounts[m.user_id] ?? ""}
+                        onChangeText={(t) => {
+                          setErr(null);
+                          setAmounts((a) => ({ ...a, [m.user_id]: t.replace(/[^\d.,]/g, "") }));
+                        }}
+                        keyboardType="decimal-pad"
+                        placeholder="0,00"
+                        placeholderTextColor={colors.inkTertiary}
+                        testID={testID ? `${testID}-amount-${m.user_id}` : undefined}
+                      />
+                    ) : (
+                      <Text style={styles.splitShare}>{formatEUR(total / Math.max(picked.length, 1))}</Text>
+                    )}
+                  </Pressable>
+                </React.Fragment>
+              );
+            })}
+
+            <View style={[styles.splitFoot, err ? styles.splitFootErr : null]}>
+              <Text style={[styles.splitFootTxt, err ? styles.splitFootTxtErr : null]}>
+                {err || `${picked.length} kişi bölüşüyor`}
+              </Text>
+              {!err && mode === "exact" && (
+                <Text style={[styles.splitFootTxt, Math.abs(remaining) > 0.01 && styles.splitFootTxtErr]}>
+                  kalan {showAmount(remaining)}
+                </Text>
+              )}
+            </View>
+
+            <Pressable style={styles.splitOk} onPress={confirm} testID={testID ? `${testID}-ok` : undefined}>
+              <Text style={styles.splitOkTxt}>Tamam</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
+    </>
+  );
+}
+
 /* --------------------------------------------------------------- rozetler */
 
 export function Tag({
@@ -677,6 +960,40 @@ const styles = StyleSheet.create({
   },
   pickLabel: { ...T.emph, color: colors.ink },
   pickHint: { ...T.caption, color: colors.inkTertiary, marginTop: 1 },
+  splitHead: {
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    paddingHorizontal: spacing.lg, marginBottom: spacing.md,
+  },
+  splitTotal: { ...T.bodySb, color: colors.ink },
+  segment: {
+    flexDirection: "row", gap: spacing.xs, marginHorizontal: spacing.lg,
+    marginBottom: spacing.sm, backgroundColor: colors.surfaceSecondary,
+    borderRadius: radius.pill, padding: 3,
+  },
+  segBtn: { flex: 1, alignItems: "center", paddingVertical: spacing.sm, borderRadius: radius.pill },
+  segBtnOn: { backgroundColor: colors.dark },
+  segTxt: { ...T.captionSb, color: colors.inkSecondary },
+  segTxtOn: { color: colors.onDark },
+  splitShare: { ...T.captionSb, color: colors.inkSecondary, minWidth: 74, textAlign: "right" },
+  splitInput: {
+    minWidth: 88, textAlign: "right", paddingHorizontal: spacing.sm, paddingVertical: 6,
+    borderRadius: radius.sm, backgroundColor: colors.surfaceSecondary,
+    fontSize: 15, fontFamily: fontFamily.semibold, color: colors.ink,
+  },
+  splitFoot: {
+    flexDirection: "row", justifyContent: "space-between", alignItems: "center",
+    backgroundColor: colors.accentSoft, paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm + 2, marginTop: spacing.sm,
+  },
+  splitFootErr: { backgroundColor: colors.negativeSoft },
+  splitFootTxt: { ...T.captionSb, color: colors.accentDark },
+  splitFootTxtErr: { color: colors.negative },
+  splitOk: {
+    marginHorizontal: spacing.lg, marginTop: spacing.md, minHeight: 50,
+    borderRadius: radius.pill, backgroundColor: colors.brand,
+    alignItems: "center", justifyContent: "center",
+  },
+  splitOkTxt: { ...T.emph, color: colors.onBrand },
   avatar: { alignItems: "center", justifyContent: "center" },
   tag: { paddingHorizontal: spacing.sm + 2, paddingVertical: 3, borderRadius: radius.pill, alignSelf: "flex-start" },
   tagTxt: { fontSize: 11, lineHeight: 14, fontFamily: fontFamily.medium },

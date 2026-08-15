@@ -7,13 +7,14 @@ import { apiGet } from "@/src/api";
 import { useHousehold } from "@/src/household";
 import {
   ScreenHeader, HeaderSplit, Sheet, Card, Divider, Avatar, CategoryIcon,
-  MerchantBadge, Tag, Money, formatEUR, formatDateTR, formatQty,
+  MerchantBadge, Tag, Money, splitBadge, formatEUR, formatDateTR, formatQty,
 } from "@/src/ui";
 import { colors, spacing, type as T, metrics } from "@/src/theme";
 
 type Item = { name: string; price: number; quantity?: number; unit?: string; category: string };
 type Expense = {
   expense_id: string; added_by: string; target_type: string; target_user_id?: string;
+  split_mode?: string; split_with?: Record<string, number> | null;
   total: number; merchant?: string; category?: string; source: string;
   expense_date?: string; created_at: string; items?: Item[]; notes?: string;
 };
@@ -87,11 +88,7 @@ export default function MemberDetail() {
           ) : (
             <Card title="Harcama Detayı">
               {expenses.map((e, idx) => {
-                const targetChip = e.target_type === "household"
-                  ? { txt: "Ev", color: colors.dark, bg: colors.surfaceSecondary }
-                  : e.target_type === "roommate"
-                    ? { txt: `→ ${members.find((m) => m.user_id === e.target_user_id)?.name?.split(" ")[0] || "?"}`, color: colors.onInfo, bg: colors.infoSoft }
-                    : { txt: "Kendisi", color: colors.onWarning, bg: colors.warningSoft };
+                const targetChip = splitBadge(e, members, undefined, "Kendisi");
                 return (
                   <View key={e.expense_id} testID={`md-exp-${e.expense_id}`}>
                     {idx > 0 && <Divider inset={spacing.lg} />}

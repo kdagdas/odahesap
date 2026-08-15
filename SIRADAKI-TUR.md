@@ -1,76 +1,70 @@
-# Sıradaki tur — Tur 4: `{kişi: tutar}` bölüşme modeli
+# Sıradaki tur — Tur 5: Düzenli ödemeler
 
 > Bu dosya yeni bir sohbet penceresine geçerken bağlamı taşımak için yazıldı.
-> Tur 4 bitince silinebilir ya da Tur 5 için yeniden yazılabilir.
+> Tur 5 bitince silinebilir ya da Tur 6 için yeniden yazılabilir.
 >
-> Son durum: **APK v22**, 289 sunucu kontrolü geçiyor, `main` çalışır durumda,
-> `v22` etiketli. Ayrıntı için [PROJE-DOKUMANI.md](PROJE-DOKUMANI.md) §12.
+> Son durum: **APK v23**, 336 sunucu kontrolü geçiyor, `main` çalışır durumda.
+> Ayrıntı için [PROJE-DOKUMANI.md](PROJE-DOKUMANI.md) §12.
 
-## Neden bu tur diğerlerinden farklı
+## Tur 4'ten devralınan zemin
 
-Konuştuğumuz turlar arasında **bakiye motoruna dokunan tek iş** bu. Uygulamanın
-en çok testle korunan ve yanlış giderse en sessiz bozulan yeri
-`_compute_balances()`. Bu yüzden:
+Tur 4 bölüşme modelini değiştirdi ve Tur 5 doğrudan onun üstüne oturuyor:
 
-- Önce **yedek**: `cd backend && .venv/Scripts/python.exe ../tests/yedekle.py`
-- **Ayrı dalda** çalışılacak (`git checkout -b tur4-bolusme`), `main` her an
-  çalışır kalacak
-- Birleştirmeden önce 289 kontrolün tamamı **iki kez** çalıştırılacak
-- Bitince APK
+```
+split_mode "equal"  →  split_with = { user_id: ağırlık }
+split_mode "exact"  →  split_with = { user_id: tutar }
+```
+
+Kira artık **tek kayıt**: `exact` kipinde `{Ali: 350, Bob: 400, Carol: 450}`.
+Düzenli ödemeler bu yapıyı olduğu gibi saklayıp her ay tekrar üretecek — yani
+"kimin ne kadar ödeyeceği" sorusu çözülmüş durumda, kalan tek soru *ne zaman*.
+
+Bilinmesi gerekenler:
+
+- `split_of()` eski kayıtları `target_type`'tan türetir. **Bu yedek yol
+  kaldırılmamalı.**
+- Kişiye özel bölüşüm varken tutarı tek başına değiştirmek 400 döner. Düzenli
+  ödeme şablonundan üretilen kayıt bu kurala takılmamalı: tutar değişiyorsa
+  bölüşüm de birlikte gönderilmeli.
+- Bölüşme listesi kayıt anında donar.
 
 ## Ne yapılacak
 
-### 1. Her harcama kendi katılımcı listesini taşısın
+### 1. Takvim tarihli şablon
 
-Bugün üç ayrı özel durum var: `household`, `self`, `roommate`. Hedef, hepsini
-tek mekanizmaya indirmek:
+**Dönem değil takvim.** Dönem 3 hafta da sürebilir 7 hafta da; elektrik hep
+ayın 15'inde gelir. Şablon `day_of_month` taşımalı, `period_id` değil.
 
-```
-split_with: { user_id: tutar }      # ya da eşit bölüşmede { user_id: ağırlık }
-```
+Alanlar: ad, tutar, `split_mode` + `split_with`, kategori, market, ayın kaçı,
+"tutarı sabit mi" (kira sabit, elektrik değişken).
 
-- Tüm ev → listede herkes
-- Kendim → listede sadece ben
-- Bir kişiye → listede sadece o kişi
-- **Seçili kişiler** → listede seçilenler  ← yeni
-- **Kişiye özel tutarlar** → 350 / 400 / 450  ← yeni
+### 2. Vadesi gelince onay — **asla sessizce ekleme**
 
-**Göç:** mevcut kayıtlarda bu alan yok. Ya geriye dönük doldurulacak ya da
-alan yoksa `target_type`'tan türeten bir yedek yol bırakılacak. Tavsiye:
-yedek yol + tek seferlik dolum betiği (`tests/donem-katilimci-doldur.py`
-aynı deseni kullanıyor, örnek olarak bakılabilir).
+Yanlış eklenen bir kira, arkadaşlar arasında yanlış borç demek. Vade gelince
+üç seçenek: **Onayla / Düzenle / Sonra**.
 
-### 2. Kira üç senaryo demek
+- Ev gideri: biri onaylar, diğerlerine bildirim gider
+- Kişisel: herkes kendisininkini onaylar
 
-- **(a) Herkes kendi kirasını ev sahibine öder** → kişisel harcama.
-  Bugün de çalışıyor, hiçbir şey gerekmiyor.
-- **(b) Kira eşit bölüşülür, bir kişi öder** → normal ev harcaması.
-  Bugün de çalışıyor.
-- **(c) Farklı tutarlar, bir kişi toplar** → 1200 € ödeyen kişinin yaptığı,
-  şu üçünün toplamı: kendi payı (`self`) + A için ödediği (`roommate`) +
-  B için ödediği (`roommate`). **Üçü de bugün var.** Yani hesap motoruna
-  dokunmadan çıkarılabilir; gereken tek şey bunları tek satır gibi göstermek
-  (kayıtlara ortak bir etiket koyup arayüzde gruplamak).
+"Tutarı sabit" olanlarda bile onay istenmeli; sadece varsayılan tutar dolu
+gelir.
 
-Bu, turun en önemli bulgusu: **`_compute_balances` değişmeyebilir.**
+### 3. Nerede duracak
 
-### 3. Kişi seçim penceresi
+Anasayfa'da vadesi gelmiş şablonlar için bir şerit, şablon yönetimi
+**Ev ayarları** altında (ortak) + **Profil** altında (kişisel) — Tur 3'te
+konan kural: "bu kime ait?" sorusu yeri belirler.
 
-Yatay çip şeridi çoklu seçime uygun değil. Alttan açılan, çoklu seçim yapılan
-bir pencere gerekiyor. `src/ui.tsx` içindeki `SelectRow` deseni örnek alınabilir
-(Modal + alt sayfa + kilit/işaret desteği zaten var).
+## Tur 4'te bilinçli olarak yapılmayanlar
 
-### 4. Evden ayrılma akışı
-
-Bugünkü kural: açık dönemde harcaması olan üye çıkarılamıyor, önce dönem
-kapatılmalı. Ama dönem kapatmak **herkesi** etkiliyor — bir kişinin taşınması
-yüzünden kalan üçünün defteri kapanıyor.
-
-Doğrusu: ayrılan kişinin **kendi** hesabı kapansın (net bakiyesi hesaplanıp
-ödenecek borç olarak dondurulsun), kalanların dönemi hiç bozulmadan devam etsin.
-`split_with` geldiğinde bu kendiliğinden kolaylaşıyor: ayrılan kişi sadece
-**yeni** harcamaların listesine girmemeye başlar, eski harcamalardaki payı
-zaten o harcamanın içinde yazılı olduğu için hiçbir şey yeniden hesaplanmaz.
+- **Evden ayrılma akışı değişmedi.** Kişi bazlı bakiye dondurma ("evde değil
+  ama borçlu üye") Kasa, üye listesi, bildirimler ve dönem kapatmanın hepsine
+  üçüncü bir durum ekliyor — yılda bir olan bir olay için kalıcı karmaşıklık.
+  "Dönemi kapat ve çıkar" tek düğmesi de konmadı: dönem kapatmak "bakiyeler
+  arşivlendi, bu rakamlar ödendi" demek, kolay basılan bir düğme insanları
+  ödeşmeden arşivlemeye iter. Doğru sıra: Kasa'dan ödeş → dönemi kapat → çıkar.
+- **Fiş kaleminde "Tutar gir" kapalı.** Kalemin fiyatı zaten belli; üçüncü bir
+  tutar sorusu fiş başına on beş kez karşıya çıkardı.
 
 ## Bilinmesi gereken tuzaklar
 
@@ -86,5 +80,5 @@ zaten o harcamanın içinde yazılı olduğu için hiçbir şey yeniden hesaplan
 ```
 D:\SettleUp\OdaHesap üzerinde çalışıyoruz. Önce şu üç dosyayı oku:
 SIRADAKI-TUR.md, PROJE-DOKUMANI.md, DEVAM.md.
-Sonra Tur 4'e başla.
+Sonra Tur 5'e başla.
 ```
