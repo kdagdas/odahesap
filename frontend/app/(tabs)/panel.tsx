@@ -3,6 +3,7 @@
 import { useCallback, useState } from "react";
 import { View, Text, StyleSheet, ScrollView, RefreshControl, Pressable, ActivityIndicator } from "react-native";
 import { useRouter, useFocusEffect } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 import Svg, { Circle } from "react-native-svg";
 
 import { apiGet } from "@/src/api";
@@ -65,28 +66,31 @@ function Donut({ parts, size = 108, stroke = 9 }: {
 
 export default function Panel() {
   const { user } = useAuth();
-  const { household, members, pendingMembers, refresh: refreshHH } = useHousehold();
+  const { household, members, refresh: refreshHH } = useHousehold();
   const router = useRouter();
   const [stats, setStats] = useState<Stats | null>(null);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [totalsPaid, setTotalsPaid] = useState<Record<string, number>>({});
   const [shopping, setShopping] = useState<ShopItem[]>([]);
+  const [unread, setUnread] = useState(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      const [st, exp, bal, shop] = await Promise.all([
+      const [st, exp, bal, shop, ntf] = await Promise.all([
         apiGet<Stats>("/stats"),
         apiGet<{ expenses: Expense[] }>("/expenses"),
         apiGet<any>("/balances"),
         apiGet<{ items: ShopItem[] }>("/shopping?scope=household"),
+        apiGet<{ unread: number }>("/notifications"),
         refreshHH(),
       ]);
       setStats(st);
       setExpenses(exp.expenses || []);
       setTotalsPaid(bal.totals_paid || {});
       setShopping((shop.items || []).filter((i) => !i.done));
+      setUnread(ntf.unread || 0);
     } catch (e) { console.log(e); }
     finally { setLoading(false); setRefreshing(false); }
   }, [refreshHH]);
@@ -114,12 +118,16 @@ export default function Panel() {
           overline="EV"
           title={household?.name || "—"}
           right={
-            <Pressable onPress={() => router.push("/(tabs)/profil")} testID="open-settings-btn">
-              <Avatar name={user?.name} size={42} avatarId={user?.avatar_id}
-                      userId={user?.user_id} photoVersion={(user as any)?.photo_version} />
-              {pendingMembers.length > 0 && (
-                <View style={styles.badge} testID="pending-approvals-badge">
-                  <Text style={styles.badgeTxt}>{pendingMembers.length}</Text>
+            /* Avatar buradan kaldırıldı: alt menüdeki Profil sekmesi zaten aynı
+               yere gidiyordu, iki kapı "ayarları nereden açmıştım" sorusunu
+               doğuruyordu. Zil ise kimsenin yapmadığı bir işi yapıyor —
+               kaçırılan bildirimlere bakmak. */
+            <Pressable onPress={() => router.push("/aktivite")} testID="open-activity-btn"
+                       style={styles.bellBtn} hitSlop={8}>
+              <Ionicons name="notifications-outline" size={20} color={colors.onDark} />
+              {unread > 0 && (
+                <View style={styles.badge} testID="activity-badge">
+                  <Text style={styles.badgeTxt}>{unread > 9 ? "9+" : unread}</Text>
                 </View>
               )}
             </Pressable>
@@ -252,6 +260,10 @@ const styles = StyleSheet.create({
   mx: { marginHorizontal: spacing.lg },
   heroLabel: { ...overline, color: colors.onDarkMuted },
   heroValue: { ...T.hero, color: colors.onDark, marginTop: spacing.xs },
+  bellBtn: {
+    width: 42, height: 42, borderRadius: 21, backgroundColor: colors.darkSurface,
+    alignItems: "center", justifyContent: "center",
+  },
   badge: {
     position: "absolute", top: -3, right: -3, minWidth: 20, height: 20, borderRadius: 10,
     backgroundColor: colors.negative, alignItems: "center", justifyContent: "center",

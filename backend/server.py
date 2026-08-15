@@ -318,9 +318,27 @@ async def notify(user_ids: Iterable[str], title: str, body: str,
     Never raises: a failed notification must not fail the action that caused
     it. Dead tokens are pruned using what FCM reports back.
     """
+    ids = [u for u in dict.fromkeys(user_ids) if u]
+    if not ids:
+        return
+
+    # Bildirim kaydı push'tan bağımsız yazılıyor: telefon kapalıysa, jeton
+    # ölmüşse ya da FCM hiç yapılandırılmamışsa bile "ben yokken ne oldu"
+    # sorusunun bir cevabı olmalı. Push kaybolur, kayıt kalır.
+    now = now_utc()
+    await db.notifications.insert_many([{
+        "notification_id": new_id("ntf"),
+        "user_id": uid,
+        "title": title,
+        "body": body,
+        "kind": kind,
+        "data": data or {},
+        "read": False,
+        "created_at": now,
+    } for uid in ids])
+
     try:
-        ids = [u for u in dict.fromkeys(user_ids) if u]
-        if not ids or not push.is_configured():
+        if not push.is_configured():
             return
 
         users = await db.users.find(
@@ -345,6 +363,29 @@ async def notify(user_ids: Iterable[str], title: str, body: str,
             await db.devices.delete_many({"token": {"$in": result["invalid_tokens"]}})
     except Exception:
         logger.exception("Bildirim gonderilemedi (islem etkilenmedi)")
+
+
+@api.get("/notifications")
+async def list_notifications(user=Depends(get_current_user)):
+    """Ben yokken ne oldu.
+
+    Bildirim gelip kaçırıldığında geriye bakacak bir yer yoktu; telefonu
+    kapalı olan ya da bildirimleri kapatmış biri olan bitenden habersiz
+    kalıyordu.
+    """
+    rows = await db.notifications.find(
+        {"user_id": user["user_id"]}, {"_id": 0}
+    ).sort("created_at", -1).to_list(60)
+    unread = sum(1 for r in rows if not r.get("read"))
+    return {"notifications": rows, "unread": unread}
+
+
+@api.post("/notifications/read")
+async def mark_notifications_read(user=Depends(get_current_user)):
+    await db.notifications.update_many(
+        {"user_id": user["user_id"], "read": False}, {"$set": {"read": True}}
+    )
+    return {"ok": True}
 
 
 async def require_admin(user_id: str) -> dict:
