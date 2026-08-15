@@ -9,6 +9,7 @@ from datetime import datetime, timezone, timedelta, date
 from pathlib import Path
 import asyncio
 import base64
+import difflib
 import os
 import uuid
 import random
@@ -1107,7 +1108,7 @@ async def create_expense(body: ExpenseCreate, user=Depends(get_current_user)):
         "total": round(body.total, 2),
         "source": body.source,
         "category": body.category,
-        "merchant": body.merchant,
+        "merchant": await resolve_merchant(hh["household_id"], body.merchant),
         "notes": body.notes,
         "currency": body.currency,
         "expense_date": parse_date(body.expense_date) or now_utc().strftime("%Y-%m-%d"),
@@ -1227,6 +1228,182 @@ async def _get_editable_expense(expense_id: str, user: dict) -> dict:
     return doc
 
 
+# Kimin payını değiştiren alanlar. Nottaki bir yazım hatası kimseyi
+# ilgilendirmiyor; telefon her düzeltmede titrerse insanlar bildirimleri
+# kapatır ve asıl önemli olanı da kaçırır.
+MATERIAL_FIELDS = ("total", "target_type", "target_user_id")
+
+
+# Fişin üstündeki ticari unvan ekleri. "BIM BIRLESIK MAGAZALAR A.Ş." ile
+# "BİM" aynı market; bunlar temizlenmezse istatistikte iki ayrı satır oluyor.
+LEGAL_SUFFIXES = (
+    "a.ş.", "a.ş", "as", "aş", "ltd. şti.", "ltd.şti.", "ltd şti", "ltd.", "ltd",
+    "şti.", "şti", "san. ve tic.", "san.ve tic.", "san. tic.", "sanayi ve ticaret",
+    "ticaret", "tic.", "tic", "gmbh & co. kg", "gmbh & co kg", "gmbh", "mbh",
+    "kg", "ag", "e.k.", "ek", "ohg", "gbr", "se", "inc.", "inc", "b.v.", "bv",
+)
+
+
+# Bilinen zincirler. Fişin üstünde tam ticari unvan yazıyor
+# ("BİM BİRLEŞİK MAĞAZALAR A.Ş."), insanların kullandığı ad ise kısa olanı.
+# Benzerlik ölçümü bunu çözemez — iki metin gerçekten farklı; markayı bilmek
+# gerekiyor. Ekrandaki marka renkleri de bu adlarla eşleşiyor.
+KNOWN_MERCHANTS = (
+    # Türkiye
+    "BİM", "A101", "ŞOK", "Migros", "CarrefourSA", "Macrocenter", "Tarım Kredi",
+    "File", "Hakmar", "Onur Market", "Metro",
+    # Almanya
+    "REWE", "EDEKA", "ALDI", "LIDL", "PENNY", "KAUFLAND", "NETTO", "NORMA",
+    "DM", "ROSSMANN", "ACTION", "TEDi", "BAUHAUS", "OBI", "HORNBACH", "IKEA",
+)
+
+# Türkçe harfleri karşılaştırma için sadeleştir. `.lower()` Türkçe'de
+# güvenilmez ("İ" iki kod noktasına açılıyor) ve OCR aynı harfi her seferinde
+# aynı yazmıyor; katlayınca "BİM" ile "BIM" aynı anahtara düşüyor.
+_FOLD = str.maketrans({
+    "ğ": "g", "Ğ": "g", "ü": "u", "Ü": "u", "ş": "s", "Ş": "s",
+    "ı": "i", "I": "i", "İ": "i", "ö": "o", "Ö": "o", "ç": "c", "Ç": "c",
+    "ä": "a", "Ä": "a", "ß": "ss",
+})
+
+
+def normalize_merchant(name: Optional[str]) -> Optional[str]:
+    """Fiş üstündeki market adını karşılaştırılabilir bir anahtara indirger.
+
+    Yalnızca eşleştirme için kullanılır; kullanıcıya gösterilen ad bozulmaz.
+    """
+    if not name:
+        return None
+    s = str(name).translate(_FOLD).lower()
+    s = s.replace("&", " ").replace(".", ". ")
+    s = " ".join(s.split())
+    changed = True
+    while changed:
+        changed = False
+        for suf in LEGAL_SUFFIXES:
+            if s.endswith(" " + suf):
+                s = s[: -len(suf) - 1].strip()
+                changed = True
+    s = "".join(ch for ch in s if ch.isalnum() or ch.isspace())
+    return " ".join(s.split()) or None
+
+
+def canonical_brand(name: Optional[str]) -> Optional[str]:
+    """Ad bilinen bir zincirle başlıyorsa markanın kendi yazımını döndür."""
+    key = normalize_merchant(name)
+    if not key:
+        return None
+    for brand in KNOWN_MERCHANTS:
+        bk = normalize_merchant(brand)
+        if bk and (key == bk or key.startswith(bk + " ")):
+            return brand
+    return None
+
+
+def match_known_merchant(name: Optional[str], known: List[str]) -> Optional[str]:
+    """Evde daha önce kullanılmış bir markete yeterince benziyorsa onu döndür.
+
+    "Bizim Fleisher GmbH" ile "Bizim Fleischer" tek harf farkıyla aynı yer.
+    Yapay zekâya sormuyoruz: bu iş kütüphanesiz, bedava ve her seferinde aynı
+    sonucu veriyor — kullanıcı sayısı arttıkça jeton maliyeti de doğurmuyor.
+    """
+    if not name:
+        return None
+    key = normalize_merchant(name)
+    if not key:
+        return None
+    best, best_score = None, 0.0
+    for k in known:
+        other = normalize_merchant(k)
+        if not other:
+            continue
+        if other == key:
+            return k
+        score = difflib.SequenceMatcher(None, key, other).ratio()
+        if score > best_score:
+            best, best_score = k, score
+    # 0.88: "bizim fleisher" ↔ "bizim fleischer" 0.96 veriyor, "rewe" ↔ "penny"
+    # 0.2'de kalıyor. Eşiği düşürmek gerçekten farklı dükkânları birleştirir.
+    return best if best_score >= 0.88 else None
+
+
+async def resolve_merchant(household_id: str, name: Optional[str]) -> Optional[str]:
+    """Girilen market adını tek bir yazıma indirger.
+
+    Önce bilinen zincir listesi, sonra evin kendi geçmişi. Sıra önemli: zincir
+    listesi kesin bilgi, benzerlik ölçümü tahmin.
+    """
+    clean = (name or "").strip() or None
+    if not clean:
+        return None
+    brand = canonical_brand(clean)
+    if brand:
+        return brand
+    known = await db.expenses.distinct("merchant", {"household_id": household_id})
+    return match_known_merchant(clean, [k for k in known if k]) or clean
+
+
+async def _record_revision(before: dict, patch: dict, user: dict, action: str) -> None:
+    """Harcamanın eski hâlini sakla. Kayıtlar küçük, geçmiş geri gelmez."""
+    changes = {
+        k: {"eski": before.get(k), "yeni": patch[k]}
+        for k in patch
+        if k != "updated_at" and before.get(k) != patch[k]
+    }
+    if action == "edit" and not changes:
+        return
+    await db.expense_revisions.insert_one({
+        "revision_id": new_id("rev"),
+        "expense_id": before["expense_id"],
+        "household_id": before["household_id"],
+        "period_id": before.get("period_id"),
+        "action": action,
+        "by": user["user_id"],
+        "by_name": user.get("name"),
+        "changes": changes,
+        # Silmede eski hâlin tamamı lazım: kayıt gitti, geriye yalnızca bu kalıyor.
+        "snapshot": before if action == "delete" else None,
+        "created_at": now_utc(),
+    })
+
+
+async def _notify_expense_change(before: dict, patch: dict, user: dict, action: str) -> None:
+    """Tutarı ya da kime ait olduğunu değiştiren düzenlemeyi ilgililere duyur."""
+    if action == "edit" and not any(
+        k in patch and patch[k] != before.get(k) for k in MATERIAL_FIELDS
+    ):
+        return
+
+    hh = await db.households.find_one({"household_id": before["household_id"]}, {"_id": 0})
+    if not hh:
+        return
+
+    target_type = patch.get("target_type", before.get("target_type"))
+    target_user = patch.get("target_user_id", before.get("target_user_id"))
+    if target_type == "household":
+        audience = [m for m in hh["member_ids"] if m != user["user_id"]]
+    elif target_type == "roommate" and target_user:
+        audience = [target_user]
+    else:
+        audience = []           # kişisel harcama kimseyi ilgilendirmiyor
+    # Harcama başkasına devredildiyse eski taraf da haberdar olmalı.
+    old_target = before.get("target_user_id")
+    if old_target and old_target != target_user and old_target != user["user_id"]:
+        audience.append(old_target)
+    audience = [a for a in dict.fromkeys(audience) if a != user["user_id"]]
+    if not audience:
+        return
+
+    label = before.get("merchant") or before.get("category") or "Harcama"
+    total = patch.get("total", before.get("total", 0))
+    amount = f"{float(total):.2f}".replace(".", ",")
+    if action == "delete":
+        title, msg = "Harcama silindi", f"{user['name']} · {label} · {amount} € kaydını sildi"
+    else:
+        title, msg = "Harcama güncellendi", f"{user['name']} · {label} · artık {amount} €"
+    await notify(audience, title, msg, "new_expense", {"expense_id": before["expense_id"]})
+
+
 @api.patch("/expenses/{expense_id}")
 async def update_expense(expense_id: str, body: ExpenseUpdate, user=Depends(get_current_user)):
     doc = await _get_editable_expense(expense_id, user)
@@ -1255,7 +1432,9 @@ async def update_expense(expense_id: str, body: ExpenseUpdate, user=Depends(get_
             raise HTTPException(status_code=400, detail="Tutar sıfırdan büyük olmalı")
         patch["total"] = round(body.total, 2)
     if body.merchant is not None:
-        patch["merchant"] = body.merchant.strip() or None
+        # Düzenleme yolunda da çalışması şart: yalnızca kayıtta normalleştirseydik
+        # aynı adı elle yazan kullanıcı yine ayrı bir market yaratırdı.
+        patch["merchant"] = await resolve_merchant(hh["household_id"], body.merchant)
     if body.category is not None:
         patch["category"] = body.category.strip() or None
     if body.notes is not None:
@@ -1269,15 +1448,69 @@ async def update_expense(expense_id: str, body: ExpenseUpdate, user=Depends(get_
     if patch:
         patch["updated_at"] = now_utc()
         await db.expenses.update_one({"expense_id": expense_id}, {"$set": patch})
+        await _record_revision(doc, patch, user, "edit")
+        await _notify_expense_change(doc, patch, user, "edit")
     updated = await db.expenses.find_one({"expense_id": expense_id}, {"_id": 0})
     return {"expense": updated}
 
 
 @api.delete("/expenses/{expense_id}")
 async def delete_expense(expense_id: str, user=Depends(get_current_user)):
-    await _get_editable_expense(expense_id, user)
+    doc = await _get_editable_expense(expense_id, user)
     await db.expenses.delete_one({"expense_id": expense_id})
+    await _record_revision(doc, {}, user, "delete")
+    await _notify_expense_change(doc, {}, user, "delete")
     return {"ok": True}
+
+
+@api.get("/expenses/duplicate-check")
+async def duplicate_check(
+    total: float,
+    expense_date: Optional[str] = None,
+    merchant: Optional[str] = None,
+    user=Depends(get_current_user),
+):
+    """Bu fiş zaten kayıtlı mı?
+
+    Dosya karşılaştırması işe yaramıyor: aynı fişi iki kez çeken kişi iki
+    farklı fotoğraf üretir. Fişin kendisine bakmak gerekiyor — market, tarih
+    ve toplam üçlüsü. Engellemiyor, yalnızca uyarıyor: aynı gün aynı marketten
+    aynı tutarda iki alışveriş gerçekten olur.
+    """
+    hh = await get_user_household(user["user_id"])
+    if not hh:
+        return {"duplicates": []}
+    day = parse_date(expense_date) if expense_date else None
+    q: dict = {
+        "household_id": hh["household_id"],
+        "total": {"$gte": round(total - 0.01, 2), "$lte": round(total + 0.01, 2)},
+    }
+    if day:
+        q["expense_date"] = day
+    rows = await db.expenses.find(q, {"_id": 0}).to_list(50)
+    if merchant and merchant.strip():
+        # Kayıtlı adlar zaten tek yazıma indirgenmiş; sorguyu da aynı yoldan
+        # geçirmezsek "Bizim Fleisher GmbH" ile "Bizim Fleischer" eşleşmiyordu.
+        key = normalize_merchant(await resolve_merchant(hh["household_id"], merchant))
+        rows = [r for r in rows if normalize_merchant(r.get("merchant")) == key]
+    return {"duplicates": rows[:5]}
+
+
+@api.get("/expenses/{expense_id}/revisions")
+async def expense_revisions(expense_id: str, user=Depends(get_current_user)):
+    """Bir harcamanın düzenleme geçmişi.
+
+    Ev harcamasını yalnızca ekleyen kişi değiştirebiliyor; herkesin payını
+    etkileyen bir tutar sessizce büyümesin diye kim neyi ne zaman değiştirdi
+    kayıtta duruyor.
+    """
+    hh = await get_user_household(user["user_id"])
+    if not hh:
+        raise HTTPException(status_code=404, detail="Ev bulunamadı")
+    rows = await db.expense_revisions.find(
+        {"expense_id": expense_id, "household_id": hh["household_id"]}, {"_id": 0}
+    ).sort("created_at", -1).to_list(100)
+    return {"revisions": rows}
 
 
 # ---------- Shopping list ----------
