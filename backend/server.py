@@ -124,6 +124,15 @@ class MemberActionReq(BaseModel):
     user_id: str
 
 
+class ApproveReq(BaseModel):
+    user_id: str
+    # Bölüşme listesi kayıt anında donduğu için yeni üye kendiliğinden geçmiş
+    # harcamalara girmiyor. Ama gerçek hayatta girmesi gereken bir durum var:
+    # kişi fiziksel olarak dönem başından beri evde, uygulamaya sonradan
+    # katıldı. Karar kullanıcınındır, varsayılan "katılmasın".
+    include_open_period: bool = False
+
+
 class ExpenseItem(BaseModel):
     name: str
     price: float  # unit price in EUR
@@ -804,10 +813,42 @@ async def remove_member(body: MemberActionReq, user=Depends(get_current_user)):
 
 
 @api.post("/households/approve")
-async def approve_member(body: MemberActionReq, user=Depends(get_current_user)):
+async def approve_member(body: ApproveReq, user=Depends(get_current_user)):
     hh = await require_admin(user["user_id"])
     if body.user_id not in hh.get("pending_member_ids", []):
         raise HTTPException(status_code=404, detail="Bekleyen üye bulunamadı")
+
+    active = await get_active_period(hh["household_id"])
+    joined = 0
+    if active:
+        # Listesi yazılmamış eski kayıtlar burada dondurulıyor — ÜYE EKLENMEDEN
+        # ÖNCE, yani liste katılımdan önceki kadroyu gösteriyor. Yapılmazsa
+        # bu kayıtlar her hesaplamada o günkü üye listesine bölünmeye devam
+        # eder ve "kat / katma" sorusunun cevabı onlarda hiç uygulanmazdı.
+        legacy = await db.expenses.find(
+            {"household_id": hh["household_id"], "period_id": active["period_id"],
+             "split_with": {"$in": [None, {}]}},
+            {"_id": 0, "expense_id": 1, "added_by": 1, "total": 1,
+             "target_type": 1, "target_user_id": 1},
+        ).to_list(5000)
+        for e in legacy:
+            mode, sw = split_of(e, hh["member_ids"])
+            await db.expenses.update_one(
+                {"expense_id": e["expense_id"]},
+                {"$set": {"split_mode": mode, "split_with": sw}},
+            )
+
+        if body.include_open_period:
+            # Yalnızca eşit bölüşülen EV harcamaları. Kişiye özel tutarlara
+            # dokunmak toplamı bozar; ikili ve kişisel harcamalar zaten yeni
+            # üyeyi ilgilendirmiyor.
+            res = await db.expenses.update_many(
+                {"household_id": hh["household_id"], "period_id": active["period_id"],
+                 "target_type": "household", "split_mode": "equal"},
+                {"$set": {f"split_with.{body.user_id}": 1.0}},
+            )
+            joined = res.modified_count
+
     await db.households.update_one(
         {"household_id": hh["household_id"]},
         {
@@ -817,7 +858,6 @@ async def approve_member(body: MemberActionReq, user=Depends(get_current_user)):
     )
     # Yeni üye yalnızca AÇIK döneme yazılır. Kapalı dönemlerin listesi dondu;
     # bugün eve katılan biri aylar önce kapanmış bir hesaba karışmamalı.
-    active = await get_active_period(hh["household_id"])
     if active:
         await db.periods.update_one(
             {"period_id": active["period_id"]},
@@ -830,7 +870,7 @@ async def approve_member(body: MemberActionReq, user=Depends(get_current_user)):
         "join_request",
         {"household_id": hh["household_id"]},
     )
-    return {"ok": True}
+    return {"ok": True, "joined_expenses": joined}
 
 
 @api.post("/households/reject")

@@ -164,6 +164,36 @@ r = add(alice, split_mode="equal",
 check("yeni harcama dorde bolundu", near(net_of(alice)[dave_id], -10.0), net_of(alice))
 
 
+print("\n-- 6b. 'gecmise de kat' secenegi --")
+# Kisi donem basindan beri fiziksel olarak evde, uygulamaya sonradan katildi.
+# Yonetici onaylarken acik donemin ev harcamalarini da ustlenmesini secebiliyor.
+e3, e3_id = reg("kat")
+r = c.post(f"{API}/households", headers=hdr(e3), json={"name": f"Kat Ev {TAG}"})
+inv3 = r.json()["household"]["invite_code"]
+g3, g3_id = reg("katdost")
+add(e3, split_mode="equal", split_with={e3_id: 1}, total=60.0)  # tek kisilik ev
+before_count = c.get(f"{API}/households/me", headers=hdr(e3)).json()["open_expense_count"]
+check("acik donem ev harcamasi sayiliyor", before_count == 1, before_count)
+
+c.post(f"{API}/households/join", headers=hdr(g3), json={"invite_code": inv3})
+r = c.post(f"{API}/households/approve", headers=hdr(e3),
+           json={"user_id": g3_id, "include_open_period": True})
+check("gecmise kat secenegi kabul edildi", r.status_code == 200, r.text[:160])
+check("1 harcamaya eklendi", r.json().get("joined_expenses") == 1, r.text[:160])
+n = net_of(e3)
+check("60 EUR ikiye bolundu", near(n[e3_id], 30.0) and near(n[g3_id], -30.0), n)
+
+# Ayni ev, ikinci katilim: bu kez katilmasin.
+h3, h3_id = reg("katdost2")
+c.post(f"{API}/households/join", headers=hdr(h3), json={"invite_code": inv3})
+r = c.post(f"{API}/households/approve", headers=hdr(e3),
+           json={"user_id": h3_id, "include_open_period": False})
+check("katilmasin secenegi kabul edildi", r.status_code == 200, r.text[:160])
+n = net_of(e3)
+check("ucuncu kisi gecmise girmedi", near(n.get(h3_id, 0), 0.0), n)
+check("ilk ikisinin payi degismedi", near(n[e3_id], 30.0) and near(n[g3_id], -30.0), n)
+
+
 print("\n-- 7. duzenleme --")
 r = c.patch(f"{API}/expenses/{kira['expense_id']}", headers=hdr(bob), json={
     "split_mode": "exact", "split_with": {alice_id: 300.0, bob_id: 400.0, carol_id: 500.0}})
@@ -204,7 +234,7 @@ check("eski self dengeye girmedi", near(sum(n.values()), 0.0), n)
 
 
 print("\n-- temizlik --")
-for tok in (alice, bob, carol, dave, e2, f2):
+for tok in (alice, bob, carol, dave, e2, f2, e3, g3, h3):
     c.post(f"{API}/households/leave", headers=hdr(tok))
     c.post(f"{API}/auth/logout", headers=hdr(tok))
 

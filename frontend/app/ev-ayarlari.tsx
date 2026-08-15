@@ -9,7 +9,7 @@
 import { useCallback, useState } from "react";
 import {
   View, Text, StyleSheet, ScrollView, Pressable, Share, Platform,
-  ActivityIndicator, TextInput,
+  ActivityIndicator, TextInput, Alert,
 } from "react-native";
 import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -100,10 +100,31 @@ export default function EvAyarlari() {
     }
   };
 
-  const approve = async (userId: string) => {
+  const doApprove = async (userId: string, includeOpen: boolean) => {
     setBusy(userId);
-    try { await apiPost("/households/approve", { user_id: userId }); await refresh(); }
-    finally { setBusy(null); }
+    try {
+      await apiPost("/households/approve", { user_id: userId, include_open_period: includeOpen });
+      await refresh();
+    } finally { setBusy(null); }
+  };
+
+  /**
+   * Bölüşme listesi kayıt anında donuyor, yani yeni üye kendiliğinden geçmiş
+   * harcamalara girmiyor. Ama gerçek durum bunun tersi olabiliyor: kişi dönem
+   * başından beri evde, uygulamaya sonradan katıldı. Karar sorulmalı — sessiz
+   * bir varsayım iki yönde de yanlış borç üretir.
+   */
+  const approve = (userId: string, name: string) => {
+    if (openExpenseCount <= 0) { doApprove(userId, false); return; }
+    Alert.alert(
+      `${name.split(" ")[0]} eve katılıyor`,
+      `Açık dönemde ${openExpenseCount} ev harcaması var. Bunların payını da üstlensin mi?`,
+      [
+        { text: "Vazgeç", style: "cancel" },
+        { text: "Sadece bundan sonrası", onPress: () => doApprove(userId, false) },
+        { text: `${openExpenseCount} harcamaya da kat`, onPress: () => doApprove(userId, true) },
+      ],
+    );
   };
   const reject = async (userId: string) => {
     setBusy(userId);
@@ -158,11 +179,10 @@ export default function EvAyarlari() {
               <Card title={`Onay Bekleyenler (${pendingMembers.length})`}>
                 {openExpenseCount > 0 && (
                   <View style={styles.warnBox} testID="mid-period-join-warning">
-                    <Ionicons name="alert-circle" size={16} color={colors.onWarning} />
+                    <Ionicons name="information-circle" size={16} color={colors.onWarning} />
                     <Text style={styles.warnBoxTxt}>
-                      Açık dönemde {openExpenseCount} ev harcaması var. Onaylarsan yeni üye
-                      bunların da payını üstlenir. Taşınmadan önceki harcamalara karışmasın
-                      istiyorsan önce Kasa'dan dönemi kapat.
+                      Açık dönemde {openExpenseCount} ev harcaması var. Onaylarken yeni üyenin
+                      bunların payını üstlenip üstlenmeyeceği sorulacak.
                     </Text>
                   </View>
                 )}
@@ -184,7 +204,7 @@ export default function EvAyarlari() {
                                      testID={`reject-${p.user_id}`}>
                             <Ionicons name="close" size={18} color={colors.negative} />
                           </Pressable>
-                          <Pressable style={styles.approveBtn} onPress={() => approve(p.user_id)}
+                          <Pressable style={styles.approveBtn} onPress={() => approve(p.user_id, p.name)}
                                      testID={`approve-${p.user_id}`}>
                             <Ionicons name="checkmark" size={18} color={colors.onDark} />
                           </Pressable>
