@@ -1391,10 +1391,12 @@ def resolve_split(body, payer: str, total: float, member_ids: List[str],
         mode = body.split_mode or "equal"
         allowed = list(dict.fromkeys(list(member_ids) + [payer]))
         return mode, validate_split(mode, body.split_with, total, allowed)
-    if body.target_type is not None or fallback is None:
-        return _split_from_target(
-            body.target_type, body.target_user_id, payer, total, member_ids
-        )
+    # `target_type` yalnızca harcama gövdelerinde var. Düzenli gider şablonu
+    # gibi yalnızca `split_with` taşıyan gövdelerde alan hiç bulunmuyor.
+    tt = getattr(body, "target_type", None)
+    tu = getattr(body, "target_user_id", None)
+    if tt is not None or fallback is None:
+        return _split_from_target(tt, tu, payer, total, member_ids)
     # Ne liste ne etiket geldi: düzenlemede bölüşmeye dokunulmamış demektir.
     stored = fallback.get("split_with")
     if not (isinstance(stored, dict) and stored):
@@ -2450,6 +2452,324 @@ async def balances(period_id: Optional[str] = None, user=Depends(get_current_use
     return result
 
 
+# ---------- Düzenli ödemeler ----------
+# Kira, elektrik, internet: her ay tekrar eden giderler.
+#
+# **Takvim tarihli, dönem değil.** Dönem üç hafta da sürebilir yedi hafta da;
+# elektrik faturası hep ayın 15'inde gelir. Şablon `day_of_month` taşır.
+#
+# **Kapatmak asla sessizce eklemez.** Vadesi gelen şablon bir *öneri* üretir,
+# kayıt değil. Yanlış eklenen bir kira, arkadaşlar arasında yanlış borç demek;
+# ve kimsenin görmediği bir borç en kötüsüdür. Onay hep insandan gelir.
+
+
+class RecurringCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    amount: float = Field(gt=0)
+    day_of_month: int = Field(ge=1, le=31)
+    # Kira sabittir, elektrik değildir. Sabit olanda tutar hazır gelir ama
+    # onay yine de istenir — "sabit" demek "sormadan ekle" demek değil.
+    amount_fixed: bool = True
+    scope: Literal["household", "self"] = "household"
+    split_mode: Optional[Literal["equal", "exact"]] = None
+    split_with: Optional[Dict[str, float]] = None
+    category: Optional[str] = None
+    merchant: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class RecurringUpdate(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=1, max_length=80)
+    amount: Optional[float] = Field(default=None, gt=0)
+    day_of_month: Optional[int] = Field(default=None, ge=1, le=31)
+    amount_fixed: Optional[bool] = None
+    split_mode: Optional[Literal["equal", "exact"]] = None
+    split_with: Optional[Dict[str, float]] = None
+    category: Optional[str] = None
+    merchant: Optional[str] = None
+    notes: Optional[str] = None
+    active: Optional[bool] = None
+
+
+class RecurringConfirm(BaseModel):
+    """Vadesi gelen bir şablonu harcamaya çevirir.
+
+    Tutar ve bölüşüm burada değiştirilebilir: elektrik her ay farklı gelir ve
+    kullanıcıyı önce şablonu düzenlemeye zorlamak, faturayı girmenin önüne
+    fazladan bir ekran koyar.
+    """
+    period_key: str            # "2026-08" — hangi ay için
+    amount: Optional[float] = Field(default=None, gt=0)
+    split_mode: Optional[Literal["equal", "exact"]] = None
+    split_with: Optional[Dict[str, float]] = None
+    expense_date: Optional[str] = None
+    notes: Optional[str] = None
+
+
+def month_key(d: date) -> str:
+    return f"{d.year:04d}-{d.month:02d}"
+
+
+def due_date_in(year: int, month: int, day_of_month: int) -> date:
+    """Ayın kaçında vadesi geldiği — kısa aylarda son güne kırpılır.
+
+    Ayın 31'i seçilmiş bir şablon şubatta hiç vadesi gelmemiş sayılırdı.
+    """
+    if month == 12:
+        first_next = date(year + 1, 1, 1)
+    else:
+        first_next = date(year, month + 1, 1)
+    last_day = (first_next - timedelta(days=1)).day
+    return date(year, month, min(day_of_month, last_day))
+
+
+def recurring_due_for(tpl: dict, today: date) -> Optional[str]:
+    """Bu şablonun bekleyen ayı — yoksa None.
+
+    Yalnızca **içinde bulunulan ay** bakılıyor. Geriye dönük kaçırılmış aylar
+    üretilmiyor: iki ay uygulamayı açmayan bir eve girdiğinde altı tane onay
+    kartı çıkması yardım değil, gürültü. Kaçırılan ay elle girilir.
+    """
+    if not tpl.get("active", True):
+        return None
+    key = month_key(today)
+    if tpl.get("last_confirmed") == key or key in (tpl.get("skipped") or []):
+        return None
+    if today < due_date_in(today.year, today.month, int(tpl["day_of_month"])):
+        return None
+    return key
+
+
+def _public_recurring(tpl: dict, today: date) -> dict:
+    out = {k: v for k, v in tpl.items() if k != "_id"}
+    out["due_period"] = recurring_due_for(tpl, today)
+    return out
+
+
+async def _visible_recurring(user_id: str, household_id: str) -> dict:
+    """Ortak şablonları herkes görür, kişisel olanı yalnızca sahibi."""
+    return {
+        "household_id": household_id,
+        "$or": [{"scope": "household"}, {"scope": "self", "created_by": user_id}],
+    }
+
+
+@api.get("/recurring")
+async def list_recurring(user=Depends(get_current_user)):
+    hh = await get_user_household(user["user_id"])
+    if not hh:
+        return {"recurring": [], "due": []}
+    today = now_utc().date()
+    rows = await db.recurring.find(
+        await _visible_recurring(user["user_id"], hh["household_id"]), {"_id": 0}
+    ).sort("day_of_month", 1).to_list(200)
+    items = [_public_recurring(r, today) for r in rows]
+    return {"recurring": items, "due": [r for r in items if r["due_period"]]}
+
+
+@api.post("/recurring")
+async def create_recurring(body: RecurringCreate, user=Depends(get_current_user)):
+    hh = await get_user_household(user["user_id"])
+    if not hh:
+        raise HTTPException(status_code=400, detail="Önce bir eve katılın")
+
+    if body.scope == "self":
+        # Kişisel gider dengeye girmez; listesi de yalnızca sahibinden oluşur.
+        split_mode, split_with = "exact", {user["user_id"]: round(body.amount, 2)}
+    else:
+        split_mode, split_with = resolve_split(
+            body, user["user_id"], body.amount, hh["member_ids"]
+        )
+    doc = {
+        "recurring_id": new_id("rec"),
+        "household_id": hh["household_id"],
+        "created_by": user["user_id"],
+        "scope": body.scope,
+        "name": body.name.strip(),
+        "amount": round(body.amount, 2),
+        "amount_fixed": body.amount_fixed,
+        "day_of_month": body.day_of_month,
+        "split_mode": split_mode,
+        "split_with": split_with,
+        "category": (body.category or "").strip() or None,
+        "merchant": await resolve_merchant(hh["household_id"], body.merchant),
+        "notes": (body.notes or "").strip() or None,
+        "currency": hh.get("currency", "EUR"),
+        "active": True,
+        "last_confirmed": None,
+        "skipped": [],
+        "created_at": now_utc(),
+    }
+    await db.recurring.insert_one(doc.copy())
+    if body.scope == "household":
+        await notify(
+            [m for m in hh["member_ids"] if m != user["user_id"]],
+            "Yeni düzenli gider",
+            f"{user['name']} · {doc['name']} · her ayın {doc['day_of_month']}'i",
+            "recurring", {"recurring_id": doc["recurring_id"]},
+        )
+    return {"recurring": _public_recurring(doc, now_utc().date())}
+
+
+async def _own_recurring(recurring_id: str, user: dict) -> dict:
+    doc = await db.recurring.find_one({"recurring_id": recurring_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Düzenli gider bulunamadı")
+    hh = await get_user_household(user["user_id"])
+    if not hh or doc["household_id"] != hh["household_id"]:
+        raise HTTPException(status_code=404, detail="Düzenli gider bulunamadı")
+    if doc["scope"] == "self" and doc["created_by"] != user["user_id"]:
+        raise HTTPException(status_code=404, detail="Düzenli gider bulunamadı")
+    return doc
+
+
+@api.patch("/recurring/{recurring_id}")
+async def update_recurring(recurring_id: str, body: RecurringUpdate,
+                           user=Depends(get_current_user)):
+    doc = await _own_recurring(recurring_id, user)
+    # Harcamalardaki kuralın aynısı: şablonu yalnızca kuran değiştirir.
+    # Kirayı bir başkasının sessizce 50 € artırması, kimsenin fark etmediği
+    # bir borç üretirdi.
+    if doc["created_by"] != user["user_id"]:
+        raise HTTPException(status_code=403, detail="Sadece kuran kişi değiştirebilir")
+    hh = await get_user_household(user["user_id"])
+
+    patch: dict = {}
+    for field in ("name", "day_of_month", "amount_fixed", "category", "notes", "active"):
+        val = getattr(body, field)
+        if val is not None:
+            patch[field] = val.strip() if isinstance(val, str) else val
+    if body.amount is not None:
+        patch["amount"] = round(body.amount, 2)
+    if body.merchant is not None:
+        patch["merchant"] = await resolve_merchant(hh["household_id"], body.merchant)
+    if body.split_with is not None or body.split_mode is not None:
+        if doc["scope"] == "self":
+            raise HTTPException(status_code=400, detail="Kişisel gider bölüşülmez")
+        mode, sw = resolve_split(
+            body, doc["created_by"], patch.get("amount", doc["amount"]),
+            hh["member_ids"], fallback=doc,
+        )
+        patch["split_mode"], patch["split_with"] = mode, sw
+    elif doc["scope"] == "self" and "amount" in patch:
+        patch["split_with"] = {doc["created_by"]: patch["amount"]}
+    elif "amount" in patch and doc.get("split_mode") == "exact":
+        # Kişiye özel bölüşüm eski toplama göre girilmişti. Bırakılsaydı şablon
+        # bozuk kalır ve hata ancak aylar sonra, onay anında görünürdü.
+        if abs(sum(doc["split_with"].values()) - patch["amount"]) > 0.01:
+            raise HTTPException(
+                status_code=400,
+                detail="Tutar değişti, kişiye özel bölüşüm artık tutmuyor. Bölüşümü yeniden düzenleyin.",
+            )
+
+    if patch:
+        patch["updated_at"] = now_utc()
+        await db.recurring.update_one({"recurring_id": recurring_id}, {"$set": patch})
+    updated = await db.recurring.find_one({"recurring_id": recurring_id}, {"_id": 0})
+    return {"recurring": _public_recurring(updated, now_utc().date())}
+
+
+@api.delete("/recurring/{recurring_id}")
+async def delete_recurring(recurring_id: str, user=Depends(get_current_user)):
+    doc = await _own_recurring(recurring_id, user)
+    if doc["created_by"] != user["user_id"]:
+        raise HTTPException(status_code=403, detail="Sadece kuran kişi silebilir")
+    await db.recurring.delete_one({"recurring_id": recurring_id})
+    # Üretilmiş harcamalar duruyor: geçmiş ay gerçekten ödendi, şablonun
+    # silinmesi onu geri almaz.
+    return {"ok": True}
+
+
+@api.post("/recurring/{recurring_id}/confirm")
+async def confirm_recurring(recurring_id: str, body: RecurringConfirm,
+                            user=Depends(get_current_user)):
+    """Onayla → harcama oluşur. Tek yazma yolu burasıdır."""
+    doc = await _own_recurring(recurring_id, user)
+    hh = await get_user_household(user["user_id"])
+    period = await get_active_period(hh["household_id"])
+    if not period:
+        raise HTTPException(status_code=400, detail="Aktif dönem bulunamadı")
+    # Aynı ayı iki kez onaylamak iki kira demek. Kontrol sunucuda: iki telefon
+    # aynı anda bildirimi görüp ikisi de onaylayabilir.
+    if doc.get("last_confirmed") == body.period_key:
+        raise HTTPException(status_code=409, detail="Bu ay zaten onaylanmış")
+
+    amount = round(body.amount if body.amount is not None else doc["amount"], 2)
+    if doc["scope"] == "self":
+        split_mode, split_with = "exact", {user["user_id"]: amount}
+    elif body.split_with is not None:
+        split_mode = body.split_mode or "equal"
+        split_with = validate_split(
+            split_mode, body.split_with, amount,
+            list(dict.fromkeys(list(hh["member_ids"]) + [user["user_id"]])),
+        )
+    else:
+        split_mode, split_with = doc["split_mode"], dict(doc["split_with"])
+        # Şablondaki kişiye özel tutarlar eski toplama göre girilmişti.
+        if split_mode == "exact" and abs(sum(split_with.values()) - amount) > 0.01:
+            raise HTTPException(
+                status_code=400,
+                detail="Tutar şablondakinden farklı, bölüşümü bu ay için düzenleyin",
+            )
+    target_type = derive_target_type(user["user_id"], split_with, hh["member_ids"])
+
+    expense_id = new_id("exp")
+    exp = {
+        "expense_id": expense_id,
+        "household_id": hh["household_id"],
+        "period_id": period["period_id"],
+        "added_by": user["user_id"],
+        "target_type": target_type,
+        "target_user_id": next(iter(split_with)) if target_type == "roommate" else None,
+        "split_mode": split_mode,
+        "split_with": split_with,
+        "items": [{"name": doc["name"], "price": amount, "quantity": 1,
+                   "unit": "adet", "size_amount": None, "size_unit": None,
+                   "category": "diger"}],
+        "total": amount,
+        "source": "manual",
+        "category": doc.get("category"),
+        "merchant": doc.get("merchant"),
+        "notes": body.notes if body.notes is not None else doc.get("notes"),
+        "currency": hh.get("currency", "EUR"),
+        "expense_date": parse_date(body.expense_date) or now_utc().strftime("%Y-%m-%d"),
+        "created_at": now_utc(),
+        # Hangi şablondan geldiği kayıtta duruyor: "bu kirayı kim ekledi"
+        # sorusunun cevabı aylar sonra da bulunabilsin.
+        "recurring_id": recurring_id,
+        "recurring_period": body.period_key,
+    }
+    await db.expenses.insert_one(exp.copy())
+    await db.recurring.update_one(
+        {"recurring_id": recurring_id},
+        {"$set": {"last_confirmed": body.period_key, "last_amount": amount}},
+    )
+
+    audience = [u for u in split_with if u != user["user_id"]]
+    if audience:
+        txt = f"{doc['amount']:.2f}".replace(".", ",")
+        got = f"{amount:.2f}".replace(".", ",")
+        extra = "" if abs(amount - doc["amount"]) < 0.01 else f" (şablonda {txt} €)"
+        await notify(
+            audience, "Düzenli gider eklendi",
+            f"{user['name']} · {doc['name']} · {got} €{extra}",
+            "recurring", {"expense_id": expense_id},
+        )
+    return {"expense": exp}
+
+
+@api.post("/recurring/{recurring_id}/skip")
+async def skip_recurring(recurring_id: str, body: RecurringConfirm,
+                         user=Depends(get_current_user)):
+    """Bu ay atla. "Sonra" değil — o istemcide kalır, kart yine çıkar."""
+    doc = await _own_recurring(recurring_id, user)
+    await db.recurring.update_one(
+        {"recurring_id": recurring_id},
+        {"$addToSet": {"skipped": body.period_key}},
+    )
+    return {"ok": True}
+
+
 # ---------- Fiyat hafızası ----------
 class PriceMemoryReq(BaseModel):
     # Market ZORUNLU: karşılaştırma yalnızca aynı marketin içinde yapılıyor.
@@ -2856,6 +3176,8 @@ async def on_startup():
         [("product_key", 1), ("country", 1), ("pack_type", 1), ("week", -1)]
     )
     await db.price_points.create_index([("merchant_key", 1), ("week", -1)])
+    await db.recurring.create_index("recurring_id", unique=True)
+    await db.recurring.create_index([("household_id", 1), ("active", 1)])
     check = await asyncio.to_thread(push.self_check)
     if check["token"]:
         logger.info("OdaHesap backend started (bildirimler: hazir)")
