@@ -5,7 +5,7 @@
 > ihtiyaç duymaz. Günlük operasyon için [DEVAM.md](DEVAM.md), kurulum için
 > [README.md](README.md).
 >
-> Son güncelleme: 15 Ağustos 2026 · Uygulama sürümü 1.0.0 (versionCode 18)
+> Son güncelleme: 15 Ağustos 2026 · Uygulama sürümü 1.0.0 (versionCode 23)
 
 ---
 
@@ -40,9 +40,16 @@ yüzey. Kart başlıkları kartın içinde, liste satırları tek kap içinde sa
 - **Aktivite** sayfası ve Anasayfa'daki zil. Bildirimler artık `notifications`
   koleksiyonunda saklanıyor ve bu kayıt push'tan bağımsız yazılıyor.
 
-**Test sayısı:** 189 → **281**. Yeni dosyalar: `donem-dondurma-test.py`,
+**Tur 4 (v23).** Bölüşme modeli: her harcama artık kendi katılımcı listesini
+taşıyor (`split_with`). Üç özel durum (`household` / `self` / `roommate`) tek
+mekanizmaya indi — bkz. §5 "Bölüşme". Gelen iki yeni yetenek: **seçili
+kişiler** (fişteki yumurtayı iki kişi bölüşür) ve **kişiye özel tutarlar**
+(1200 € kira 350/400/450). Liste kayıt anında donuyor, bu da §11'deki "dönem
+ortasında katılan üye" sınırını kapattı.
+
+**Test sayısı:** 189 → 281 → **336**. Yeni dosyalar: `donem-dondurma-test.py`,
 `duzenleme-gecmisi-test.py`, `market-tekrar-test.py`, `para-birimi-test.py`,
-`aktivite-test.py`.
+`aktivite-test.py`, `bolusme-test.py`.
 
 **Sıradaki işler ve gerekçeleri** için §12'ye bakın.
 
@@ -68,8 +75,8 @@ yapmaz.
 2. Ya yeni bir ev kurar (6 haneli davet kodu üretilir) ya da koda katılır
 3. Ev yöneticisi katılma isteğini onaylar
 4. Herkes harcama ekler — fiş tarayarak veya elle
-5. Her harcama üç türden biridir: **ev** (herkese bölünür), **kendim** (özel,
-   dengeye girmez), **arkadaşıma** (tamamı o kişiye yazılır)
+5. Her harcamada kimlerin bölüştüğü seçilir: tüm ev, sadece kendisi, tek bir
+   kişi, seçili kişiler ya da kişiye özel tutarlar (bkz. §5)
 6. Kasa ekranı kimin kime ne kadar borçlu olduğunu en az sayıda transferle gösterir
 7. Ödemeler gerçekleştikçe işaretlenir
 8. Dönem sonunda yönetici dönemi kapatır, bakiyeler arşivlenir ve sıfırlanır
@@ -210,7 +217,7 @@ silinebilir.
 | `user_sessions` | `session_token` (tekil), `user_id`, `expires_at` (TTL indeksi), `created_at` |
 | `households` | `household_id`, `name`, `invite_code` (tekil, 6 hane), `created_by`, `admin_id`, `member_ids[]`, `pending_member_ids[]`, `current_period_id` |
 | `periods` | `period_id`, `household_id`, `started_at`, `closed_at`, `status` (`active`/`closed`), `final_balances` |
-| `expenses` | `expense_id`, `household_id`, `period_id`, `added_by`, `target_type`, `target_user_id`, `items[]`, `total`, `source`, `category`, `merchant`, `notes`, `expense_date`, `created_at` |
+| `expenses` | `expense_id`, `household_id`, `period_id`, `added_by`, `split_mode`, `split_with`, `target_type`, `target_user_id`, `items[]`, `total`, `source`, `category`, `merchant`, `notes`, `expense_date`, `created_at` |
 | `settlements` | `settlement_id`, `household_id`, `period_id`, `from_user_id`, `to_user_id`, `amount`, `recorded_by`, `created_at` |
 | `shopping_items` | `item_id`, `household_id`, `scope` (`household`/`self`), `text`, `added_by`, `done`, `done_by`, `created_at` |
 | `avatars` | `user_id` (tekil), `data` (ham JPEG), `mime`, `updated_at` |
@@ -224,21 +231,61 @@ Bu bölüm uygulamanın kalbidir. Değiştirilmeden önce
 `tests/e2e-test.py`, `tests/privacy-test.py` ve `tests/settle-edit-test.py`
 okunmalıdır.
 
-### Harcama türleri
+### Bölüşme — her harcama kendi katılımcı listesini taşır
 
-| Tür | Bölüşüm | Kim görür |
+```
+split_mode "equal"  →  split_with = { user_id: ağırlık }   (bugün hep 1)
+split_mode "exact"  →  split_with = { user_id: tutar }
+```
+
+Bu liste **üç soruyu birden** cevaplar, çünkü üçü aslında aynı sorudur —
+*bu harcama kimi ilgilendiriyor?*
+
+| Ne | Kural |
+|---|---|
+| Para | Ödeyen `+total`, listedeki herkes kendi payı kadar `−` |
+| Görünürlük | Ekleyen **ya da** listede olan görür |
+| Bildirim | Listedekilere gider (ekleyen hariç) |
+
+Eski üç tür bundan kendiliğinden çıkar, ve iki yenisi gelir:
+
+| Durum | Liste | `target_type` etiketi |
 |---|---|---|
-| **household** (Ev) | Dönem katılımcı sayısına bölünür | Evdeki herkes |
-| **self** (Kendim) | Dengeye **hiç girmez** | Sadece ekleyen |
-| **roommate** (→ Arkadaşım) | **Bölünmez**, tamamı hedef kişiye yazılır | Ekleyen + hedef kişi |
+| Tüm ev | herkes | `household` |
+| Kendim | sadece ben → net etki 0, kimse görmez | `self` |
+| Bir kişiye | sadece o kişi | `roommate` |
+| **Seçili kişiler** | evin bir bölümü | `custom` |
+| **Kişiye özel tutarlar** | `exact` kipinde herhangi bir liste | listeye göre |
 
-**Örnek.** 3 kişilik ev, Alice 90 € ev alışverişi yapar:
+`target_type` artık **kural değil, listeden türetilen bir etiket**. Süzgeçler,
+ekrandaki rozet ve eski APK sürümleri onu okur; para ondan hesaplanmaz.
+
+**Örnek.** 3 kişilik ev, Alice 90 € ev alışverişi yapar (liste: üçü de):
 - Kişi başı pay 30 €
-- Alice: `+90 − 30 = +60` (alacaklı)
-- Bob: `−30`, Carol: `−30`
+- Alice: `+90 − 30 = +60` (alacaklı), Bob `−30`, Carol `−30`
 
-Alice ayrıca Bob için 18 €'luk şampuan alırsa:
+Alice ayrıca Bob için 18 €'luk şampuan alırsa (liste: sadece Bob):
 - Alice `+18`, Bob `−18`. Carol'ın hesabında **hiç görünmez**.
+
+Kira 1200 €, Bob öder, odalar farklı büyüklükte (`exact`, 350/400/450):
+- Bob `+1200 − 400 = +800`, Alice `−350`, Carol `−450`
+- Tek kayıt. Üç ayrı harcama ve gruplama etiketi gerekmiyor.
+
+### Bölüşme listesi kayıt anında donar
+
+Sonradan eve katılan biri geçmiş harcamaların payını kendiliğinden
+üstlenmez — payı o harcamanın içinde yazılıdır ve yeniden hesaplanmaz.
+Gerçekten üstlenmesi gerekiyorsa (kişi dönem başından beri evde, uygulamaya
+sonradan katıldı) yönetici onay sırasında **"N harcamaya da kat"** der;
+sunucu o dönemin eşit bölüşülen ev harcamalarına kişiyi ekler.
+
+### Listesi olmayan eski kayıtlar
+
+Tur 4 öncesi kayıtlarda `split_with` alanı yok. `split_of()` onları
+`target_type`'tan türetir ve **bu yedek yol kalıcıdır**: tek seferlik bir göç
+betiğinin kaçırdığı her kayıt sessizce dengeden düşerdi, bu yolla böyle bir
+kayıp mümkün değil. (Bir üye onaylanırken o dönemin eski kayıtları ayrıca
+dondurulur — yoksa "kat / katma" sorusunun cevabı onlarda uygulanmazdı.)
 
 ### Borç sadeleştirme
 
@@ -264,14 +311,14 @@ desteklenir. Ödemeyi yalnızca **tarafları** kaydedebilir veya geri alabilir.
 
 ### Üyelik ve pay
 
-`period_participants()` bir dönemin hesabına, o dönemde harcaması **veya
-ödemesi** olan herkesi katar — sadece bugünkü üyeleri değil. Böylece biri
-evden çıkarıldığında geçmiş dönemlerin payları bozulmaz.
+`period_participants()` bir dönemin hesabına, o dönemde harcaması, **ödemesi
+veya bir harcamanın bölüşme listesinde adı** olan herkesi katar — sadece
+bugünkü üyeleri değil. Böylece biri evden çıkarıldığında geçmiş dönemlerin
+payları bozulmaz.
 
-**Bilinen sınır:** dönem ortasında eve katılan kişi, o dönemin **tüm geçmiş**
-harcamalarının payını üstlenir. Tam çözüm üyelik tarihlerini saklamayı
-gerektirir (~2,5 sa). Şimdilik onay ekranında uyarı gösterilir: *"Açık dönemde
-N ev harcaması var. Onaylarsan yeni üye bunların da payını üstlenir."*
+Dönem ortasında katılma sorunu Tur 4'te kapandı: liste kayıt anında donduğu
+için yeni üye geçmişe kendiliğinden girmez, gerçekten girmesi gerekiyorsa
+onay sırasında seçilir.
 
 ### Yönetici rolü
 
@@ -449,7 +496,7 @@ ayakta kalabiliyor (bu projede yaşandı).
 
 ## 10. Testler
 
-Sekiz takım, toplam **172 kontrol**, hepsi çalışan bir API'ye HTTP ile bağlanır.
+On beş takım, toplam **336 kontrol**, hepsi çalışan bir API'ye HTTP ile bağlanır.
 Yerelde de canlıda da aynı şekilde çalışır:
 
 ```bash
@@ -467,6 +514,8 @@ cd backend
 | `profile-test.py` | ad/e-posta/şifre, fotoğraf yetkisi | 27 |
 | `settle-edit-test.py` | ödeme işaretleme, harcama düzenleme | 25 |
 | `session-401-test.py` | oturum hatası ile şifre hatası ayrımı | 16 |
+| `bolusme-test.py` | `split_with`, kişiye özel tutarlar, listenin donması | 47 |
+| `donem-dondurma-test.py` · `duzenleme-gecmisi-test.py` · `market-tekrar-test.py` · `para-birimi-test.py` · `aktivite-test.py` · `stats-test.py` · `categorize-test.py` | Tur 1-3'ten | 147 |
 
 Hepsi kendi test hesaplarını oluşturup sonunda temizler; üretim verisine
 dokunmaz. Yardımcılar: `fcm-verify.py` (Firebase kimlik bilgisi gerçekten
@@ -494,8 +543,6 @@ dokunmaz. Yardımcılar: `fcm-verify.py` (Firebase kimlik bilgisi gerçekten
   Aylık 750 saatlik kota tek servisi 7/24 ayakta tutmaya ancak yeter —
   **aynı hesapta ikinci bir ücretsiz servis açılmamalıdır.**
 - **iOS sürümü yok.** Mac ve yıllık geliştirici hesabı gerekir.
-- **Dönem ortasında katılan üye** o dönemin tüm geçmiş harcamalarının payını
-  üstlenir (uyarı gösterilir).
 
 ---
 
@@ -505,14 +552,11 @@ dokunmaz. Yardımcılar: `fcm-verify.py` (Firebase kimlik bilgisi gerçekten
 
 Aşağıdaki sıra ev sahibiyle konuşulup kabul edildi. İki bağımlılık **katı**:
 
-1. **`{kişi: tutar}` bölüşme modeli** — seçili kişiler, kişiye özel kira
-   tutarları, evden ayrılma akışının yeniden tasarımı.
-   *Bakiye motoruna dokunan tek iş; yalnız ve ayrı bir dalda yapılmalı.*
-   Kira üç ayrı senaryo demek: (a) herkes kendi kirasını ev sahibine öder →
-   kişisel harcama, bugün de çalışıyor; (b) kira eşit bölüşülür → normal ev
-   harcaması, bugün de çalışıyor; (c) farklı tutarlar, bir kişi toplar →
-   bugünkü `self` + `roommate` kayıtlarının toplamı olarak **hesap motoruna
-   dokunmadan** çıkarılabilir.
+1. ~~**`{kişi: tutar}` bölüşme modeli**~~ — **Tur 4'te yapıldı** (v23).
+   Kira senaryosu (c) için ayrı bir mekanizma gerekmedi: `exact` kipli tek
+   kayıt yetti. Fiş kalemleri de kendi listelerini taşıyor, aynı kişilerin
+   bölüştüğü kalemler kaydederken tek harcamada toplanıyor. Evden ayrılma
+   kuralı **bilinçli olarak değişmedi** — gerekçe aşağıda.
 2. **Düzenli ödemeler** — takvim tarihli (dönem değil: dönem 3 hafta da
    sürebilir 7 hafta da, elektrik hep ayın 15'inde gelir). Vadesi gelince
    "Onayla / Düzenle / Sonra". *Kapatmak asla sessizce eklememeli* — yanlış
@@ -545,6 +589,14 @@ Aşağıdaki sıra ev sahibiyle konuşulup kabul edildi. İki bağımlılık **k
   bağlantı standardı yok. Çalışan yollar: IBAN'ı panoya kopyalayıp bankayı
   açmak, WhatsApp'tan paylaşmak, aynı odadayken EPC/Girocode karekodu,
   ve PayPal.me bağlantısı.
+- **Evden ayrılırken dönem kapatılır.** Kişi bazlı bakiye dondurma
+  ("evde değil ama borçlu üye") tartışıldı ve **elenmedi ama ertelendi**:
+  Kasa ekranı, üye listesi, bildirimler ve dönem kapatma bu üçüncü durumu
+  bilmek zorunda kalıyor — yılda bir olan bir olay için kalıcı karmaşıklık.
+  "Dönemi kapat ve çıkar" diye tek düğme de **konmadı**: dönem kapatmak
+  "bakiyeler arşivlendi, bu rakamlar ödendi" demek, kolayca basılan bir
+  düğme insanları ödeşmeden arşivlemeye iter. Doğru sıra Kasa'dan ödeş →
+  dönemi kapat → çıkar.
 - **Tüketim karşılaştırması konmayacak** ("kim ne kadar tüketti"). Kimin daha
   çok alışveriş yaptığını değil kimin daha müsait olduğunu ölçer ve ev
   arkadaşları arasında gereksiz sürtünme üretir.
@@ -601,9 +653,10 @@ sınırsız — çünkü kullanım başına para yakan tek şey odur.
 1. `curl https://odahesap-api.onrender.com/api/` — `push_ready: true` mü?
 2. `DEVAM.md` oku (günlük operasyon, tuzaklar)
 3. `backend/server.py` oku — sunucunun tamamı orada
-4. Testleri canlıya karşı çalıştır, 172'sinin de geçtiğini gör
+4. Testleri canlıya karşı çalıştır, 336'sının da geçtiğini gör
 5. Kod değiştirmeden önce ilgili test takımını oku; iş kuralları oraya yazılı
 
-**Değiştirmeden önce iki kez düşünülecek yerler:** `_compute_balances()` ve
-`period_participants()` (para matematiği), `get_current_user()` (401 ayrımı),
+**Değiştirmeden önce iki kez düşünülecek yerler:** `_compute_balances()`,
+`expense_shares()`, `split_of()` ve `period_participants()` (para matematiği),
+`_visible_filter()` (gizlilik), `get_current_user()` (401 ayrımı),
 `push.self_check()` (sessiz hata koruması), kapalı dönem kontrolleri.

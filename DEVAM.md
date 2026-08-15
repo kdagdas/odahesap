@@ -199,7 +199,7 @@ toplar.
 
 ## Testler
 
-Sekiz takım, hepsi çalışan bir API'ye HTTP ile bağlanır. Yerel sunucuya da
+On beş takım, toplam **336 kontrol**, hepsi çalışan bir API'ye HTTP ile bağlanır. Yerel sunucuya da
 canlıya da aynı şekilde çalıştırılabilir:
 
 ```bash
@@ -217,8 +217,10 @@ cd backend
 | `profile-test.py` | ad/e-posta/şifre, fotoğraf yetkisi | 27 |
 | `settle-edit-test.py` | ödeme işaretleme, harcama düzenleme | 25 |
 | `session-401-test.py` | oturum hatası ile şifre hatası ayrımı | 16 |
+| `bolusme-test.py` | `split_with`, kişiye özel tutarlar, listenin donması | 47 |
+| Tur 1-3'ten: `donem-dondurma` · `duzenleme-gecmisi` · `market-tekrar` · `para-birimi` · `aktivite` · `stats` · `categorize` | | 147 |
 
-Betikler `build-tools/` altında (depoda değil). Hepsi kendi test hesaplarını
+Betikler `tests/` altında. Hepsi kendi test hesaplarını
 oluşturup sonunda temizler; **üretim verisine dokunmazlar**.
 
 `fcm-verify.py` ayrıdır: Firebase kimlik bilgisinin gerçekten çalıştığını
@@ -246,8 +248,19 @@ rakamlardır, sonradan değişmemeli. Düzeltme gerekiyorsa yönetici dönemi
 yeniden açar (yalnızca yeni dönem boşsa).
 
 **Denge hesabı üyelikten değil katılımdan beslenir.** `period_participants()`
-o dönemde harcaması veya ödemesi olan herkesi kapsar, sadece bugünkü üyeleri
-değil. Biri evden çıkarıldığında geçmiş dönemlerin payları bozulmasın diye.
+o dönemde harcaması, ödemesi veya bir harcamanın bölüşme listesinde adı olan
+herkesi kapsar, sadece bugünkü üyeleri değil. Biri evden çıkarıldığında geçmiş
+dönemlerin payları bozulmasın diye.
+
+**Bölüşme listesi kayıt anında donar.** Her harcama `split_with` alanında
+kimlerin bölüştüğünü taşır; bu liste parayı, görünürlüğü ve bildirimi birden
+belirler. Tur 4 öncesi kayıtlarda alan yok, `split_of()` onları
+`target_type`'tan türetir — **bu yedek yol kaldırılmamalı.** Bir göç betiğinin
+kaçırdığı her kayıt sessizce dengeden düşerdi.
+
+**Kişiye özel bölüşüm varken tutar tek başına değiştirilemez.** Sunucu 400
+döner. Oransal yeniden dağıtım, kimsenin onaylamadığı bir sayıyı A'nın 350'sinin
+yerine koyardı — arkadaşlar arasında yanlış borç demek.
 
 **Fotoğraflar ayrı koleksiyonda.** Kullanıcı nesnesine gömülseydi, ev bilgisi
 her ekran açılışında yenilendiği için tüm üyelerin fotoğrafı sürekli yeniden
@@ -269,7 +282,7 @@ hissettiriyordu.
   önler. **Aynı Render hesabında ikinci bir ücretsiz servis açılmamalı** —
   aylık 750 saatlik kota tek servisi 7/24 ayakta tutmaya ancak yetiyor.
 - **iOS sürümü yok.** Mac ve yıllık geliştirici hesabı gerekiyor.
-- **Uygulama otomatik test edilmiyor.** Sunucu 172 testle korunuyor ama
+- **Uygulama otomatik test edilmiyor.** Sunucu 336 testle korunuyor ama
   arayüzün kendisi hiçbir cihazda otomatik çalıştırılmıyor; ekran hataları
   ancak elle denemeyle bulunuyor.
 
@@ -285,4 +298,3 @@ Kullanıcıyla konuşulmuş, sıraya alınmış ama henüz yapılmamış işler:
 | Çevrimdışı kuyruk | ~2 sa | Sunucu uykudayken eklenen harcama kaybolmasın |
 | Karanlık tema | ~4-5 sa | Ertelendi. Renkler `theme.ts`'te sabit; her ekran `StyleSheet.create` ile modül yüklenirken stilini üretiyor, dinamik tema için ~600 satır stilin bileşen içine taşınması gerekiyor |
 | Ev içi sohbet | ~4-5 sa | Önerilmedi — WhatsApp zaten var, alınacaklar listesi ihtiyacı karşılıyor |
-| Üye ekleme tarih bazlı pay | ~2,5 sa | Şu an dönem ortasında katılan kişi o dönemin tüm geçmiş harcamalarının payını üstleniyor. Uyarı gösteriliyor; tam çözüm için üyelik tarihleri saklanmalı |
