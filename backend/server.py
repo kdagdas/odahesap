@@ -120,6 +120,10 @@ class ExpenseItem(BaseModel):
     name: str
     price: float  # unit price in EUR
     quantity: float = 1  # allow fractional (e.g. 0.5 kg produce)
+    # Fişte tartılan ürünün altında "0,590 kg x 10,99 EUR/kg" yazıyor. Birim
+    # kaydedilmediği için bu "590 adet" olarak görünüyordu — hem saçma, hem de
+    # "kaç kez süt alındı" gibi bir sayım yapılamaz hale getiriyordu.
+    unit: Literal["adet", "kg", "lt", "paket"] = "adet"
     category: str = "diger"
 
 
@@ -810,6 +814,8 @@ async def leave_household(user=Depends(get_current_user)):
 
 
 # ---------- OCR (Gemini 3 Flash Vision) ----------
+UNIT_KEYS = ("adet", "kg", "lt", "paket")
+
 CATEGORY_KEYS = (
     "sut_urunleri", "meyve_sebze", "et_balik", "firin",
     "icecek", "atistirmalik", "temel_gida", "ev_urunleri", "diger",
@@ -891,6 +897,7 @@ Rules:
 3. Extract the purchase date. Look for "Datum", or a date-like line at the top or bottom. Return as ISO string "YYYY-MM-DD". Ignore any time.
 4. Line items: each product line typically has a name and a price. Return one entry per item.
    - Quantity: if you see "2 x 1,49" or "3 Stk" or "2X" style, set quantity accordingly and use the unit price. If unclear, quantity = 1 and price = total for that line.
+   - Unit: weighed goods print a separate line under the item, e.g. "0,590 kg x 10,99 EUR/kg" or "0,284 kg" — that line belongs to the item ABOVE it, never to a new item. When you see one, set "unit":"kg", "quantity":0.590 and "price":10.99 (the per-kilo price). Same for litres ("1,5 l", "0,75 L") with "unit":"lt". Multi-packs counted in pieces stay "unit":"adet". Never turn a weight into a piece count: 0,590 kg is not 590 pieces.
    - German items often have "A" or "B" (VAT class) at end — strip it.
 5. Discount lines: markers include "Rabatt", "RABATT", "-%", "Preisnachlass", "PAYBACK Rabatt", lines starting with "-", or negative prices. If a discount is clearly associated with an item, subtract from that item's price. Otherwise return as a separate item with negative price.
 6. Ignore non-item lines: "MwSt", "Summe", "Zwischensumme", "Gesamtsumme", "Bar", "EC", "Karte", "Rueckgeld", store address, times, cashier numbers, "vielen Dank".
@@ -920,7 +927,7 @@ Return JSON EXACTLY in this schema:
   "total": number | null,
   "currency": "EUR",
   "items": [
-    { "name": string, "price": number, "quantity": number, "category": string }
+    { "name": string, "price": number, "quantity": number, "unit": "adet" | "kg" | "lt" | "paket", "category": string }
   ]
 }
 
@@ -1062,11 +1069,17 @@ async def ocr_receipt(body: OCRRequest, user=Depends(get_current_user)):
         cat = str(it.get("category", "") or "").strip().lower()
         if cat not in CATEGORY_KEYS:
             cat = categorize_item(name)
+        unit = str(it.get("unit", "") or "").strip().lower()
+        if unit not in UNIT_KEYS:
+            # Model birim vermediyse tartıya benzeyen miktarı adet saymayalım:
+            # tam sayı olmayan bir miktar fişte neredeyse her zaman kilogramdır.
+            unit = "kg" if 0 < qty < 1 or (qty % 1) else "adet"
         items.append(
             {
                 "name": name,
                 "price": round(price, 2),
                 "quantity": qty if qty > 0 else 1,
+                "unit": unit,
                 "category": cat,
             }
         )

@@ -1,24 +1,24 @@
 /** Fiş İnceleme — edit OCR result (name, qty, price, category), per-item or bulk 3-way assignment, tarih + market. */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   View, Text, StyleSheet, ScrollView, TextInput, Pressable,
   KeyboardAvoidingView, Platform, ActivityIndicator,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { apiPost } from "@/src/api";
+import { apiGet, apiPost } from "@/src/api";
 import { popNext, remaining, totalCount, currentIndex, clearQueue } from "@/src/pendingReviews";
 import { useAuth } from "@/src/auth";
 import { useHousehold } from "@/src/household";
 import {
-  Chip, CategoryIcon, MerchantBadge, ScreenHeader, formatEUR, formatDateTR, todayISO,
+  Chip, CategoryIcon, MerchantBadge, ScreenHeader, formatEUR, formatDateTR, todayISO, nextUnit,
 } from "@/src/ui";
 import {
   colors, spacing, radius, type as T, overline, CATEGORY_ICONS, CATEGORY_LABEL_TR,
 } from "@/src/theme";
 
 type Target = { type: "self" | "household" | "roommate"; user_id?: string };
-type Row = { name: string; price: string; quantity: string; category: string; target: Target };
+type Row = { name: string; price: string; quantity: string; unit: string; category: string; target: Target };
 
 const CAT_KEYS = Object.keys(CATEGORY_ICONS);
 const nextCategory = (c: string) => CAT_KEYS[(CAT_KEYS.indexOf(c) + 1) % CAT_KEYS.length];
@@ -56,7 +56,8 @@ export default function Review() {
     (initial?.items || []).map((it: any) => ({
       name: it.name || "",
       price: String(it.price ?? 0).replace(".", ","),
-      quantity: String(it.quantity ?? 1),
+      quantity: String(it.quantity ?? 1).replace(".", ","),
+      unit: it.unit || "adet",
       category: it.category || "diger",
       target: { type: "household" as const },
     }))
@@ -74,7 +75,7 @@ export default function Review() {
     setRows((rs) => rs.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
   const removeRow = (i: number) => setRows((rs) => rs.filter((_, idx) => idx !== i));
   const addRow = () =>
-    setRows((rs) => [...rs, { name: "", price: "0,00", quantity: "1", category: "diger", target: bulkTarget }]);
+    setRows((rs) => [...rs, { name: "", price: "0,00", quantity: "1", unit: "adet", category: "diger", target: bulkTarget }]);
 
   const applyBulk = (t: Target) => {
     setBulkTarget(t);
@@ -82,6 +83,27 @@ export default function Review() {
   };
 
   const otherMembers = members.filter((m) => m.user_id !== user?.user_id);
+
+  // Aynı fiş daha önce kaydedilmiş mi? Galeriden aynı fişin iki fotoğrafı
+  // seçilebiliyor ve dosya karşılaştırması bunu yakalayamıyor — iki ayrı
+  // fotoğraf. Market, tarih ve toplam üçlüsüne bakıyoruz. Engellemiyoruz:
+  // aynı gün aynı marketten aynı tutarda iki alışveriş gerçekten olur.
+  const [dupe, setDupe] = useState<any | null>(null);
+  const [dupeDismissed, setDupeDismissed] = useState(false);
+  useEffect(() => {
+    const iso = fromDDMMYYYY(dateInput);
+    if (!iso || total <= 0) { setDupe(null); return; }
+    let alive = true;
+    const timer = setTimeout(async () => {
+      try {
+        const q = new URLSearchParams({ total: String(total), expense_date: iso });
+        if (merchant.trim()) q.set("merchant", merchant.trim());
+        const res = await apiGet<{ duplicates: any[] }>(`/expenses/duplicate-check?${q}`);
+        if (alive) setDupe((res.duplicates || [])[0] || null);
+      } catch { /* uyarı isteğe bağlı; başarısız olursa sessiz kal */ }
+    }, 400);
+    return () => { alive = false; clearTimeout(timer); };
+  }, [total, dateInput, merchant]);
 
   // Consume the queue: after saving/skipping current receipt, jump to next.
   const goToNextOrExit = () => {
@@ -123,6 +145,7 @@ export default function Review() {
             name: g.name.trim(),
             price: parsedPrice(g.price),
             quantity: parsedQty(g.quantity),
+            unit: g.unit,
             category: g.category,
           })),
           total: groupTotal,
@@ -177,10 +200,24 @@ export default function Review() {
             {merchant || "Market yok"} · {formatDateTR(fromDDMMYYYY(dateInput) || todayISO())}
           </Text>
           <Text style={styles.headTotal}>{formatEUR(total)}</Text>
-          <Text style={styles.headHint}>{rows.length} kalem · fiyat, adet ve kategoriyi düzenleyebilirsin</Text>
+          <Text style={styles.headHint}>{rows.length} kalem · fiyat, miktar ve kategoriyi düzenleyebilirsin</Text>
         </ScreenHeader>
 
         <View style={styles.list}>
+          {dupe && !dupeDismissed && (
+            <View style={styles.dupeBox} testID="duplicate-warning">
+              <Ionicons name="copy-outline" size={18} color={colors.onWarning} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.dupeTitle}>Bu fiş zaten kayıtlı olabilir</Text>
+                <Text style={styles.dupeTxt}>
+                  {dupe.merchant || "Market yok"} · {formatDateTR(dupe.expense_date)} · {formatEUR(dupe.total)}
+                </Text>
+              </View>
+              <Pressable onPress={() => setDupeDismissed(true)} hitSlop={10} testID="dismiss-duplicate">
+                <Text style={styles.dupeDismiss}>Yine de kaydet</Text>
+              </Pressable>
+            </View>
+          )}
           <View style={styles.metaCard}>
             <View style={styles.metaField}>
               <View style={styles.metaLabelRow}>
@@ -254,7 +291,12 @@ export default function Review() {
                 </View>
                 <View style={styles.itemBody}>
                   <View style={styles.qtyBox}>
-                    <Text style={styles.subLabel}>Adet</Text>
+                    {/* Etikete dokununca birim değişiyor: fişte tartılan ürün
+                        "0,590 kg", adet değil. */}
+                    <Pressable onPress={() => updateRow(i, { unit: nextUnit(r.unit) })}
+                               hitSlop={8} testID={`review-item-${i}-unit`}>
+                      <Text style={styles.unitLabel}>{r.unit.toLocaleUpperCase("tr-TR")} ⌄</Text>
+                    </Pressable>
                     <TextInput
                       style={styles.qtyInput}
                       value={r.quantity}
@@ -377,6 +419,14 @@ const styles = StyleSheet.create({
   priceBox: { flex: 1 },
   totalBox: { width: 92, alignItems: "flex-end" },
   subLabel: { ...overline, marginBottom: 4 },
+  unitLabel: { ...overline, marginBottom: 4, color: colors.accentDark },
+  dupeBox: {
+    flexDirection: "row", alignItems: "center", gap: spacing.md,
+    backgroundColor: colors.warningSoft, borderRadius: radius.md, padding: spacing.md,
+  },
+  dupeTitle: { ...T.bodySb, color: colors.onWarning },
+  dupeTxt: { ...T.caption, color: colors.onWarning, marginTop: 1 },
+  dupeDismiss: { ...T.captionSb, color: colors.onWarning, textDecorationLine: "underline" },
   qtyInput: {
     backgroundColor: colors.surfaceSecondary, borderRadius: radius.md,
     paddingHorizontal: spacing.sm, paddingVertical: spacing.sm, minHeight: 44,

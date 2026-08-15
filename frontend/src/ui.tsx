@@ -363,6 +363,25 @@ export function formatEUR(n: number | null | undefined, sign = false) {
   return `${prefix}${grouped},${dec}${NBSP}€`;
 }
 
+export const UNITS = ["adet", "kg", "lt", "paket"] as const;
+export type Unit = (typeof UNITS)[number];
+export const nextUnit = (u?: string): Unit =>
+  UNITS[(UNITS.indexOf((u as Unit) || "adet") + 1) % UNITS.length];
+
+/**
+ * Miktar + birim. Tartılan ürünlerde fişte "0,590 kg" yazıyor; birim
+ * taşınmadığı için bu "590 adet" olarak görünüyordu.
+ */
+export function formatQty(quantity?: number | null, unit?: string | null) {
+  const q = quantity ?? 1;
+  const u = (unit as Unit) || "adet";
+  // Kilo ve litre ondalıklı, adet tam sayı okunur.
+  const n = u === "kg" || u === "lt"
+    ? q.toFixed(q < 1 || q % 1 ? 3 : 0).replace(".", ",").replace(/,?0+$/, "")
+    : String(Math.round(q * 100) / 100).replace(".", ",");
+  return `${n} ${u}`;
+}
+
 /** Dar yerlerde kuruşu düşürür: "1.240,00 €" -> "1.240 €". */
 export function formatEURShort(n: number | null | undefined) {
   return formatEUR(n).replace(`,00${NBSP}€`, `${NBSP}€`);

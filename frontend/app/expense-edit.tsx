@@ -13,7 +13,7 @@ import { api, apiGet } from "@/src/api";
 import { useAuth } from "@/src/auth";
 import { useHousehold } from "@/src/household";
 import {
-  ScreenHeader, Sheet, Card, Divider, Chip, MerchantBadge, CategoryIcon, formatEUR,
+  ScreenHeader, Sheet, Card, Divider, Chip, MerchantBadge, CategoryIcon, formatEUR, nextUnit,
 } from "@/src/ui";
 import {
   colors, spacing, radius, type as T, overline, fontFamily,
@@ -21,8 +21,8 @@ import {
 } from "@/src/theme";
 
 type Target = { type: "self" | "household" | "roommate"; user_id?: string };
-type Row = { name: string; price: string; quantity: string; category: string };
-type Item = { name: string; price: number; quantity?: number; category: string };
+type Row = { name: string; price: string; quantity: string; unit: string; category: string };
+type Item = { name: string; price: number; quantity?: number; unit?: string; category: string };
 type Expense = {
   expense_id: string; added_by: string; target_type: string; target_user_id?: string;
   total: number; merchant?: string; category?: string; notes?: string;
@@ -73,13 +73,14 @@ export default function ExpenseEdit() {
           ? items.map((it) => ({
               name: it.name || "",
               price: String(it.price ?? 0).replace(".", ","),
-              quantity: String(it.quantity ?? 1),
+              quantity: String(it.quantity ?? 1).replace(".", ","),
+              unit: it.unit || "adet",
               category: it.category || "diger",
             }))
           // Older entries saved before item tracking: seed one line from the
           // total so there is something to edit instead of an empty screen.
           : [{ name: found.merchant || "Harcama", price: String(found.total).replace(".", ","),
-               quantity: "1", category: "diger" }]
+               quantity: "1", unit: "adet", category: "diger" }]
       );
       setDateInput(toDDMMYYYY(found.expense_date || ""));
       setMerchant(found.merchant || "");
@@ -103,7 +104,7 @@ export default function ExpenseEdit() {
     setRows((rs) => rs.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
   const removeRow = (i: number) => setRows((rs) => rs.filter((_, idx) => idx !== i));
   const addRow = () =>
-    setRows((rs) => [...rs, { name: "", price: "0,00", quantity: "1", category: "diger" }]);
+    setRows((rs) => [...rs, { name: "", price: "0,00", quantity: "1", unit: "adet", category: "diger" }]);
 
   const save = async () => {
     setError(null);
@@ -123,6 +124,7 @@ export default function ExpenseEdit() {
             name: r.name.trim(),
             price: num(r.price),
             quantity: num(r.quantity, 1),
+            unit: r.unit,
             category: r.category,
           })),
           total: newTotal,
@@ -203,7 +205,12 @@ export default function ExpenseEdit() {
                         </View>
                         <View style={styles.itemBody}>
                           <View style={styles.qtyBox}>
-                            <Text style={styles.subLabel}>ADET</Text>
+                            {/* Etikete dokununca birim değişiyor: fişte tartılan
+                                ürün "0,590 kg", adet değil. */}
+                            <Pressable onPress={() => updateRow(i, { unit: nextUnit(r.unit) })}
+                                       hitSlop={8} testID={`edit-item-${i}-unit`}>
+                              <Text style={styles.unitLabel}>{r.unit.toLocaleUpperCase("tr-TR")} ⌄</Text>
+                            </Pressable>
                             <TextInput
                               style={styles.qtyInput}
                               value={r.quantity}
@@ -346,10 +353,11 @@ const styles = StyleSheet.create({
   },
   catLabel: { ...T.caption, color: colors.inkTertiary, marginLeft: 2 },
   itemBody: { flexDirection: "row", gap: spacing.sm, paddingLeft: 52 },
-  qtyBox: { width: 66 },
+  qtyBox: { width: 74 },
   priceBox: { flex: 1 },
   totalBox: { width: 90, alignItems: "flex-end" },
   subLabel: { ...overline, fontSize: 10, letterSpacing: 0.8, marginBottom: 4 },
+  unitLabel: { ...overline, fontSize: 10, letterSpacing: 0.8, marginBottom: 4, color: colors.accentDark },
   qtyInput: {
     backgroundColor: colors.surfaceSecondary, borderRadius: radius.md,
     paddingHorizontal: spacing.sm, paddingVertical: spacing.sm,

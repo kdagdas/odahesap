@@ -7,11 +7,11 @@ import { apiGet } from "@/src/api";
 import { useHousehold } from "@/src/household";
 import {
   ScreenHeader, HeaderSplit, Sheet, Card, Divider, Avatar, CategoryIcon,
-  MerchantBadge, Tag, Money, formatEUR, formatDateTR,
+  MerchantBadge, Tag, Money, formatEUR, formatDateTR, formatQty,
 } from "@/src/ui";
 import { colors, spacing, type as T, metrics } from "@/src/theme";
 
-type Item = { name: string; price: number; quantity?: number; category: string };
+type Item = { name: string; price: number; quantity?: number; unit?: string; category: string };
 type Expense = {
   expense_id: string; added_by: string; target_type: string; target_user_id?: string;
   total: number; merchant?: string; category?: string; source: string;
@@ -120,7 +120,7 @@ export default function MemberDetail() {
                             <View style={{ flex: 1 }}>
                               <Text style={styles.itemName} numberOfLines={1}>{it.name}</Text>
                               {(it.quantity || 1) !== 1 && (
-                                <Text style={styles.itemQty}>{it.quantity} × {formatEUR(it.price)}</Text>
+                                <Text style={styles.itemQty}>{formatQty(it.quantity, it.unit)} × {formatEUR(it.price)}</Text>
                               )}
                             </View>
                             <Text style={styles.itemTotal}>{formatEUR((it.quantity || 1) * it.price)}</Text>

@@ -7,6 +7,7 @@ import { useRouter } from "expo-router";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
+import * as MediaLibrary from "expo-media-library";
 import { apiPost } from "@/src/api";
 import { setQueue, clearQueue } from "@/src/pendingReviews";
 import { colors, spacing, radius, type as T, fontFamily } from "@/src/theme";
@@ -55,10 +56,30 @@ export default function Tara() {
     } finally { setProcessing(false); setProgressTxt(""); }
   };
 
+  /**
+   * Çekilen fişi telefonun galerisine kaydeder.
+   *
+   * Fiş görüntüsünü sunucuda saklamıyoruz — 512 MB'lık ücretsiz alanı
+   * birkaç bin fiş doldurur. Ama "bu 40 € neydi" tartışmasında fişin
+   * durması değerli, o yüzden kullanıcının kendi galerisine bırakıyoruz.
+   * İzin verilmezse sessizce geçiyoruz: tarama asıl iş, kaydetme ikramiye.
+   */
+  const saveToGallery = async (uri?: string) => {
+    if (!uri) return;
+    try {
+      const perm = await MediaLibrary.getPermissionsAsync();
+      const granted = perm.granted
+        ? true
+        : (await MediaLibrary.requestPermissionsAsync()).granted;
+      if (granted) await MediaLibrary.saveToLibraryAsync(uri);
+    } catch (e) { console.log("galeriye kaydedilemedi", e); }
+  };
+
   const takePhoto = async () => {
     if (!cam.current) return;
     try {
       const shot = await cam.current.takePictureAsync({ base64: true, quality: 0.6 });
+      await saveToGallery(shot?.uri);
       if (shot?.base64) await sendToOCR(shot.base64);
     } catch (e: any) { setError(e.message || "Fotoğraf çekilemedi"); }
   };
