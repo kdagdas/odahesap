@@ -14,8 +14,9 @@ import { useAuth } from "@/src/auth";
 import { useHousehold } from "@/src/household";
 import {
   ScreenHeader, HeaderSplit, Sheet, Card, Row, Divider, Avatar, Money,
-  IconPill, Chip, PrimaryButton, MerchantBadge, formatEUR,
+  IconPill, Chip, PrimaryButton, MerchantBadge, formatEUR, useKeyboardHeight,
 } from "@/src/ui";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors, spacing, radius, type as T, overline, fontFamily, metrics } from "@/src/theme";
 
 type Transfer = { from: string; to: string; amount: number };
@@ -74,6 +75,8 @@ export default function Denge() {
   const { members, activePeriod, isAdmin, refresh: refreshHH } = useHousehold();
   // Anasayfadaki değişim rozetinden gelindiğinde doğrudan istatistiklere in.
   const { focus } = useLocalSearchParams<{ focus?: string }>();
+  const kbHeight = useKeyboardHeight();
+  const insets = useSafeAreaInsets();
   const scrollRef = useRef<ScrollView>(null);
   const statsY = useRef(0);
   const jumped = useRef<string | null>(null);
@@ -494,8 +497,13 @@ export default function Denge() {
         </ScrollView>
 
         {payFor && (
-          <View style={styles.payWrap}>
-            <View style={styles.paySheet}>
+          <Pressable style={styles.payWrap} onPress={() => { setPayFor(null); setError(null); }}>
+            {/* Klavye açılınca sayfa onun üstüne çıkıyor; mutlak konumlu
+                olduğu için KeyboardAvoidingView bunu kendisi yapamıyor. */}
+            <Pressable
+              style={[styles.paySheet, { marginBottom: kbHeight, paddingBottom: spacing.xl + (kbHeight ? 0 : insets.bottom) }]}
+              onPress={() => {}}
+            >
               <Text style={styles.payTitle}>
                 {payFor.from === me
                   ? `${nameOf(payFor.to).split(" ")[0]} kişisine ödeme`
@@ -527,8 +535,8 @@ export default function Denge() {
                         : <Text style={styles.solidTxt}>Kaydet</Text>}
                 </Pressable>
               </View>
-            </View>
-          </View>
+            </Pressable>
+          </Pressable>
         )}
       </KeyboardAvoidingView>
     </View>

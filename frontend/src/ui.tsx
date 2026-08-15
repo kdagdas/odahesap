@@ -13,6 +13,7 @@
 import React from "react";
 import {
   View, Text, Pressable, StyleSheet, ViewStyle, StyleProp, Image, TextStyle,
+  Keyboard, Platform,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -138,6 +139,28 @@ export function TrendBadge({
   return onPress
     ? <Pressable onPress={onPress} testID={testID} style={styles.trend} hitSlop={6}>{inner}</Pressable>
     : <View style={styles.trend}>{inner}</View>;
+}
+
+/**
+ * Klavyenin kapladığı yükseklik.
+ *
+ * `KeyboardAvoidingView` mutlak konumlu (position: absolute) öğeleri
+ * itmiyor — alttan açılan sayfalar tam da öyle konumlanıyor ve klavye
+ * açılınca tutar alanı klavyenin arkasında kalıyordu. Kenardan kenara
+ * (edge-to-edge) çizim açık olduğu için pencere yeniden boyutlanması da
+ * güvenilir değil. Yüksekliği doğrudan ölçüp elle yukarı itmek her iki
+ * platformda da öngörülebilir çalışan tek yol.
+ */
+export function useKeyboardHeight() {
+  const [height, setHeight] = React.useState(0);
+  React.useEffect(() => {
+    const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const hideEvent = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+    const show = Keyboard.addListener(showEvent, (e) => setHeight(e.endCoordinates.height));
+    const hide = Keyboard.addListener(hideEvent, () => setHeight(0));
+    return () => { show.remove(); hide.remove(); };
+  }, []);
+  return height;
 }
 
 /** İçerik yüzeyi — koyu başlığın üzerine kavisle biner. */
