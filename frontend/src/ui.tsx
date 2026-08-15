@@ -254,6 +254,38 @@ export function categoryLabel(key: string) {
   return CATEGORY_LABEL_TR[key] || CATEGORY_LABEL_TR.diger;
 }
 
+/**
+ * Dokunulabilir kategori simgesi.
+ *
+ * Düz simge dekoratif görünüyordu — kimse dokunulabileceğini anlamadı.
+ * Köşesindeki küçük kalem rozeti, profil fotoğrafındaki kamera rozetiyle
+ * aynı işaret: "buraya dokun, değiştir".
+ */
+export function CategoryPicker({
+  category, onPress, size = metrics.icon, testID,
+}: { category: string; onPress: () => void; size?: number; testID?: string }) {
+  return (
+    <Pressable onPress={onPress} testID={testID} hitSlop={6}>
+      <CategoryIcon category={category} size={size} />
+      <View style={styles.editBadge}>
+        <Ionicons name="pencil" size={9} color={colors.onDark} />
+      </View>
+    </Pressable>
+  );
+}
+
+/** Dokunulabilir birim etiketi — kenarlıklı hap, düğüm gibi okunuyor. */
+export function UnitPicker({
+  unit, onPress, testID,
+}: { unit: string; onPress: () => void; testID?: string }) {
+  return (
+    <Pressable onPress={onPress} testID={testID} hitSlop={8} style={styles.unitPill}>
+      <Text style={styles.unitPillTxt}>{unit.toLocaleUpperCase("tr-TR")}</Text>
+      <Ionicons name="chevron-down" size={10} color={colors.accentDark} />
+    </Pressable>
+  );
+}
+
 export function Avatar({
   name, size = metrics.icon, avatarId, userId, photoVersion,
 }: {
@@ -290,6 +322,48 @@ export function Avatar({
   return (
     <View style={[styles.avatar, box, { backgroundColor: preset.color }]}>
       <Ionicons name={preset.icon as any} size={Math.floor(size * 0.5)} color="#fff" />
+    </View>
+  );
+}
+
+/**
+ * Bir kez gösterilip kapatılan ipucu kartı.
+ *
+ * Görsel işaret (kenarlıklı hap, kalem rozeti) tek başına yetmedi — kimse
+ * simgeye dokunulabileceğini fark etmedi. Yazıyla bir kez söylemek gerekiyor.
+ * Kapatıldığı bilgisi cihazda kalıyor, bir daha çıkmıyor.
+ */
+export function HintCard({
+  hintKey, children, testID,
+}: { hintKey: string; children: React.ReactNode; testID?: string }) {
+  const [shown, setShown] = React.useState(false);
+  const storageKey = `hint:${hintKey}`;
+
+  React.useEffect(() => {
+    let alive = true;
+    require("@react-native-async-storage/async-storage").default
+      .getItem(storageKey)
+      .then((v: string | null) => { if (alive && !v) setShown(true); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [storageKey]);
+
+  if (!shown) return null;
+  return (
+    <View style={styles.hint} testID={testID}>
+      <Ionicons name="bulb-outline" size={18} color={colors.onInfo} />
+      <Text style={styles.hintTxt}>{children}</Text>
+      <Pressable
+        hitSlop={10}
+        onPress={() => {
+          setShown(false);
+          require("@react-native-async-storage/async-storage").default
+            .setItem(storageKey, "1").catch(() => {});
+        }}
+        testID={testID ? `${testID}-dismiss` : undefined}
+      >
+        <Ionicons name="close" size={18} color={colors.onInfo} />
+      </Pressable>
     </View>
   );
 }
@@ -447,6 +521,26 @@ const styles = StyleSheet.create({
   divider: { height: StyleSheet.hairlineWidth, backgroundColor: colors.divider },
   money: { ...T.emph, color: colors.ink, fontVariant: ["tabular-nums"], flexShrink: 0 },
   iconPill: { alignItems: "center", justifyContent: "center" },
+  editBadge: {
+    position: "absolute", right: -3, bottom: -3,
+    width: 16, height: 16, borderRadius: 8, backgroundColor: colors.dark,
+    alignItems: "center", justifyContent: "center",
+    borderWidth: 1.5, borderColor: colors.surface,
+  },
+  unitPill: {
+    flexDirection: "row", alignItems: "center", gap: 2, alignSelf: "flex-start",
+    paddingHorizontal: 7, height: 20, borderRadius: radius.pill,
+    borderWidth: 1, borderColor: colors.accent, backgroundColor: colors.accentSoft,
+  },
+  unitPillTxt: {
+    fontSize: 10, lineHeight: 13, fontFamily: fontFamily.semibold,
+    letterSpacing: 0.5, color: colors.accentDark,
+  },
+  hint: {
+    flexDirection: "row", alignItems: "center", gap: spacing.md,
+    backgroundColor: colors.infoSoft, borderRadius: radius.md, padding: spacing.md,
+  },
+  hintTxt: { ...T.caption, color: colors.onInfo, flex: 1, lineHeight: 18 },
   avatar: { alignItems: "center", justifyContent: "center" },
   tag: { paddingHorizontal: spacing.sm + 2, paddingVertical: 3, borderRadius: radius.pill, alignSelf: "flex-start" },
   tagTxt: { fontSize: 11, lineHeight: 14, fontFamily: fontFamily.medium },

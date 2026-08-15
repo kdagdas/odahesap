@@ -11,10 +11,11 @@ import { popNext, remaining, totalCount, currentIndex, clearQueue } from "@/src/
 import { useAuth } from "@/src/auth";
 import { useHousehold } from "@/src/household";
 import {
-  Chip, CategoryIcon, MerchantBadge, ScreenHeader, formatEUR, formatDateTR, todayISO, nextUnit,
+  Chip, CategoryPicker, MerchantBadge, ScreenHeader, formatEUR, formatDateTR, todayISO,
+  nextUnit, UnitPicker, HintCard,
 } from "@/src/ui";
 import {
-  colors, spacing, radius, type as T, overline, CATEGORY_ICONS, CATEGORY_LABEL_TR,
+  colors, spacing, radius, type as T, overline, fontFamily, CATEGORY_ICONS, CATEGORY_LABEL_TR,
 } from "@/src/theme";
 
 type Target = { type: "self" | "household" | "roommate"; user_id?: string };
@@ -204,6 +205,10 @@ export default function Review() {
         </ScreenHeader>
 
         <View style={styles.list}>
+          <HintCard hintKey="review-tap" testID="review-hint">
+            Kategori simgesine ve <Text style={{ fontFamily: fontFamily.semibold }}>ADET</Text> etiketine
+            dokunarak değiştirebilirsin.
+          </HintCard>
           {dupe && !dupeDismissed && (
             <View style={styles.dupeBox} testID="duplicate-warning">
               <Ionicons name="copy-outline" size={18} color={colors.onWarning} />
@@ -271,12 +276,11 @@ export default function Review() {
             return (
               <View key={i} style={styles.itemCard} testID={`review-item-${i}`}>
                 <View style={styles.itemHeader}>
-                  <Pressable
+                  <CategoryPicker
+                    category={r.category} size={36}
                     onPress={() => updateRow(i, { category: nextCategory(r.category) })}
                     testID={`review-item-${i}-category`}
-                  >
-                    <CategoryIcon category={r.category} size={36} />
-                  </Pressable>
+                  />
                   <TextInput
                     style={styles.nameInput}
                     value={r.name}
@@ -291,12 +295,11 @@ export default function Review() {
                 </View>
                 <View style={styles.itemBody}>
                   <View style={styles.qtyBox}>
-                    {/* Etikete dokununca birim değişiyor: fişte tartılan ürün
-                        "0,590 kg", adet değil. */}
-                    <Pressable onPress={() => updateRow(i, { unit: nextUnit(r.unit) })}
-                               hitSlop={8} testID={`review-item-${i}-unit`}>
-                      <Text style={styles.unitLabel}>{r.unit.toLocaleUpperCase("tr-TR")} ⌄</Text>
-                    </Pressable>
+                    <View style={styles.labelRow}>
+                      <UnitPicker unit={r.unit}
+                                  onPress={() => updateRow(i, { unit: nextUnit(r.unit) })}
+                                  testID={`review-item-${i}-unit`} />
+                    </View>
                     <TextInput
                       style={styles.qtyInput}
                       value={r.quantity}
@@ -306,7 +309,9 @@ export default function Review() {
                     />
                   </View>
                   <View style={styles.priceBox}>
-                    <Text style={styles.subLabel}>Birim fiyat</Text>
+                    <View style={styles.labelRow}>
+                      <Text style={styles.subLabel} numberOfLines={1}>FİYAT</Text>
+                    </View>
                     <TextInput
                       style={styles.priceInput}
                       value={r.price}
@@ -316,7 +321,9 @@ export default function Review() {
                     />
                   </View>
                   <View style={styles.totalBox}>
-                    <Text style={styles.subLabel}>Toplam</Text>
+                    <View style={styles.labelRow}>
+                      <Text style={styles.subLabel} numberOfLines={1}>TOPLAM</Text>
+                    </View>
                     <Text style={styles.rowTotal}>{formatEUR(rowTotal(r))}</Text>
                   </View>
                 </View>
@@ -335,9 +342,14 @@ export default function Review() {
         <View style={styles.footer}>
           {error && <Text style={styles.error} testID="review-error">{error}</Text>}
           <View style={styles.footerRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.footerLabel}>Toplam · {formatDateTR(fromDDMMYYYY(dateInput) || todayISO())}</Text>
-              <Text style={styles.footerTotal}>{formatEUR(total)}</Text>
+            {/* minWidth:0 + tek satır şart: birden fazla fiş varken "Atla"
+                düğmesi de çıkıyor ve bu sütun içeriğinin altına sıkışıyordu —
+                tutar harf harf alt alta iniyordu. */}
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={styles.footerLabel} numberOfLines={1}>TOPLAM</Text>
+              <Text style={styles.footerTotal} numberOfLines={1} adjustsFontSizeToFit>
+                {formatEUR(total)}
+              </Text>
             </View>
             {batchN > 1 && (
               <Pressable style={styles.skipBtn} onPress={skipReceipt} testID="review-skip-btn">
@@ -418,8 +430,9 @@ const styles = StyleSheet.create({
   qtyBox: { width: 72 },
   priceBox: { flex: 1 },
   totalBox: { width: 92, alignItems: "flex-end" },
-  subLabel: { ...overline, marginBottom: 4 },
-  unitLabel: { ...overline, marginBottom: 4, color: colors.accentDark },
+  subLabel: { ...overline },
+  // Sabit yukseklik: etiketlerden biri sarsa bile altlarindaki kutular hizali kalir.
+  labelRow: { height: 22, justifyContent: "center", marginBottom: 4 },
   dupeBox: {
     flexDirection: "row", alignItems: "center", gap: spacing.md,
     backgroundColor: colors.warningSoft, borderRadius: radius.md, padding: spacing.md,
@@ -450,7 +463,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm, backgroundColor: colors.surface,
   },
   footerRow: { flexDirection: "row", alignItems: "center", gap: spacing.md },
-  footerLabel: { ...T.caption, color: colors.inkSecondary },
+  footerLabel: { ...overline },
   footerTotal: { ...T.screen, color: colors.ink, fontVariant: ["tabular-nums"] },
   saveBtn: {
     backgroundColor: colors.brand, borderRadius: radius.pill, paddingHorizontal: spacing.xl,

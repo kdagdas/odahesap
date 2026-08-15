@@ -13,7 +13,7 @@ import { api, apiGet } from "@/src/api";
 import { useAuth } from "@/src/auth";
 import { useHousehold } from "@/src/household";
 import {
-  ScreenHeader, Sheet, Card, Divider, Chip, MerchantBadge, CategoryIcon, formatEUR, nextUnit,
+  ScreenHeader, Sheet, Card, Divider, Chip, MerchantBadge, CategoryPicker, formatEUR, nextUnit, UnitPicker,
 } from "@/src/ui";
 import {
   colors, spacing, radius, type as T, overline, fontFamily,
@@ -182,12 +182,11 @@ export default function ExpenseEdit() {
                       {i > 0 && <Divider inset={spacing.lg} />}
                       <View style={styles.item}>
                         <View style={styles.itemHeader}>
-                          <Pressable
+                          <CategoryPicker
+                            category={r.category} size={36}
                             onPress={() => updateRow(i, { category: nextCategory(r.category) })}
                             testID={`edit-item-${i}-category`}
-                          >
-                            <CategoryIcon category={r.category} size={36} />
-                          </Pressable>
+                          />
                           <View style={{ flex: 1, gap: 2 }}>
                             <TextInput
                               style={styles.nameInput}
@@ -203,14 +202,15 @@ export default function ExpenseEdit() {
                             <Ionicons name="close-circle" size={22} color={colors.inkTertiary} />
                           </Pressable>
                         </View>
+                        {/* Etiket satırı sabit yükseklikte: "BİRİM FİYAT" iki
+                            satıra sarınca altındaki kutular kayıyordu. */}
                         <View style={styles.itemBody}>
                           <View style={styles.qtyBox}>
-                            {/* Etikete dokununca birim değişiyor: fişte tartılan
-                                ürün "0,590 kg", adet değil. */}
-                            <Pressable onPress={() => updateRow(i, { unit: nextUnit(r.unit) })}
-                                       hitSlop={8} testID={`edit-item-${i}-unit`}>
-                              <Text style={styles.unitLabel}>{r.unit.toLocaleUpperCase("tr-TR")} ⌄</Text>
-                            </Pressable>
+                            <View style={styles.labelRow}>
+                              <UnitPicker unit={r.unit}
+                                          onPress={() => updateRow(i, { unit: nextUnit(r.unit) })}
+                                          testID={`edit-item-${i}-unit`} />
+                            </View>
                             <TextInput
                               style={styles.qtyInput}
                               value={r.quantity}
@@ -220,7 +220,9 @@ export default function ExpenseEdit() {
                             />
                           </View>
                           <View style={styles.priceBox}>
-                            <Text style={styles.subLabel}>BİRİM FİYAT</Text>
+                            <View style={styles.labelRow}>
+                              <Text style={styles.subLabel} numberOfLines={1}>FİYAT</Text>
+                            </View>
                             <TextInput
                               style={styles.priceInput}
                               value={r.price}
@@ -230,7 +232,9 @@ export default function ExpenseEdit() {
                             />
                           </View>
                           <View style={styles.totalBox}>
-                            <Text style={styles.subLabel}>TOPLAM</Text>
+                            <View style={styles.labelRow}>
+                              <Text style={styles.subLabel} numberOfLines={1}>TOPLAM</Text>
+                            </View>
                             <Text style={styles.rowTotal}>{formatEUR(rowTotal(r))}</Text>
                           </View>
                         </View>
@@ -356,8 +360,9 @@ const styles = StyleSheet.create({
   qtyBox: { width: 74 },
   priceBox: { flex: 1 },
   totalBox: { width: 90, alignItems: "flex-end" },
-  subLabel: { ...overline, fontSize: 10, letterSpacing: 0.8, marginBottom: 4 },
-  unitLabel: { ...overline, fontSize: 10, letterSpacing: 0.8, marginBottom: 4, color: colors.accentDark },
+  subLabel: { ...overline, fontSize: 10, letterSpacing: 0.8 },
+  // Sabit yukseklik: etiketlerden biri sarsa bile altlarindaki kutular hizali kalir.
+  labelRow: { height: 22, justifyContent: "center", marginBottom: 4 },
   qtyInput: {
     backgroundColor: colors.surfaceSecondary, borderRadius: radius.md,
     paddingHorizontal: spacing.sm, paddingVertical: spacing.sm,

@@ -168,17 +168,45 @@ export const CATEGORY_LABEL_TR: Record<string, string> = {
   diger: "Diğer",
 };
 
-/** Bilinen zincirlerin marka renkleri — market rozetinde kullanılır. */
+/**
+ * Bilinen zincirlerin marka renkleri — market rozetinde kullanılır.
+ * Anahtarlar sunucudaki KNOWN_MERCHANTS listesiyle aynı yazımda olmalı;
+ * sunucu market adını o listeye indirgiyor, rozet de oradan renk buluyor.
+ */
 export const MERCHANT_COLORS: Record<string, string> = {
+  // Almanya
   REWE: "#CC071E", EDEKA: "#F0B400", ALDI: "#0B4B99", LIDL: "#0050AA",
-  PENNY: "#CC071E", KAUFLAND: "#E10915", NETTO: "#FFD700", DM: "#004890",
-  ROSSMANN: "#C8102E", BAUHAUS: "#F58220", OBI: "#F47C20", HORNBACH: "#F5A800",
-  IKEA: "#0058A3",
+  PENNY: "#CC071E", KAUFLAND: "#E10915", NETTO: "#FFD700", NORMA: "#E2001A",
+  DM: "#004890", ROSSMANN: "#C8102E", ACTION: "#004E9E", TEDI: "#E30613",
+  BAUHAUS: "#F58220", OBI: "#F47C20", HORNBACH: "#F5A800", IKEA: "#0058A3",
+  // Türkiye
+  "BİM": "#E1251B", A101: "#00A9A5", "ŞOK": "#F9C22E", MIGROS: "#F36F21",
+  CARREFOURSA: "#004E9E", MACROCENTER: "#1A1A1A", "TARIM KREDI": "#2E7D32",
+  "TARIM KREDİ": "#2E7D32", FILE: "#8DC63F", HAKMAR: "#D6001C",
+  "ONUR MARKET": "#005BAA", METRO: "#003D7D",
 };
+
+/**
+ * Tanınmayan marketler için renk havuzu.
+ *
+ * Hepsi lacivert olunca "Bizim Fleischer", "Tarım Kredi" ve "Metro" tek bir
+ * gri kütle gibi okunuyordu. Renk isimden türetiliyor: aynı market her yerde
+ * ve her açılışta aynı rengi alıyor — gerçekten rastgele olsaydı liste her
+ * yenilemede değişir, hiçbir şey tanınmazdı.
+ */
+const FALLBACK_COLORS = [
+  "#0F766E", "#7C3AED", "#B45309", "#BE123C", "#1D4ED8",
+  "#15803D", "#A21CAF", "#C2410C", "#0E7490", "#4D7C0F",
+];
 
 export function merchantColor(name?: string | null): string {
   if (!name) return colors.dark;
-  return MERCHANT_COLORS[name.trim().toUpperCase()] || colors.dark;
+  const key = name.trim().toUpperCase();
+  const known = MERCHANT_COLORS[key];
+  if (known) return known;
+  let hash = 0;
+  for (let i = 0; i < key.length; i++) hash = (hash * 31 + key.charCodeAt(i)) >>> 0;
+  return FALLBACK_COLORS[hash % FALLBACK_COLORS.length];
 }
 
 /** 8 hazır avatar — fotoğraf yüklenmediğinde kullanılır. */
