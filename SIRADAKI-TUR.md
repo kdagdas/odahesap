@@ -1,8 +1,8 @@
-# Sıradaki tur — Tur 7: cila turu
+# Sıradaki tur — Tur 7: alt sayfa jesti
 
 > Bu dosya yeni bir sohbet penceresine geçerken bağlamı taşımak için yazıldı.
 >
-> Son durum: **APK v24**, 497 sunucu kontrolü geçiyor, `main` çalışır durumda.
+> Son durum: **APK v25**, 497 sunucu kontrolü geçiyor, `main` çalışır durumda.
 > Ayrıntı için [PROJE-DOKUMANI.md](PROJE-DOKUMANI.md) §12.
 
 ## Biten turlar
@@ -16,11 +16,12 @@
 | 5 (v24) | Düzenli ödemeler + ödeyen seçici |
 | 6 (v24) | Takvim ayı bazlı istatistikler, sabit/değişken ayrımı |
 
-## Tur 7 — kararlaştırılan içerik
+## Tur 7 — tek madde kaldı
 
-Ekran seti oturdu, sıra cilada. Hepsi konuşuldu ve gerekçeleri var.
+Cila turunun üç maddesinden ikisi **genele açmaya ertelendi** (aşağıda).
+Geriye kalan tek iş bir hata düzeltmesi:
 
-### 1. Alt sayfalar elle kaydırılabilsin
+### Alt sayfalar elle kaydırılabilsin
 
 `ui.tsx`'te her alt sayfanın tepesinde 36×4'lük bir tutamak var ve **çekilmiyor**.
 Tutulup çekilmeyen bir tutamak, hiç tutamak olmamasından kötü: kullanıcı
@@ -31,31 +32,21 @@ bileşeni çıkarılıp jest oraya konursa **her panel tek seferde düzelir**.
 `gesture-handler` ve `reanimated` kurulu, Yeni Mimari açık. ~2-3 sa.
 Bu bir estetik işi değil, **hata düzeltmesi**.
 
-### 2. Tanıtım ekranları (giriş öncesi)
-
-Bugün yeni katılan biri hiçbir açıklama görmeden e-posta/şifre ekranına
-düşüyor. Fişten kalem kalem okuma bu uygulamanın en ayırt edici özelliği ve
-hiçbir yerde anlatılmıyor. 3-4 ekran, veri gerektirmiyor. ~3 sa.
-
-**Kural:** animasyon içeriği geciktirmesin, dokunmayı bloklamasın, 250 ms'yi
-geçmesin. Uygulamanın hızlı hissettirmesi korunacak en değerli şey.
-
-### 3. "Sana ne kazandırdı" rakamları
-
-Fresh it'in "12 kg gıda kurtardın" karşılığı. Dürüstçe söyleyebileceğimiz
-**iki** şey var, ikisi de zaten ölçülü:
-
-- **"34 ayrı ödeme yerine 12 transfer."** `simplify_debts()` bunu her dönem
-  zaten hesaplıyor.
-- **"47 fiş tarandı, 380 kalem elle yazılmadı."** Kalem sayısı `items[]`'de.
-
-Söylenmeyecekler: "para biriktirdin" (biriktirmedi), kim ne kadar tüketti
-(kimin daha müsait olduğunu ölçer, sürtüşme üretir).
-
-Bu rakamlar Tur 6'nın hesaplarıyla aynı kaynaktan geliyor — ayrı yazılırsa
-iki ekran farklı sayı gösterir.
-
 ## Genele açma paketi (Tur 7'den sonra)
+
+- **Tanıtım ekranları** (giriş öncesi, 3-4 ekran, ~3 sa). Bugün yeni katılan
+  biri hiçbir açıklama görmeden şifre ekranına düşüyor; fişten kalem kalem
+  okuma en ayırt edici özelliğimiz ve hiçbir yerde anlatılmıyor.
+  **İllüstrasyon aramayın:** en ikna edici ekran, gerçek bir Alman fişinin
+  ayrıştığı gerçek ekran görüntüsüdür. Anlatmaktan çok göstermek.
+  *Kural:* animasyon içeriği geciktirmesin, dokunmayı bloklamasın, 250 ms'yi
+  geçmesin — uygulamanın hızlı hissettirmesi korunacak en değerli şey.
+- **"Sana ne kazandırdı" rakamları.** Dürüstçe söylenebilecek iki şey:
+  kaç transferden kaça indiğimiz (`simplify_debts()` zaten hesaplıyor) ve
+  kaç kalemin elle yazılmadığı (`items[]`). Söylenmeyecekler: "para
+  biriktirdin" (biriktirmedi), kim ne kadar tüketti (kimin daha müsait
+  olduğunu ölçer, sürtüşme üretir). Tur 6'nın hesaplarıyla aynı kaynaktan
+  gelmeli, yoksa iki ekran farklı sayı gösterir.
 
 - **Düzenli ödeme hatırlatma bildirimi** ~1,5-2 sa. Render cron ücretli ve
   ikinci ücretsiz servis açılamaz; en ucuz yol mevcut **GitHub Actions**'a
