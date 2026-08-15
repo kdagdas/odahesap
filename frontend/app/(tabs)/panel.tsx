@@ -153,7 +153,7 @@ export default function Panel() {
           <Text style={styles.heroValue}>{formatEUR(stats?.total ?? 0)}</Text>
           <TrendBadge
             pct={stats?.change_pct}
-            onPress={() => router.push("/(tabs)/denge?focus=stats")}
+            onPress={() => router.push("/istatistik")}
             testID="open-stats-btn"
           />
           <HeaderSplit

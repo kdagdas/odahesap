@@ -3048,6 +3048,155 @@ async def stats(period_id: Optional[str] = None, user=Depends(get_current_user))
     }
 
 
+# ---------- Aylık istatistik ----------
+# **Takvim ayı, dönem değil.** Dönem üç hafta da sürebilir yedi hafta da;
+# "bu ay ne kadar harcadık" sorusunun cevabı dönemle değişmemeli. Mevcut
+# `/stats` dönem bazlıdır ve Anasayfa'nın başlığını besler; burası ayrı.
+#
+# Her sayı birinin gerçekten sorduğu bir soruya cevap veriyor. "Koymak için"
+# konan tek bir gösterge yok — özellikle kişi başına tüketim karşılaştırması
+# bilinçli olarak dışarıda: kimin daha çok tükettiğini değil kimin daha müsait
+# olduğunu ölçer ve ev arkadaşları arasında gereksiz sürtüşme üretir.
+
+
+def _month_bounds(month: str) -> tuple:
+    y, m = int(month[:4]), int(month[5:7])
+    start = date(y, m, 1)
+    end = date(y + 1, 1, 1) if m == 12 else date(y, m + 1, 1)
+    return start.isoformat(), end.isoformat()
+
+
+def _prev_month(month: str) -> str:
+    y, m = int(month[:4]), int(month[5:7])
+    return f"{y - 1}-12" if m == 1 else f"{y}-{m - 1:02d}"
+
+
+def _expense_day(e: dict) -> str:
+    d = (e.get("expense_date") or "")[:10]
+    return d or make_aware(e["created_at"]).date().isoformat()
+
+
+async def _month_expenses(household_id: str, month: str, scope: str, user_id: str) -> List[dict]:
+    lo, hi = _month_bounds(month)
+    q: dict = {"household_id": household_id}
+    if scope == "self":
+        # Kişisel harcamalar: yalnızca kendi ekledikleri ve yalnızca kişisel
+        # olanlar. Başkasının kişisel harcaması zaten hiçbir yerde görünmüyor.
+        q.update({"target_type": "self", "added_by": user_id})
+    else:
+        q["target_type"] = {"$in": ["household", "custom"]}
+    rows = await db.expenses.find(q, {"_id": 0}).to_list(5000)
+    return [e for e in rows if lo <= _expense_day(e) < hi]
+
+
+def _breakdown(exps: List[dict]) -> dict:
+    cats: Dict[str, float] = {}
+    merchants: Dict[str, float] = {}
+    for e in exps:
+        total = float(e["total"])
+        items = e.get("items") or []
+        item_sum = sum(float(i.get("price", 0)) * float(i.get("quantity", 1) or 1) for i in items)
+        if items and item_sum:
+            for i in items:
+                line = float(i.get("price", 0)) * float(i.get("quantity", 1) or 1)
+                key = i.get("category") or "diger"
+                # Kalemler fişin toplamına ölçekleniyor: indirim satırları ve
+                # yuvarlama yüzünden kalem toplamı fiş toplamını tutmuyor ve
+                # ölçeklenmezse döküm başlıktaki rakamla çelişiyor.
+                cats[key] = cats.get(key, 0) + line / item_sum * total
+        else:
+            cats["diger"] = cats.get("diger", 0) + total
+        name = (e.get("merchant") or "Diğer").strip() or "Diğer"
+        merchants[name] = merchants.get(name, 0) + total
+    return {
+        "categories": sorted(
+            [{"key": k, "total": round(v, 2)} for k, v in cats.items() if v > 0.005],
+            key=lambda x: -x["total"]),
+        "merchants": sorted(
+            [{"name": k, "total": round(v, 2)} for k, v in merchants.items()],
+            key=lambda x: -x["total"])[:8],
+    }
+
+
+@api.get("/stats/monthly")
+async def monthly_stats(
+    month: Optional[str] = None,
+    scope: str = "household",
+    user=Depends(get_current_user),
+):
+    hh = await get_user_household(user["user_id"])
+    today = now_utc().date()
+    month = month if (month and len(month) == 7) else month_key(today)
+    empty = {
+        "month": month, "scope": scope, "total": 0, "expense_count": 0,
+        "prev_total": 0, "change_pct": None, "fixed": 0, "variable": 0,
+        "categories": [], "merchants": [], "by_member": [], "daily_series": [],
+        "months": [], "member_count": 0, "per_person": 0,
+    }
+    if not hh:
+        return empty
+
+    exps = await _month_expenses(hh["household_id"], month, scope, user["user_id"])
+    prev = await _month_expenses(
+        hh["household_id"], _prev_month(month), scope, user["user_id"])
+
+    total = round(sum(float(e["total"]) for e in exps), 2)
+    prev_total = round(sum(float(e["total"]) for e in prev), 2)
+    change = round((total - prev_total) / prev_total * 100) if prev_total > 0 else None
+
+    # Sabit / değişken ayrımı Tur 5'in getirdiği yeni kesit: `recurring_id`
+    # taşıyan harcama bir şablondan geldi, yani kira-elektrik-abonelik.
+    # "Bu ay 340 € market, 1.290 € sabit gider" cümlesi bundan önce
+    # kurulamıyordu ve insanların asıl sorduğu ayrım bu.
+    fixed = round(sum(float(e["total"]) for e in exps if e.get("recurring_id")), 2)
+
+    by_member: Dict[str, float] = {}
+    if scope == "household":
+        for e in exps:
+            by_member[e["added_by"]] = by_member.get(e["added_by"], 0) + float(e["total"])
+
+    lo, hi = _month_bounds(month)
+    days = (date.fromisoformat(hi) - date.fromisoformat(lo)).days
+    daily = {(date.fromisoformat(lo) + timedelta(days=i)).isoformat(): 0.0
+             for i in range(days)}
+    for e in exps:
+        d = _expense_day(e)
+        if d in daily:
+            daily[d] += float(e["total"])
+
+    # Ay seçicisinin dolaşabileceği aylar: veri olan aylar + içinde bulunulan.
+    all_rows = await db.expenses.find(
+        {"household_id": hh["household_id"]},
+        {"_id": 0, "expense_date": 1, "created_at": 1},
+    ).to_list(5000)
+    months = sorted({_expense_day(e)[:7] for e in all_rows} | {month_key(today)}, reverse=True)
+
+    members = await period_participants(
+        hh["household_id"],
+        (await get_active_period(hh["household_id"]) or {}).get("period_id", ""),
+        hh["member_ids"],
+    ) if scope == "household" else [user["user_id"]]
+
+    return {
+        **empty,
+        "total": total,
+        "expense_count": len(exps),
+        "prev_total": prev_total,
+        "prev_month": _prev_month(month),
+        "change_pct": change,
+        "fixed": fixed,
+        "variable": round(total - fixed, 2),
+        "member_count": len(members),
+        "per_person": round(total / max(len(members), 1), 2),
+        "by_member": sorted(
+            [{"user_id": k, "total": round(v, 2)} for k, v in by_member.items()],
+            key=lambda x: -x["total"]),
+        "daily_series": [{"day": d, "total": round(v, 2)} for d, v in daily.items()],
+        "months": months,
+        **_breakdown(exps),
+    }
+
+
 # ---------- Periods ----------
 @api.get("/periods")
 async def list_periods(user=Depends(get_current_user)):
