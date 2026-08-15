@@ -501,6 +501,32 @@ export function splitFromExpense(
   return splitAll(members);
 }
 
+/**
+ * Harcama listelerindeki bölüşme rozeti.
+ *
+ * Üç ekran bunu ayrı ayrı hesaplıyordu ve üçü de yalnızca eski üç durumu
+ * biliyordu; "seçili kişiler" hepsinde yanlış etikete düşüyordu.
+ */
+export function splitBadge(
+  e: Parameters<typeof splitFromExpense>[0],
+  members: SplitMember[],
+  meId?: string,
+  /** Başkasının dökümüne bakarken "Kendim" değil "Kendisi" doğru. */
+  selfLabel = "Kendim",
+): { txt: string; color: string; bg: string } {
+  const split = splitFromExpense(e, members);
+  const ids = Object.keys(split.with);
+  if (ids.length === 1 && ids[0] === e.added_by)
+    return { txt: selfLabel, color: colors.onWarning, bg: colors.warningSoft };
+  if (ids.length === 1) {
+    const who = members.find((m) => m.user_id === ids[0])?.name?.split(" ")[0] || "?";
+    return { txt: `→ ${who}`, color: colors.onInfo, bg: colors.infoSoft };
+  }
+  if (ids.length === members.length && members.length > 0)
+    return { txt: "Ev", color: colors.dark, bg: colors.surfaceSecondary };
+  return { txt: splitSummary(split, members, meId), color: colors.accentDark, bg: colors.accentSoft };
+}
+
 const parseAmount = (s: string) => parseFloat((s || "").replace(",", ".")) || 0;
 const showAmount = (n: number) => n.toFixed(2).replace(".", ",");
 

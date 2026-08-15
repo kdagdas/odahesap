@@ -9,13 +9,14 @@ import { useAuth } from "@/src/auth";
 import { useHousehold } from "@/src/household";
 import {
   ScreenHeader, HeaderSplit, Sheet, Card, Divider, Chip, Avatar, CategoryIcon,
-  MerchantBadge, Tag, Money, formatEUR, formatDateTR, formatQty,
+  MerchantBadge, Tag, Money, splitBadge, formatEUR, formatDateTR, formatQty,
 } from "@/src/ui";
 import { colors, spacing, radius, type as T, overline, metrics } from "@/src/theme";
 
 type Item = { name: string; price: number; quantity?: number; unit?: string; category: string };
 type Expense = {
   expense_id: string; added_by: string; target_type: string; target_user_id?: string;
+  split_mode?: string; split_with?: Record<string, number> | null;
   total: number; merchant?: string; category?: string; source: string;
   created_at: string; expense_date?: string;
   items?: Item[]; notes?: string;
@@ -145,11 +146,7 @@ export default function Harcamalar() {
             <Card title="Tüm Harcamalar">
               {expenses.map((e, idx) => {
                 const author = members.find((m) => m.user_id === e.added_by);
-                const targetChip = e.target_type === "household"
-                  ? { txt: "Ev", color: colors.dark, bg: colors.surfaceSecondary }
-                  : e.target_type === "self"
-                    ? { txt: "Kendim", color: colors.onWarning, bg: colors.warningSoft }
-                    : { txt: `→ ${members.find((m) => m.user_id === e.target_user_id)?.name?.split(" ")[0] || "?"}`, color: colors.onInfo, bg: colors.infoSoft };
+                const targetChip = splitBadge(e, members, user?.user_id);
                 const expanded = expandedId === e.expense_id;
                 return (
                   <View key={e.expense_id}>
