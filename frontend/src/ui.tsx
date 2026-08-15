@@ -13,7 +13,7 @@
 import React from "react";
 import {
   View, Text, Pressable, StyleSheet, ViewStyle, StyleProp, Image, TextStyle,
-  Keyboard, Platform, Modal, Alert, TextInput,
+  Keyboard, Platform, Modal, Alert, TextInput, Animated,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -171,10 +171,12 @@ export function Sheet({ children, style }: { children: React.ReactNode; style?: 
 /* ---------------------------------------------------------------- kartlar */
 
 export function Card({
-  children, title, action, onAction, style, testID, padded = false, onLayout,
+  children, title, action, onAction, style, testID, padded = false, onLayout, lead,
 }: {
   children?: React.ReactNode; title?: string; action?: string; onAction?: () => void;
   style?: StyleProp<ViewStyle>; testID?: string; padded?: boolean;
+  /** Başlığın soluna küçük bir işaret (ör. `PulseDot`). */
+  lead?: React.ReactNode;
   /** Kartın kaydırma alanı içindeki y konumu — bir bölüme atlamak için. */
   onLayout?: (y: number) => void;
 }) {
@@ -186,6 +188,7 @@ export function Card({
     >
       {title ? (
         <View style={styles.cardHead}>
+          {lead ? <View style={{ marginRight: spacing.sm }}>{lead}</View> : null}
           <Text style={styles.cardTitle}>{title}</Text>
           {action ? (
             <Pressable onPress={onAction} hitSlop={10}>
@@ -460,6 +463,53 @@ export function SelectRow<T extends string>({
         </Pressable>
       </Modal>
     </>
+  );
+}
+
+/**
+ * Dikkat çeken küçük nokta — ekran her odaklandığında birkaç kez atar.
+ *
+ * Sürekli yanıp sönmüyor, bilerek. Yanıp sönme bir kez işe yarar: günde on
+ * kez açılan bir ekranda birkaç güne kalmadan duvar kâğıdına döner ve
+ * görünmez olmadan önce sinir bozucu olur. Ayrıca hiç durmayan bir animasyon
+ * Anasayfa'da pil harcar ve işletim sistemlerinin "hareketi azalt" ayarının
+ * hedeflediği tam olarak budur.
+ *
+ * `trigger` her değiştiğinde yeniden atıyor; ekran odaklandığında artan bir
+ * sayaç veriliyor, yani uygulamayı her açışta hatırlatma tekrarlanıyor.
+ */
+export function PulseDot({
+  trigger = 0, size = 8, color = colors.attention, beats = 3, testID,
+}: {
+  trigger?: number; size?: number; color?: string; beats?: number; testID?: string;
+}) {
+  const v = React.useRef(new Animated.Value(0)).current;
+  React.useEffect(() => {
+    v.setValue(0);
+    Animated.sequence(
+      Array.from({ length: beats }, () =>
+        Animated.sequence([
+          Animated.timing(v, { toValue: 1, duration: 260, useNativeDriver: true }),
+          Animated.timing(v, { toValue: 0, duration: 320, useNativeDriver: true }),
+        ])
+      )
+    ).start();
+  }, [trigger, beats]);
+
+  return (
+    <View style={{ width: size, height: size }} testID={testID}>
+      {/* Dışarı doğru açılan halka; nokta hep tam görünür kalıyor ki
+          animasyon kapalıyken bile işaret yerinde dursun. */}
+      <Animated.View
+        style={{
+          position: "absolute", width: size, height: size, borderRadius: size / 2,
+          backgroundColor: color,
+          opacity: v.interpolate({ inputRange: [0, 1], outputRange: [0, 0.35] }),
+          transform: [{ scale: v.interpolate({ inputRange: [0, 1], outputRange: [1, 2.6] }) }],
+        }}
+      />
+      <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: color }} />
+    </View>
   );
 }
 

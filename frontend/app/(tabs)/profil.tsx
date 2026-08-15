@@ -174,6 +174,19 @@ export default function Profil() {
                 <Ionicons name="chevron-forward" size={20} color={colors.inkTertiary} />
               </Pressable>
               <Divider inset={spacing.lg} />
+              {/* Kişisel düzenli giderler — spor salonu, kendi aboneliğin.
+                  Ekran ortak olanlarla aynı, "Kişisel" sekmesi önseçili. */}
+              <Pressable style={styles.navRow}
+                         onPress={() => router.push("/duzenli?scope=self")}
+                         testID="open-recurring-self" android_ripple={{ color: colors.divider }}>
+                <IconPill name="repeat" color={colors.onWarning} tint={colors.warningSoft} size={38} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.navTitle}>Kişisel düzenli ödemeler</Text>
+                  <Text style={styles.navDesc}>Her ay tekrarlayan kendi giderlerin</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color={colors.inkTertiary} />
+              </Pressable>
+              <Divider inset={spacing.lg} />
               <Pressable style={styles.navRow} onPress={() => router.push("/ayarlar")}
                          testID="open-app-settings" android_ripple={{ color: colors.divider }}>
                 <IconPill name="settings-outline" color={colors.onInfo} tint={colors.infoSoft} size={38} />

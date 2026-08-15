@@ -45,6 +45,12 @@ export const colors = {
   negativeSoft: "#FEE8E8",
   warning: "#F59E0B",
   warningSoft: "#FEF3D6",
+  // "Senden bir şey bekliyor" — uyarı DEĞİL. Vadesi gelen bir kira bir hata
+  // değil, normal ve beklenen bir olay; `warning` ile aynı olsaydı dönem
+  // ortası katılma uyarısıyla aynı sesle konuşurdu. Lacivert–beyaz palette
+  // dikkat çekecek başka yuva yok, o yüzden ayrı ve daha canlı bir amber.
+  // Yalnızca küçük işaretlerde kullanılır; yüzey doldurmaz.
+  attention: "#FFA51F",
   onWarning: "#92400E",
   info: "#3B82F6",
   infoSoft: "#E2EEFF",

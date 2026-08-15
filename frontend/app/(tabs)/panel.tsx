@@ -11,14 +11,21 @@ import { useAuth } from "@/src/auth";
 import { useHousehold } from "@/src/household";
 import {
   ScreenHeader, HeaderSplit, TrendBadge, Sheet, Card, Row, Divider, Avatar,
-  Money, IconPill, CategoryIcon, categoryLabel, splitBadge, formatEUR, formatEURShort,
+  Money, IconPill, CategoryIcon, categoryLabel, splitBadge, splitSummary, PulseDot,
+  formatEUR, formatEURShort,
 } from "@/src/ui";
+import { ConfirmSheet } from "@/app/duzenli";
 import { colors, spacing, type as T, overline, fontFamily, metrics, CATEGORY_ICONS } from "@/src/theme";
 
 type Expense = {
   expense_id: string; added_by: string; target_type: string; target_user_id?: string;
   split_mode?: string; split_with?: Record<string, number> | null;
   total: number; merchant?: string; category?: string; source: string; expense_date?: string;
+};
+type Due = {
+  recurring_id: string; name: string; amount: number; amount_fixed: boolean;
+  day_of_month: number; scope: "household" | "self"; due_period: string | null;
+  split_mode: "equal" | "exact"; split_with: Record<string, number>;
 };
 type Stats = {
   total: number; per_person: number; daily_average: number; projected_30d: number;
@@ -74,17 +81,24 @@ export default function Panel() {
   const [totalsPaid, setTotalsPaid] = useState<Record<string, number>>({});
   const [shopping, setShopping] = useState<ShopItem[]>([]);
   const [unread, setUnread] = useState(0);
+  const [due, setDue] = useState<Due[]>([]);
+  const [confirming, setConfirming] = useState<Due | null>(null);
+  // PulseDot her değiştiğinde yeniden atıyor; ekran odaklandıkça artıyor,
+  // yani uygulamayı her açışta hatırlatma tekrarlanıyor ama sürekli
+  // yanıp sönen bir animasyon çalışmıyor.
+  const [focusTick, setFocusTick] = useState(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      const [st, exp, bal, shop, ntf] = await Promise.all([
+      const [st, exp, bal, shop, ntf, rec] = await Promise.all([
         apiGet<Stats>("/stats"),
         apiGet<{ expenses: Expense[] }>("/expenses"),
         apiGet<any>("/balances"),
         apiGet<{ items: ShopItem[] }>("/shopping?scope=household"),
         apiGet<{ unread: number }>("/notifications"),
+        apiGet<{ due: Due[] }>("/recurring"),
         refreshHH(),
       ]);
       setStats(st);
@@ -92,11 +106,12 @@ export default function Panel() {
       setTotalsPaid(bal.totals_paid || {});
       setShopping((shop.items || []).filter((i) => !i.done));
       setUnread(ntf.unread || 0);
+      setDue(rec.due || []);
     } catch (e) { console.log(e); }
     finally { setLoading(false); setRefreshing(false); }
   }, [refreshHH]);
 
-  useFocusEffect(useCallback(() => { load(); }, [load]));
+  useFocusEffect(useCallback(() => { load(); setFocusTick((t) => t + 1); }, [load]));
 
   const member = (id?: string | null) => members.find((m) => m.user_id === id);
   const firstName = (id?: string | null) => member(id)?.name?.split(" ")[0] || "?";
@@ -195,7 +210,45 @@ export default function Panel() {
                 </Card>
               )}
 
-              <Card title="Alınacaklar" action="Tümü"
+              {/* Vadesi gelen düzenli ödemeler. Onaylanmadan hiçbir kayıt
+                  oluşmuyor; kart yalnızca bekleyen varsa çıkıyor. */}
+              {due.length > 0 && (
+                <Card
+                  title={`Onay Bekleyen · ${due.length}`}
+                  lead={<PulseDot trigger={focusTick} testID="due-dot" />}
+                  action={due.length > 3 ? `Tümü · +${due.length - 3}` : undefined}
+                  onAction={() => router.push("/duzenli")}
+                  style={styles.mx}
+                  testID="due-card"
+                >
+                  {due.slice(0, 3).map((d, i) => (
+                    <View key={d.recurring_id}>
+                      {i > 0 && <Divider />}
+                      <Pressable style={styles.dueRow} onPress={() => setConfirming(d)}
+                                 testID={`due-row-${d.recurring_id}`}>
+                        <View style={styles.dayBox}>
+                          <Text style={styles.dayTxt}>{d.day_of_month}</Text>
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.dueTitle}>{d.name}</Text>
+                          <Text style={styles.dueSub} numberOfLines={1}>
+                            {d.scope === "self"
+                              ? "Sadece ben"
+                              : splitSummary({ mode: d.split_mode, with: d.split_with },
+                                             members, user?.user_id)}
+                            {d.amount_fixed ? "" : " · değişken"}
+                          </Text>
+                        </View>
+                        <Money value={d.amount} />
+                        <Ionicons name="chevron-forward" size={16} color={colors.onSurfaceTertiary} />
+                      </Pressable>
+                    </View>
+                  ))}
+                </Card>
+              )}
+
+              <Card title="Alınacaklar"
+                    action={shopping.length > 3 ? `Tümü · +${shopping.length - 3}` : "Tümü"}
                     onAction={() => router.push("/(tabs)/liste")} style={styles.mx}>
                 {shopping.length === 0 ? (
                   <Row title="Liste temiz" subtitle="Eve lazım olanı yazın, markete giden görsün"
@@ -218,7 +271,8 @@ export default function Panel() {
                 )}
               </Card>
 
-              <Card title="Son Harcamalar" action="Tümü"
+              <Card title="Son Harcamalar"
+                    action={expenses.length > 5 ? `Tümü · +${expenses.length - 5}` : "Tümü"}
                     onAction={() => router.push("/harcamalar")} style={styles.mx}>
                 {expenses.length === 0 ? (
                   <Row title="Henüz harcama yok" subtitle="İlk fişi tara veya elle ekle"
@@ -249,6 +303,16 @@ export default function Panel() {
           )}
         </Sheet>
       </ScrollView>
+
+      {confirming && (
+        <ConfirmSheet
+          tpl={confirming as any}
+          members={members}
+          meId={user?.user_id}
+          onClose={() => setConfirming(null)}
+          onDone={() => { setConfirming(null); load(); }}
+        />
+      )}
     </View>
   );
 }
@@ -269,6 +333,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 5, borderWidth: 2, borderColor: colors.dark,
   },
   badgeTxt: { color: colors.onDark, fontSize: 10, lineHeight: 14, fontFamily: fontFamily.bold },
+  dueRow: {
+    flexDirection: "row", alignItems: "center", gap: spacing.md,
+    paddingHorizontal: spacing.lg, paddingVertical: spacing.md, minHeight: 60,
+  },
+  dayBox: {
+    width: 34, height: 34, borderRadius: 10, backgroundColor: colors.surfaceSecondary,
+    alignItems: "center", justifyContent: "center",
+  },
+  dayTxt: { ...T.bodySb, color: colors.ink },
+  dueTitle: { ...T.emph, color: colors.ink },
+  dueSub: { ...T.caption, color: colors.onSurfaceTertiary, marginTop: 1 },
   donutRow: { flexDirection: "row", alignItems: "center", gap: spacing.lg,
               paddingHorizontal: spacing.lg, paddingBottom: spacing.lg },
   donutWrap: { width: 108, height: 108, alignItems: "center", justifyContent: "center" },
