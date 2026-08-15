@@ -1,4 +1,9 @@
-/** Fiş İnceleme — edit OCR result (name, qty, price, category), per-item or bulk 3-way assignment, tarih + market. */
+/** Fiş İnceleme — OCR sonucunu düzenle (ad, adet, fiyat, kategori), kalem
+ *  bazlı ya da toplu bölüşüm, tarih + market.
+ *
+ *  Kalem bazlı bölüşüm fişin doğasından geliyor: aynı fişte domates herkese,
+ *  yumurta iki kişiye ait olabilir. Aynı kişilerin bölüştüğü kalemler
+ *  kaydederken tek harcamada toplanıyor. */
 import { useEffect, useMemo, useState } from "react";
 import {
   View, Text, StyleSheet, ScrollView, TextInput, Pressable,
@@ -12,15 +17,14 @@ import { popNext, remaining, totalCount, currentIndex, clearQueue } from "@/src/
 import { useAuth } from "@/src/auth";
 import { useHousehold } from "@/src/household";
 import {
-  Chip, CategoryPicker, MerchantBadge, ScreenHeader, formatEUR, formatDateTR, todayISO,
-  nextUnit, UnitPicker, HintCard,
+  CategoryPicker, MerchantBadge, ScreenHeader, formatEUR, formatDateTR, todayISO,
+  nextUnit, UnitPicker, HintCard, SplitPicker, splitAll, type Split,
 } from "@/src/ui";
 import {
   colors, spacing, radius, type as T, overline, fontFamily, CATEGORY_ICONS, CATEGORY_LABEL_TR,
 } from "@/src/theme";
 
-type Target = { type: "self" | "household" | "roommate"; user_id?: string };
-type Row = { name: string; price: string; quantity: string; unit: string; category: string; target: Target };
+type Row = { name: string; price: string; quantity: string; unit: string; category: string; split: Split };
 
 const CAT_KEYS = Object.keys(CATEGORY_ICONS);
 const nextCategory = (c: string) => CAT_KEYS[(CAT_KEYS.indexOf(c) + 1) % CAT_KEYS.length];
@@ -62,10 +66,20 @@ export default function Review() {
       quantity: String(it.quantity ?? 1).replace(".", ","),
       unit: it.unit || "adet",
       category: it.category || "diger",
-      target: { type: "household" as const },
+      split: { mode: "equal" as const, with: {} },
     }))
   );
-  const [bulkTarget, setBulkTarget] = useState<Target>({ type: "household" });
+  const [bulkSplit, setBulkSplit] = useState<Split>({ mode: "equal", with: {} });
+
+  // Ev bilgisi fiş okunurken hâlâ iniyor olabiliyor, kalemler ise OCR yanıtı
+  // gelir gelmez kuruluyor. Varsayılan "tüm ev" bölüşümü üyeler geldiğinde
+  // yalnızca henüz seçim yapılmamış kalemlere yazılıyor.
+  useEffect(() => {
+    if (!members.length) return;
+    const all = splitAll(members);
+    setBulkSplit((b) => (Object.keys(b.with).length ? b : all));
+    setRows((rs) => rs.map((r) => (Object.keys(r.split.with).length ? r : { ...r, split: all })));
+  }, [members]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -78,14 +92,12 @@ export default function Review() {
     setRows((rs) => rs.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
   const removeRow = (i: number) => setRows((rs) => rs.filter((_, idx) => idx !== i));
   const addRow = () =>
-    setRows((rs) => [...rs, { name: "", price: "0,00", quantity: "1", unit: "adet", category: "diger", target: bulkTarget }]);
+    setRows((rs) => [...rs, { name: "", price: "0,00", quantity: "1", unit: "adet", category: "diger", split: bulkSplit }]);
 
-  const applyBulk = (t: Target) => {
-    setBulkTarget(t);
-    setRows((rs) => rs.map((r) => ({ ...r, target: t })));
+  const applyBulk = (sp: Split) => {
+    setBulkSplit(sp);
+    setRows((rs) => rs.map((r) => ({ ...r, split: sp })));
   };
-
-  const otherMembers = members.filter((m) => m.user_id !== user?.user_id);
 
   // Aynı fiş daha önce kaydedilmiş mi? Galeriden aynı fişin iki fotoğrafı
   // seçilebiliyor ve dosya karşılaştırması bunu yakalayamıyor — iki ayrı
@@ -155,17 +167,21 @@ export default function Review() {
 
     setSaving(true);
     try {
+      // Ayni kisilerin bolustugu kalemler tek harcamada toplaniyor: fisteki
+      // domates ile sut "ev", yumurta ise "sen + Salih" olunca iki kayit
+      // cikiyor. Anahtar SIRALI kimlik listesi -- secim sirasi kayda gecmemeli,
+      // yoksa ayni iki kisi iki ayri harcama uretir.
       const groups: Record<string, Row[]> = {};
       for (const r of valid) {
-        const key = `${r.target.type}:${r.target.user_id || ""}`;
+        const key = Object.keys(r.split.with).sort().join(",");
         (groups[key] ||= []).push(r);
       }
       for (const [key, group] of Object.entries(groups)) {
-        const [type, uid] = key.split(":");
+        if (!key) { setError("Bölüşülecek kişi seçilmemiş bir kalem var"); return; }
         const groupTotal = group.reduce((s, r) => s + rowTotal(r), 0);
         await apiPost("/expenses", {
-          target_type: type,
-          target_user_id: uid || null,
+          split_mode: "equal",
+          split_with: Object.fromEntries(key.split(",").map((id) => [id, 1])),
           items: group.map((g) => ({
             name: g.name.trim(),
             price: parsedPrice(g.price),
@@ -184,20 +200,23 @@ export default function Review() {
     finally { setSaving(false); }
   };
 
-  const renderTargetChips = (target: Target, onChange: (t: Target) => void, keyPrefix: string) => (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.targetRow}>
-      <Chip label="Ev" icon="home" active={target.type === "household"} onPress={() => onChange({ type: "household" })} testID={`${keyPrefix}-target-household`} />
-      <Chip label="Kendim" icon="person" active={target.type === "self"} onPress={() => onChange({ type: "self" })} testID={`${keyPrefix}-target-self`} />
-      {otherMembers.map((m) => (
-        <Chip
-          key={m.user_id}
-          label={`→ ${m.name.split(" ")[0]}`}
-          active={target.type === "roommate" && target.user_id === m.user_id}
-          onPress={() => onChange({ type: "roommate", user_id: m.user_id })}
-          testID={`${keyPrefix}-target-roommate-${m.user_id}`}
-        />
-      ))}
-    </ScrollView>
+  /** Fis kaleminde "Tutar gir" kapali: kalemin fiyati zaten belli,
+   *  sorulan tek sey kimlerin bolustugu. */
+  const renderSplit = (
+    value: Split, onChange: (s: Split) => void, label: string, amount: number, keyPrefix: string,
+  ) => (
+    <View style={styles.splitBox}>
+      <SplitPicker
+        label={label}
+        value={value}
+        onChange={onChange}
+        members={members}
+        meId={user?.user_id}
+        total={amount}
+        allowExact={false}
+        testID={`${keyPrefix}-split`}
+      />
+    </View>
   );
 
   return (
@@ -290,8 +309,7 @@ export default function Review() {
           </View>
 
           <View style={styles.bulkWrap}>
-            <Text style={styles.bulkLabel}>Tümüne uygula</Text>
-            {renderTargetChips(bulkTarget, applyBulk, "bulk")}
+            {renderSplit(bulkSplit, applyBulk, "TÜMÜNE UYGULA", total, "bulk")}
           </View>
 
           {rows.length === 0 && (
@@ -359,7 +377,7 @@ export default function Review() {
                   </View>
                 </View>
                 <Text style={styles.catLabel}>{CATEGORY_LABEL_TR[r.category]}</Text>
-                {renderTargetChips(r.target, (t) => updateRow(i, { target: t }), `item-${i}`)}
+                {renderSplit(r.split, (sp) => updateRow(i, { split: sp }), "BÖLÜŞÜM", rowTotal(r), `item-${i}`)}
               </View>
             );
           })}
@@ -440,12 +458,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md, paddingVertical: spacing.sm, minHeight: 46,
     ...T.body, color: colors.ink,
   },
-  bulkWrap: {
-    backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.lg,
-    gap: spacing.md, borderWidth: 1, borderColor: colors.border,
+  bulkWrap: { marginBottom: spacing.xs },
+  splitBox: {
+    borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface,
+    borderRadius: radius.md, marginTop: spacing.sm, overflow: "hidden",
   },
-  bulkLabel: { ...overline },
-  targetRow: { gap: spacing.sm, alignItems: "center", paddingRight: spacing.lg },
   empty: { alignItems: "center", padding: spacing.xxl, gap: spacing.sm },
   emptyTitle: { ...T.emph, color: colors.ink },
   emptyDesc: { ...T.body, color: colors.inkSecondary },
