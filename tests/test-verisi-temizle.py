@@ -61,6 +61,10 @@ def main() -> int:
         "settlements": db.settlements.count_documents({"household_id": {"$in": hh_ids}}),
         "shopping_items": db.shopping_items.count_documents(
             {"$or": [{"household_id": {"$in": hh_ids}}, {"added_by": {"$in": test_ids}}]}),
+        "recurring": db.recurring.count_documents({"household_id": {"$in": hh_ids}}),
+        "expense_revisions": db.expense_revisions.count_documents(
+            {"household_id": {"$in": hh_ids}}),
+        "notifications": db.notifications.count_documents({"user_id": {"$in": test_ids}}),
     }
 
     if not test_ids and not hh_ids:
@@ -75,6 +79,9 @@ def main() -> int:
         print("\nHicbir sey silinmedi. Silmek icin --sil ekleyin.")
         return 0
 
+    db.notifications.delete_many({"user_id": {"$in": test_ids}})
+    db.expense_revisions.delete_many({"household_id": {"$in": hh_ids}})
+    db.recurring.delete_many({"household_id": {"$in": hh_ids}})
     db.shopping_items.delete_many({"$or": [{"household_id": {"$in": hh_ids}}, {"added_by": {"$in": test_ids}}]})
     db.settlements.delete_many({"household_id": {"$in": hh_ids}})
     db.expenses.delete_many({"household_id": {"$in": hh_ids}})
@@ -86,7 +93,8 @@ def main() -> int:
     db.users.delete_many({"user_id": {"$in": test_ids}})
 
     print("\nSilindi. Kalan:")
-    for name in ("users", "households", "expenses", "periods", "settlements", "shopping_items"):
+    for name in ("users", "households", "expenses", "periods", "settlements",
+                 "shopping_items", "recurring"):
         print(f"   {name:<16} {db[name].count_documents({})}")
     return 0
 
