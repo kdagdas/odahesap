@@ -92,6 +92,45 @@ TEMP=D:/SettleUp/build-tools/tmp
 GRADLE_OPTS=-Djava.io.tmpdir=D:/SettleUp/build-tools/tmp
 ```
 
+### `lintVitalAnalyzeRelease` düşüyor (dosya kilidi)
+
+Derleme `lintVitalAnalyzeRelease FAILED` diyor ama "What went wrong" altında
+sebep yazmıyor. Gerçek sebep yığın izinin dibinde:
+
+```
+java.nio.file.FileSystemException: ...\lint-cache\...IssueRegistry-....jar:
+Dosya başka bir işlem tarafından kullanıldığından bu işlem dosyaya erişemiyor
+```
+
+Arkada kalan bir Gradle süreci lint önbelleğindeki jar'ı tutuyor, sonraki
+derleme onu silemiyor. Kodla ilgisi yok — aynı kod bir sonraki denemede
+derleniyor, o yüzden "geçici hata" gibi görünüyor.
+
+Derlemeden önce:
+
+```bash
+gradlew.bat --stop
+```
+
+Sonra `android/app/build/intermediates/lint-cache` klasörünü silin. Süreç
+hâlâ duruyorsa `java` süreçlerini sonlandırmak gerekiyor.
+
+### Her APK'dan sonra izin listesini kontrol edin
+
+Bir kütüphane eklemek manifest'e sessizce izin ekleyebiliyor.
+`expo-media-library` kurulduğunda `READ_MEDIA_AUDIO` ve `READ_MEDIA_VIDEO`
+geldi — uygulamanın ses ve videoyla hiçbir işi yok. İkisi de
+`app.json` → `expo.android.blockedPermissions` içine eklendi.
+
+```powershell
+aapt2 dump badging <apk> | Select-String "uses-permission"
+```
+
+Beklenen liste: CAMERA, INTERNET, READ_EXTERNAL_STORAGE, READ_MEDIA_IMAGES,
+READ_MEDIA_VISUAL_USER_SELECTED, RECEIVE_BOOT_COMPLETED, POST_NOTIFICATIONS,
+ACCESS_NETWORK_STATE, WAKE_LOCK, c2dm.RECEIVE, DYNAMIC_RECEIVER_NOT_EXPORTED.
+Fazlası varsa hangi kütüphanenin getirdiğini bulup engelleyin.
+
 ### PowerShell dosya yazarken BOM ekliyor
 
 `Set-Content -Encoding utf8` dosyanın başına BOM koyuyor; Groovy bunu
