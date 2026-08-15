@@ -421,20 +421,33 @@ export function PrimaryButton({
 /* ------------------------------------------------------------- biçimleyici */
 
 /**
- * Türkçe biçim: binlik "." , kuruş ",". Rakam ile "€" arasındaki boşluk
- * bölünmez (U+00A0) — normal boşluk olduğunda dar bir satırda "€" tek başına
- * alt satıra düşüyordu. İşaret ile rakam arası da aynı sebeple bölünmez.
+ * Türkçe biçim: binlik "." , kuruş ",". Rakam ile para birimi arasındaki
+ * boşluk bölünmez (U+00A0) — normal boşluk olduğunda dar bir satırda sembol
+ * tek başına alt satıra düşüyordu. İşaret ile rakam arası da aynı sebeple.
  */
-const NBSP = " ";
+const NBSP = "\u00A0";
+
+/**
+ * Ekranda gösterilen para birimi.
+ *
+ * Modül düzeyinde bir değişken, çünkü `formatEUR` yüzlerce yerde bağlam
+ * almadan çağrılıyor; her çağrı yerine ev nesnesini taşımak uygulamanın
+ * yarısını dolaşmak demekti. Ev yüklendiğinde bir kez yazılıyor.
+ * Dönüşüm yok — bir ev tek para birimi kullanır, biz yalnızca sembol seçeriz.
+ */
+let currencySymbol = "\u20AC";
+export const setCurrency = (code?: string | null) => {
+  currencySymbol = code === "TRY" ? "\u20BA" : "\u20AC";
+};
 
 export function formatEUR(n: number | null | undefined, sign = false) {
-  if (n === null || n === undefined || isNaN(n as number)) return `0,00${NBSP}€`;
+  if (n === null || n === undefined || isNaN(n as number)) return `0,00${NBSP}${currencySymbol}`;
   const v = Number(n);
   const abs = Math.abs(v);
   const [int, dec] = abs.toFixed(2).split(".");
   const grouped = int.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
-  const prefix = sign ? (v >= 0 ? `+${NBSP}` : `−${NBSP}`) : (v < 0 ? "−" : "");
-  return `${prefix}${grouped},${dec}${NBSP}€`;
+  const prefix = sign ? (v >= 0 ? `+${NBSP}` : `\u2212${NBSP}`) : (v < 0 ? "\u2212" : "");
+  return `${prefix}${grouped},${dec}${NBSP}${currencySymbol}`;
 }
 
 export const UNITS = ["adet", "kg", "lt", "paket"] as const;

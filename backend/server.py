@@ -75,8 +75,13 @@ class PhotoUploadReq(BaseModel):
     image_base64: str = Field(min_length=16, max_length=400_000)
 
 
+# Bir ev = bir para birimi. Ulke secimi varsayilani belirler; donusum yok.
+COUNTRY_CURRENCY = {"DE": "EUR", "TR": "TRY"}
+
+
 class HouseholdCreate(BaseModel):
     name: str
+    country: Literal["DE", "TR"] = "DE"
 
 
 class HouseholdJoin(BaseModel):
@@ -84,7 +89,10 @@ class HouseholdJoin(BaseModel):
 
 
 class HouseholdRename(BaseModel):
-    name: str = Field(min_length=1, max_length=60)
+    """Ev ayarları. Ad, ülke ve para birimi aynı uçtan güncellenir."""
+    name: Optional[str] = Field(default=None, min_length=1, max_length=60)
+    country: Optional[Literal["DE", "TR"]] = None
+    currency: Optional[Literal["EUR", "TRY"]] = None
 
 
 class ShoppingItemCreate(BaseModel):
@@ -579,6 +587,11 @@ async def create_household(body: HouseholdCreate, user=Depends(get_current_user)
     household = {
         "household_id": hh_id,
         "name": body.name,
+        # Bir ev = bir para birimi. Karışırsa toplama işlemi anlamsızlaşır:
+        # 40 € ile 500 ₺ toplanamaz, bölünemez, "kim kime borçlu" hesaplanamaz.
+        # Fişten okunan sembol kaynak değil, denetim olarak kullanılıyor.
+        "country": body.country,
+        "currency": COUNTRY_CURRENCY[body.country],
         "invite_code": invite_code,
         "created_by": user["user_id"],
         "admin_id": user["user_id"],
@@ -632,9 +645,18 @@ async def join_household(body: HouseholdJoin, user=Depends(get_current_user)):
 @api.patch("/households")
 async def rename_household(body: HouseholdRename, user=Depends(get_current_user)):
     hh = await require_admin(user["user_id"])
-    await db.households.update_one(
-        {"household_id": hh["household_id"]}, {"$set": {"name": body.name.strip()}}
-    )
+    patch: dict = {}
+    if body.name is not None:
+        patch["name"] = body.name.strip()
+    if body.country is not None:
+        patch["country"] = body.country
+        # Ülke para birimini de belirler; kullanıcı isterse ayrıca değiştirir.
+        patch.setdefault("currency", COUNTRY_CURRENCY[body.country])
+    if body.currency is not None:
+        patch["currency"] = body.currency
+    if not patch:
+        raise HTTPException(status_code=400, detail="Değiştirilecek bir şey yok")
+    await db.households.update_one({"household_id": hh["household_id"]}, {"$set": patch})
     updated = await db.households.find_one({"household_id": hh["household_id"]}, {"_id": 0})
     return {"household": updated}
 
@@ -887,21 +909,22 @@ def categorize_item(name: str) -> str:
     return "diger"
 
 
-OCR_SYSTEM_PROMPT = """You are an expert at reading German grocery receipts (Kassenbon) from supermarkets such as Rewe, Edeka, Aldi, Lidl, Penny, Kaufland, Netto, DM, Rossmann, Bauhaus, Obi, Hornbach, IKEA.
+OCR_SYSTEM_PROMPT = """You are an expert at reading grocery receipts from Germany (Kassenbon: Rewe, Edeka, Aldi, Lidl, Penny, Kaufland, Netto, DM, Rossmann, Bauhaus, Obi, Hornbach, IKEA, Action, Tedi) and from Turkey (fiş: BİM, A101, ŞOK, Migros, CarrefourSA, Macrocenter, Tarım Kredi, File, Hakmar, Metro).
 
 Extract information from the receipt image and return STRICT JSON only (no prose, no markdown, no code fences).
 
 Rules:
-1. German number format uses comma as decimal separator: "3,49" means 3.49. Convert to a float with dot.
-2. Extract the merchant/store name from the top of the receipt (e.g. "REWE", "EDEKA", "ALDI", "LIDL", "PENNY", "KAUFLAND"). If unknown, use null.
-3. Extract the purchase date. Look for "Datum", or a date-like line at the top or bottom. Return as ISO string "YYYY-MM-DD". Ignore any time.
+1. German and Turkish number formats both use comma as decimal separator: "3,49" means 3.49. Convert to a float with dot.
+2. Extract the merchant/store name from the top of the receipt (e.g. "REWE", "EDEKA", "ALDI", "BİM", "A101", "ŞOK", "MİGROS"). Turkish receipts print the full legal name ("BİM BİRLEŞİK MAĞAZALAR A.Ş."); return it as printed, the server shortens it. If unknown, use null.
+3. Extract the purchase date. Look for "Datum" or "TARİH", or a date-like line at the top or bottom. Return as ISO string "YYYY-MM-DD". Ignore any time.
+3b. Currency: "EUR" if the receipt shows EUR or the euro sign, "TRY" if it shows TL, TRY or the lira sign. Read it from the receipt; do not guess from the language.
 4. Line items: each product line typically has a name and a price. Return one entry per item.
    - Quantity: if you see "2 x 1,49" or "3 Stk" or "2X" style, set quantity accordingly and use the unit price. If unclear, quantity = 1 and price = total for that line.
    - Unit: weighed goods print a separate line under the item, e.g. "0,590 kg x 10,99 EUR/kg" or "0,284 kg" — that line belongs to the item ABOVE it, never to a new item. When you see one, set "unit":"kg", "quantity":0.590 and "price":10.99 (the per-kilo price). Same for litres ("1,5 l", "0,75 L") with "unit":"lt". Multi-packs counted in pieces stay "unit":"adet". Never turn a weight into a piece count: 0,590 kg is not 590 pieces.
    - German items often have "A" or "B" (VAT class) at end — strip it.
 5. Discount lines: markers include "Rabatt", "RABATT", "-%", "Preisnachlass", "PAYBACK Rabatt", lines starting with "-", or negative prices. If a discount is clearly associated with an item, subtract from that item's price. Otherwise return as a separate item with negative price.
-6. Ignore non-item lines: "MwSt", "Summe", "Zwischensumme", "Gesamtsumme", "Bar", "EC", "Karte", "Rueckgeld", store address, times, cashier numbers, "vielen Dank".
-7. Item names stay in German — do NOT translate.
+6. Ignore non-item lines: "MwSt", "Summe", "Zwischensumme", "Gesamtsumme", "Bar", "EC", "Karte", "Rueckgeld", and their Turkish equivalents "TOPLAM", "ARA TOPLAM", "KDV", "NAKİT", "KREDİ KARTI", "PARA ÜSTÜ", "FİŞ NO", store address, times, cashier numbers, "vielen Dank", "teşekkür ederiz".
+7. Item names stay in the language printed on the receipt — do NOT translate.
 
 8. Classify every line item into exactly one category. Use your own knowledge
    of the product, not the wording: receipts print brand names, not product
@@ -925,7 +948,7 @@ Return JSON EXACTLY in this schema:
   "merchant": "REWE" | "EDEKA" | "ALDI" | "LIDL" | "PENNY" | "KAUFLAND" | "NETTO" | "DM" | "ROSSMANN" | string | null,
   "date": "YYYY-MM-DD" | null,
   "total": number | null,
-  "currency": "EUR",
+  "currency": "EUR" | "TRY",
   "items": [
     { "name": string, "price": number, "quantity": number, "unit": "adet" | "kg" | "lt" | "paket", "category": string }
   ]
@@ -1016,6 +1039,7 @@ async def ocr_receipt(body: OCRRequest, user=Depends(get_current_user)):
     if not GEMINI_API_KEY:
         raise HTTPException(status_code=500, detail="GEMINI_API_KEY tanımlı değil")
 
+    hh = await get_user_household(user["user_id"])
     b64 = body.image_base64
     mime = "image/jpeg"
     if b64.startswith("data:"):
@@ -1088,7 +1112,11 @@ async def ocr_receipt(body: OCRRequest, user=Depends(get_current_user)):
         "merchant": parsed.get("merchant"),
         "date": parse_date(parsed.get("date")),
         "total": parsed.get("total"),
-        "currency": parsed.get("currency", "EUR"),
+        # Fisin para birimi KAYNAK degil, DENETIM: evin para birimi neyse
+        # kayit ona gore tutuluyor. Fis baska bir birimdeyse istemci uyarir --
+        # 500 TL'yi sessizce euro toplamina eklemek en kotu sonuc olurdu.
+        "currency": (parsed.get("currency") or "").upper() or None,
+        "household_currency": (hh or {}).get("currency", "EUR"),
         "items": items,
     }
 
@@ -1123,7 +1151,7 @@ async def create_expense(body: ExpenseCreate, user=Depends(get_current_user)):
         "category": body.category,
         "merchant": await resolve_merchant(hh["household_id"], body.merchant),
         "notes": body.notes,
-        "currency": body.currency,
+        "currency": hh.get("currency", "EUR"),
         "expense_date": parse_date(body.expense_date) or now_utc().strftime("%Y-%m-%d"),
         "created_at": now_utc(),
     }

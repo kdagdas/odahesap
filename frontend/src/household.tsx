@@ -1,6 +1,7 @@
 /** HouseholdContext — loads current household + members + pending state. */
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { apiGet } from "./api";
+import { setCurrency } from "./ui";
 import { useAuth, AppUser } from "./auth";
 
 export type Household = {
@@ -11,6 +12,9 @@ export type Household = {
   member_ids: string[];
   pending_member_ids?: string[];
   current_period_id: string;
+  /** Bir ev = bir para birimi. Karisirsa toplama islemi anlamsizlasir. */
+  country?: "DE" | "TR";
+  currency?: "EUR" | "TRY";
 };
 export type Period = {
   period_id: string;
@@ -64,6 +68,9 @@ export function HouseholdProvider({ children }: { children: React.ReactNode }) {
     try {
       const res = await apiGet<any>("/households/me");
       setHousehold(res.household || null);
+      // Para birimi biçimleyiciye burada bağlanıyor: formatEUR yüzlerce yerde
+      // bağlam almadan çağrılıyor, ev nesnesini oralara taşımak mümkün değil.
+      setCurrency(res.household?.currency);
       setMembers(res.members || []);
       setPendingMembers(res.pending_members || []);
       setPendingHousehold(res.pending_household || null);

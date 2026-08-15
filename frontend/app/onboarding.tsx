@@ -19,6 +19,9 @@ export default function Onboarding() {
   const router = useRouter();
   const [mode, setMode] = useState<Mode>("menu");
   const [name, setName] = useState("");
+  // Ülke para birimini belirliyor. Bir ev tek para birimi kullanır; 40 € ile
+  // 500 ₺ toplanamaz, bölünemez, "kim kime borçlu" hesaplanamaz.
+  const [country, setCountry] = useState<"DE" | "TR">("DE");
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -39,7 +42,7 @@ export default function Onboarding() {
     if (!name.trim()) { setError("Ev adı gerekli"); return; }
     setBusy(true); setError(null);
     try {
-      await apiPost("/households", { name: name.trim() });
+      await apiPost("/households", { name: name.trim(), country });
       await refresh();
       router.replace("/(tabs)/panel");
     } catch (e: any) { setError(e.message || "Bir hata oluştu"); }
@@ -144,6 +147,32 @@ export default function Onboarding() {
                   placeholderTextColor={colors.inkTertiary}
                   testID="household-name-input"
                 />
+
+                <Text style={styles.label}>ÜLKE</Text>
+                <View style={styles.countryRow}>
+                  {([
+                    { code: "DE" as const, label: "Almanya", cur: "€" },
+                    { code: "TR" as const, label: "Türkiye", cur: "₺" },
+                  ]).map((c) => (
+                    <Pressable
+                      key={c.code}
+                      style={[styles.country, country === c.code && styles.countryActive]}
+                      onPress={() => setCountry(c.code)}
+                      testID={`country-${c.code}`}
+                    >
+                      <Text style={[styles.countryCur, country === c.code && styles.countryTxtActive]}>
+                        {c.cur}
+                      </Text>
+                      <Text style={[styles.countryTxt, country === c.code && styles.countryTxtActive]}>
+                        {c.label}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+                <Text style={styles.countryHint}>
+                  Evin para birimini belirler. Sonradan ayarlardan değiştirebilirsin.
+                </Text>
+
                 {error && <Text style={styles.error}>{error}</Text>}
                 <Pressable style={[styles.primary, busy && { opacity: 0.6 }]} onPress={onCreate} disabled={busy} testID="submit-create-household">
                   {busy ? <ActivityIndicator color={colors.onBrand} /> : <Text style={styles.primaryTxt}>Evi oluştur</Text>}
@@ -206,6 +235,17 @@ const styles = StyleSheet.create({
     borderRadius: radius.md, paddingHorizontal: spacing.lg, paddingVertical: spacing.md,
     fontSize: 16, fontFamily: fontFamily.regular, color: colors.ink, minHeight: 52,
   },
+  countryRow: { flexDirection: "row", gap: spacing.md },
+  country: {
+    flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center",
+    gap: spacing.sm, minHeight: 52, borderRadius: radius.md,
+    borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface,
+  },
+  countryActive: { borderColor: colors.brand, backgroundColor: colors.brand },
+  countryCur: { ...T.emph, color: colors.inkSecondary },
+  countryTxt: { ...T.bodySb, color: colors.inkSecondary },
+  countryTxtActive: { color: colors.onBrand },
+  countryHint: { ...T.caption, color: colors.inkTertiary },
   codeInput: {
     fontSize: 30, letterSpacing: 12, textAlign: "center",
     fontFamily: fontFamily.bold, color: colors.dark, minHeight: 66,
