@@ -1,5 +1,5 @@
 /** Manuel harcama — no photo. Tarih + market + adet destekli. */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   View, Text, StyleSheet, ScrollView, TextInput, Pressable,
   KeyboardAvoidingView, Platform, ActivityIndicator,
@@ -11,11 +11,10 @@ import { apiPost } from "@/src/api";
 import { useAuth } from "@/src/auth";
 import { useHousehold } from "@/src/household";
 import {
-  ScreenHeader, Sheet, Chip, MerchantBadge, formatEUR, todayISO,
+  ScreenHeader, Sheet, Chip, MerchantBadge, SplitPicker, splitAll, formatEUR, todayISO,
+  type Split,
 } from "@/src/ui";
 import { colors, spacing, radius, type as T, overline, fontFamily } from "@/src/theme";
-
-type Target = { type: "self" | "household" | "roommate"; user_id?: string };
 
 const SUGGESTED_TAGS = ["Kira", "Elektrik", "Su", "İnternet", "Isınma", "Tamir", "Temizlik", "Yiyecek", "Ulaşım", "Eğlence", "Diğer"];
 const COMMON_MERCHANTS = ["REWE", "EDEKA", "ALDI", "LIDL", "PENNY", "KAUFLAND", "DM", "ROSSMANN", "BAUHAUS", "OBI", "IKEA"];
@@ -39,14 +38,19 @@ export default function Manual() {
   const [dateInput, setDateInput] = useState(toDDMMYYYY(todayISO()));
   const [category, setCategory] = useState<string>("Kira");
   const [notes, setNotes] = useState("");
-  const [target, setTarget] = useState<Target>({ type: "household" });
+  const [split, setSplit] = useState<Split>({ mode: "equal", with: {} });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const parsedAmount = parseFloat(amount.replace(",", ".")) || 0;
   const parsedQty = parseFloat(quantity.replace(",", ".")) || 1;
   const totalAmount = parsedAmount * parsedQty;
-  const otherMembers = members.filter((m) => m.user_id !== user?.user_id);
+
+  // Ev bilgisi ekran açılırken hâlâ iniyor olabiliyor; varsayılan liste
+  // üyeler gelince kuruluyor. Kullanıcı seçim yaptıysa üstüne yazılmıyor.
+  useEffect(() => {
+    if (members.length && !Object.keys(split.with).length) setSplit(splitAll(members));
+  }, [members]);
 
   const save = async () => {
     setError(null);
@@ -54,11 +58,21 @@ export default function Manual() {
     if (!title.trim()) { setError("Kısa bir açıklama girin"); return; }
     const iso = fromDDMMYYYY(dateInput);
     if (!iso) { setError("Tarih formatı: GG.AA.YYYY"); return; }
+    if (!Object.keys(split.with).length) { setError("Bölüşülecek kişi seçin"); return; }
+    // Kişiye özel tutarlar girildikten sonra üstteki tutar değiştirilmiş olabilir.
+    // Sunucu da reddediyor ama hata orada "kaydedilemedi" gibi okunuyor.
+    if (split.mode === "exact") {
+      const sum = Object.values(split.with).reduce((a, b) => a + b, 0);
+      if (Math.abs(sum - totalAmount) > 0.01) {
+        setError("Tutar değişti, bölüşümü yeniden düzenleyin");
+        return;
+      }
+    }
     setSaving(true);
     try {
       await apiPost("/expenses", {
-        target_type: target.type,
-        target_user_id: target.user_id || null,
+        split_mode: split.mode,
+        split_with: split.with,
         items: [{ name: title.trim(), price: parsedAmount, quantity: parsedQty, category: "diger" }],
         total: totalAmount,
         source: "manual",
@@ -168,20 +182,17 @@ export default function Manual() {
               ))}
             </ScrollView>
 
-            <Text style={styles.label}>BU HARCAMA KİME AİT?</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-              <Chip label="Ev" icon="home" active={target.type === "household"} onPress={() => setTarget({ type: "household" })} testID="manual-target-household" />
-              <Chip label="Kendim" icon="person" active={target.type === "self"} onPress={() => setTarget({ type: "self" })} testID="manual-target-self" />
-              {otherMembers.map((m) => (
-                <Chip
-                  key={m.user_id}
-                  label={`→ ${m.name.split(" ")[0]}`}
-                  active={target.type === "roommate" && target.user_id === m.user_id}
-                  onPress={() => setTarget({ type: "roommate", user_id: m.user_id })}
-                  testID={`manual-target-roommate-${m.user_id}`}
-                />
-              ))}
-            </ScrollView>
+            <View style={styles.splitBox}>
+              <SplitPicker
+                label="BU HARCAMA KİME AİT?"
+                value={split}
+                onChange={setSplit}
+                members={members}
+                meId={user?.user_id}
+                total={totalAmount}
+                testID="manual-split"
+              />
+            </View>
 
             <Text style={styles.label}>NOT (OPSİYONEL)</Text>
             <TextInput
@@ -237,6 +248,12 @@ const styles = StyleSheet.create({
     fontSize: 16, fontFamily: fontFamily.regular, color: colors.ink, minHeight: 52,
   },
   merchantRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  // Seçici bir girdi alanı gibi okunmalı: çevresindeki TextInput'larla aynı
+  // kenarlık ve yüzey, ama içindeki satırın kendi dolgusu var.
+  splitBox: {
+    borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface,
+    borderRadius: radius.md, marginTop: spacing.md, overflow: "hidden",
+  },
   notesInput: { minHeight: 96, textAlignVertical: "top" },
   chipRow: { gap: spacing.sm, alignItems: "center", paddingRight: spacing.lg, paddingVertical: 2 },
   error: { ...T.bodySb, color: colors.negative, marginTop: spacing.md },

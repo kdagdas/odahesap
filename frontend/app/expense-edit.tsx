@@ -14,13 +14,13 @@ import { useAuth } from "@/src/auth";
 import { useHousehold } from "@/src/household";
 import {
   ScreenHeader, Sheet, Card, Divider, Chip, MerchantBadge, CategoryPicker, formatEUR, nextUnit, UnitPicker,
+  SplitPicker, splitFromExpense, type Split,
 } from "@/src/ui";
 import {
   colors, spacing, radius, type as T, overline, fontFamily,
   CATEGORY_ICONS, CATEGORY_LABEL_TR,
 } from "@/src/theme";
 
-type Target = { type: "self" | "household" | "roommate"; user_id?: string };
 type Row = { name: string; price: string; quantity: string; unit: string; category: string };
 type Item = { name: string; price: number; quantity?: number; unit?: string; category: string };
 type Expense = {
@@ -56,7 +56,7 @@ export default function ExpenseEdit() {
   const [merchant, setMerchant] = useState("");
   const [category, setCategory] = useState("");
   const [notes, setNotes] = useState("");
-  const [target, setTarget] = useState<Target>({ type: "household" });
+  const [split, setSplit] = useState<Split>({ mode: "equal", with: {} });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -86,19 +86,24 @@ export default function ExpenseEdit() {
       setMerchant(found.merchant || "");
       setCategory(found.category || "");
       setNotes(found.notes || "");
-      setTarget({
-        type: found.target_type as Target["type"],
-        user_id: found.target_user_id || undefined,
-      });
+
     } catch (e: any) { setError(e?.message || "Yüklenemedi"); }
     finally { setLoading(false); }
   }, [expenseId]);
 
   useEffect(() => { load(); }, [load]);
 
+  // Bölüşüm kayıt ile üye listesinin ikisi de geldiğinde bir kez kuruluyor.
+  // `load` üye listesine bağlansaydı ev bilgisi her ekran odaklanmasında
+  // tazelendiği için kullanıcının yarım kalan düzenlemesi silinirdi.
+  useEffect(() => {
+    if (expense && members.length && !Object.keys(split.with).length) {
+      setSplit(splitFromExpense(expense, members));
+    }
+  }, [expense, members]);
+
   const rowTotal = (r: Row) => num(r.price) * num(r.quantity, 1);
   const total = useMemo(() => rows.reduce((s, r) => s + rowTotal(r), 0), [rows]);
-  const otherMembers = members.filter((m) => m.user_id !== user?.user_id);
 
   const updateRow = (i: number, patch: Partial<Row>) =>
     setRows((rs) => rs.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
@@ -114,6 +119,16 @@ export default function ExpenseEdit() {
     if (!iso) { setError("Tarih formatı: GG.AA.YYYY"); return; }
     const newTotal = valid.reduce((s, r) => s + rowTotal(r), 0);
     if (newTotal <= 0) { setError("Toplam sıfırdan büyük olmalı"); return; }
+    if (!Object.keys(split.with).length) { setError("Bölüşülecek kişi seçin"); return; }
+    // Kalem düzenlemek toplamı değiştirir; kişiye özel bölüşüm eski toplama
+    // göre girilmişti. Oransal dağıtmak kimsenin onaylamadığı bir borç üretir.
+    if (split.mode === "exact") {
+      const sum = Object.values(split.with).reduce((a, b) => a + b, 0);
+      if (Math.abs(sum - newTotal) > 0.01) {
+        setError("Toplam değişti, bölüşümü yeniden düzenleyin");
+        return;
+      }
+    }
 
     setSaving(true);
     try {
@@ -132,8 +147,8 @@ export default function ExpenseEdit() {
           merchant: merchant.trim(),
           category: category.trim(),
           notes: notes.trim(),
-          target_type: target.type,
-          target_user_id: target.type === "roommate" ? target.user_id : null,
+          split_mode: split.mode,
+          split_with: split.with,
         }),
       });
       router.back();
@@ -281,19 +296,17 @@ export default function ExpenseEdit() {
                   ))}
                 </ScrollView>
 
-                <Text style={styles.label}>BU HARCAMA KİME AİT?</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-                  <Chip label="Ev" icon="home" active={target.type === "household"}
-                        onPress={() => setTarget({ type: "household" })} testID="edit-target-household" />
-                  <Chip label="Kendim" icon="person" active={target.type === "self"}
-                        onPress={() => setTarget({ type: "self" })} testID="edit-target-self" />
-                  {otherMembers.map((m) => (
-                    <Chip key={m.user_id} label={`→ ${m.name.split(" ")[0]}`}
-                          active={target.type === "roommate" && target.user_id === m.user_id}
-                          onPress={() => setTarget({ type: "roommate", user_id: m.user_id })}
-                          testID={`edit-target-${m.user_id}`} />
-                  ))}
-                </ScrollView>
+                <View style={styles.splitBox}>
+                  <SplitPicker
+                    label="BU HARCAMA KİME AİT?"
+                    value={split}
+                    onChange={setSplit}
+                    members={members}
+                    meId={user?.user_id}
+                    total={total}
+                    testID="edit-split"
+                  />
+                </View>
 
                 <Text style={styles.label}>NOT</Text>
                 <TextInput
@@ -386,6 +399,10 @@ const styles = StyleSheet.create({
     fontSize: 16, fontFamily: fontFamily.regular, color: colors.ink, minHeight: 52,
   },
   merchantRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  splitBox: {
+    borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface,
+    borderRadius: radius.md, marginTop: spacing.md, overflow: "hidden",
+  },
   notesInput: { minHeight: 88, textAlignVertical: "top" },
   chipRow: { gap: spacing.sm, alignItems: "center", paddingRight: spacing.lg, paddingVertical: 2 },
   error: { ...T.bodySb, color: colors.negative, marginTop: spacing.md },
