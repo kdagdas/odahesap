@@ -197,6 +197,25 @@ Gerçek kullanıcılara asla dokunmaz; test hesapları `@odahesap-e2e.com`
 uzantısından ayırt edilir. Kurucusu silinmiş, üyesi kalmamış yetim evleri de
 toplar.
 
+## Testleri AYRI veritabaninda calistirin
+
+`DB_NAME` ortam degiskeninden geliyor. Yerel test sunucusunu ayri bir
+veritabaniyla baslatin:
+
+```bash
+cd backend
+DB_NAME=odahesap_test .venv/Scripts/python.exe -m uvicorn server:app --port 8099
+```
+
+Yapilmazsa test hesaplari uretim veritabanina yaziliyor ve `test-verisi-temizle.py`
+ile temizlemek gerekiyor. **Fiyat kayitlarinda bu temizlik mumkun degil:**
+`price_points` bilerek kimlik alani tasimiyor, yani hangi kaydin testten
+geldigi sonradan anlasilamiyor. Kirlenirse tek care koleksiyonu sifirlayip
+`fiyat-doldur.py --sifirla --yaz` ile yeniden uretmek.
+
+Canliya karsi test calistirmak da ayni sonucu dogurur; deploy dogrulamasi icin
+tek seferlik ve sonrasinda temizlik gerektigini bilerek yapin.
+
 ## Testler
 
 On beş takım, toplam **336 kontrol**, hepsi çalışan bir API'ye HTTP ile bağlanır. Yerel sunucuya da

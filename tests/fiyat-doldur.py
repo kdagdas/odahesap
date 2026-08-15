@@ -13,6 +13,11 @@ yazilmaz, hafta cozunurlugunde tarih, ham urun adi saklanir.
 
 Tekrar calistirmak guvenli degildir: ayni kalem iki kez yazilir. Once
 --sifirla ile mevcut kayitlari silin.
+
+NOT: `price_points` bilerek kimlik alani tasimadigi icin, uretim veritabanina
+karsi test calistirildiginda olusan sahte fiyat kayitlari sonradan ayirt
+edilemez. Tek care sifirlayip yeniden uretmektir -- kaynak fisler duruyor,
+yani veri kaybi olmuyor. Testleri DB_NAME=odahesap_test ile calistirin.
 """
 import asyncio
 import os
