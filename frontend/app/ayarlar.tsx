@@ -1,12 +1,12 @@
 /** Uygulama ayarları — ne bana ne eve, uygulamanın kendisine ait olanlar. */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator } from "react-native";
 import Constants from "expo-constants";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@/src/auth";
 import { useHousehold } from "@/src/household";
-import { api } from "@/src/api";
+import { api, apiGet } from "@/src/api";
 import { Card, Divider, ScreenHeader, Sheet, Row, SelectRow, SelectOption } from "@/src/ui";
 import { colors, spacing, type as T, metrics } from "@/src/theme";
 
@@ -41,17 +41,30 @@ const LANGUAGES: SelectOption<string>[] = [
   { value: "de", label: "Deutsch", mark: "🇩🇪", soon: true },
 ];
 
+// Kısa tutuluyor: uzun açıklama kartın altında koca bir metin bloğu olarak
+// duruyordu. Ayrıntı isteyen kilide dokunuyor, gerisi kısa kalıyor.
+const LOCK_REASON =
+  "Ülke ve para birimi yalnızca hiç harcama yapılmamış evlerde değiştirilebilir.\n\n" +
+  "Farklı bir para birimi için yeni bir ev kurun.";
+
 export default function Ayarlar() {
   const router = useRouter();
   const { user } = useAuth();
-  const { household, isAdmin, refresh } = useHousehold();
+  const { household, refresh } = useHousehold();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [expenseCount, setExpenseCount] = useState<number | null>(null);
 
-  // Para birimi evin kuralını değiştiriyor; ad değiştirmekle aynı yetki
-  // seviyesinde olamaz. Yalnızca evi kuran kişi, yalnızca harcama yokken.
+  useEffect(() => {
+    apiGet<{ expenses: unknown[] }>("/expenses")
+      .then((r) => setExpenseCount((r.expenses || []).length))
+      .catch(() => setExpenseCount(0));
+  }, []);
+
+  // Ev kuralları: yalnızca evi kuran kişi, yalnızca hiç harcama yokken.
+  // Sunucu da aynı kuralı uyguluyor; buradaki kilit sadece görsel.
   const isFounder = !!household && household.created_by === user?.user_id;
-  const currencyLocked = !isFounder;
+  const canChangeRules = isFounder && expenseCount === 0;
 
   const patch = async (body: object) => {
     setBusy(true); setError(null);
@@ -85,8 +98,8 @@ export default function Ayarlar() {
                 label="Ülke"
                 value={household?.country ?? "DE"}
                 options={COUNTRIES}
-                locked={!isAdmin}
-                lockReason="Ülkeyi yalnızca ev yöneticisi değiştirebilir."
+                locked={!canChangeRules}
+                lockReason={LOCK_REASON}
                 onSelect={(v) => patch({ country: v })}
                 testID="select-country"
               />
@@ -95,27 +108,17 @@ export default function Ayarlar() {
                 label="Para birimi"
                 value={household?.currency ?? "EUR"}
                 options={CURRENCIES}
-                locked={currencyLocked}
-                lockReason={
-                  "Para birimini yalnızca evi kuran kişi ve yalnızca evde henüz " +
-                  "harcama yokken değiştirebilir.\n\nKur çevrimi yapılmaz — " +
-                  "değiştirmek \"40 €\" yazan kaydı \"40 ₺\" diye göstermek olur."
-                }
+                locked={!canChangeRules}
+                lockReason={LOCK_REASON}
                 onSelect={(v) => patch({ currency: v })}
                 testID="select-currency"
               />
-              <Text style={styles.note}>
-                {isAdmin
-                  ? "Para birimi yalnızca hiç harcama yokken değiştirilebilir."
-                  : "Ev kurallarını yalnızca ev yöneticisi değiştirebilir."}
-              </Text>
               {busy && (
-                <View style={{ alignItems: "center", paddingBottom: spacing.md }}>
+                <View style={{ alignItems: "center", padding: spacing.md }}>
                   <ActivityIndicator size="small" color={colors.dark} />
                 </View>
               )}
             </Card>
-
             {error && <Text style={styles.error} testID="ayarlar-error">{error}</Text>}
 
             <Card title="Dil">
@@ -126,9 +129,6 @@ export default function Ayarlar() {
                 onSelect={() => {}}
                 testID="select-language"
               />
-              <Text style={styles.note}>
-                Yalnızca bu cihazı etkiler, ev arkadaşlarını değil.
-              </Text>
             </Card>
 
             <Card title="Hakkında">

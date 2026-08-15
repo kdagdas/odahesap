@@ -690,38 +690,38 @@ async def rename_household(body: HouseholdRename, user=Depends(get_current_user)
     if body.name is not None:
         patch["name"] = body.name.strip()
 
-    # Ülke zararsız: yalnızca fiş okumada hangi market ve fiş düzeninin
-    # bekleneceğini belirliyor, kayıtlı hiçbir tutara dokunmuyor.
-    if body.country is not None:
-        patch["country"] = body.country
-
-    # Para birimi öyle değil. Kur çevrimi yapmıyoruz; değiştirmek "40 €" yazan
-    # kaydı "40 ₺" diye göstermek demek. Tutar aynı kalır, anlamı değişir —
-    # geçmiş bütün hesaplaşmalar sessizce yanlış okunur.
+    # Ülke ve para birimi evin kuralı. Kur çevrimi yapmıyoruz; para birimini
+    # değiştirmek "40 €" yazan kaydı "40 ₺" diye göstermek demek — tutar aynı
+    # kalır, anlamı değişir ve geçmiş bütün hesaplaşmalar sessizce yanlış
+    # okunur. Ülkeyi tek başına değiştirmek de yarım bir taşınma olurdu.
+    # İkisi de yalnızca evde henüz harcama yokken değişebilir.
     #
-    # Bu yüzden iki koşul: yalnızca evi KURAN kişi, ve yalnızca evde henüz
-    # harcama yokken. Kurulurken seçilir, sonradan değil.
-    wanted = body.currency or (COUNTRY_CURRENCY[body.country] if body.country else None)
-    if wanted:
-        patch["currency"] = wanted
-    # Kısıtlar yalnızca GERÇEK bir değişiklikte işliyor: zaten seçili olan
-    # düğmeye basmak hata vermemeli.
-    if wanted and wanted != hh.get("currency", "EUR"):
-        if hh.get("created_by") != user["user_id"]:
-            raise HTTPException(
-                status_code=403,
-                detail="Para birimini yalnızca evi kuran kişi değiştirebilir.",
-            )
+    # Ülke para birimini YALNIZCA ev kurulurken belirliyor. Burada türetmek,
+    # zararsız bir ülke değişikliğini gizlice para birimi değişikliğine
+    # çeviriyor ve kullanıcıya alakasız bir hata gösteriyordu.
+    changing = (
+        (body.country is not None and body.country != hh.get("country", "DE"))
+        or (body.currency is not None and body.currency != hh.get("currency", "EUR"))
+    )
+    if changing:
         used = await db.expenses.count_documents({"household_id": hh["household_id"]})
         if used:
             raise HTTPException(
                 status_code=400,
-                detail=f"Bu evde {used} harcama kayıtlı. Para birimi değişince "
-                       "eski tutarlar çevrilmez, yalnızca simgeleri değişir ve "
-                       "geçmiş hesaplaşmalar yanlış okunur. Başka bir para "
-                       "birimi kullanacaksanız yeni bir ev kurun.",
+                detail="Ülke ve para birimi yalnızca hiç harcama yapılmamış "
+                       "evlerde değiştirilebilir. Farklı bir para birimi için "
+                       "yeni bir ev kurun.",
             )
-        patch["currency"] = wanted
+        if hh.get("created_by") != user["user_id"]:
+            raise HTTPException(
+                status_code=403,
+                detail="Bu ayarı yalnızca evi kuran kişi değiştirebilir.",
+            )
+
+    if body.country is not None:
+        patch["country"] = body.country
+    if body.currency is not None:
+        patch["currency"] = body.currency
 
     if not patch:
         raise HTTPException(status_code=400, detail="Değiştirilecek bir şey yok")

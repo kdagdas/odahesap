@@ -206,14 +206,9 @@ export default function Review() {
         {/* Başlık kaydırma alanının içinde; alttaki Kaydet çubuğu sabit kalıyor. */}
         <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.page}
                     keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-        <ScreenHeader
-          right={batchN > 1 ? (
-            <View style={styles.batchPill} testID="batch-progress-pill">
-              <Ionicons name="albums" size={12} color={colors.onDark} />
-              <Text style={styles.batchTxt}>{batchI || 1} / {batchN}</Text>
-            </View>
-          ) : undefined}
-        >
+        {/* Sag ustteki rozet kaldirildi: ayni bilgi baslikta ("Fis 1 / 2") ve
+            altindaki ilerleme cizgilerinde zaten iki kez duruyordu. */}
+        <ScreenHeader>
           <View style={styles.headRow}>
             <Pressable onPress={() => router.back()} testID="review-back-btn" hitSlop={14}
                        style={styles.backBtn}>
@@ -379,27 +374,24 @@ export default function Review() {
             kenara cizim acik oldugu icin guvenli alan payini elle eklemek sart. */}
         <View style={[styles.footer, { paddingBottom: spacing.lg + insets.bottom }]}>
           {error && <Text style={styles.error} testID="review-error">{error}</Text>}
+          {/* Toplam buradan kaldırıldı: başlıkta zaten kocaman duruyor.
+              İki düğmeyle aynı satırı paylaşınca sıkışıp okunmaz hale
+              geliyordu ve tekrar etmesinin bir faydası yoktu. */}
           <View style={styles.footerRow}>
-            {/* minWidth:0 + tek satır şart: birden fazla fiş varken "Atla"
-                düğmesi de çıkıyor ve bu sütun içeriğinin altına sıkışıyordu —
-                tutar harf harf alt alta iniyordu. */}
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={styles.footerLabel} numberOfLines={1}>TOPLAM</Text>
-              <Text style={styles.footerTotal} numberOfLines={1} adjustsFontSizeToFit>
-                {formatEUR(total)}
-              </Text>
-            </View>
             {batchN > 1 && (
               <Pressable style={styles.skipBtn} onPress={skipReceipt} testID="review-skip-btn">
-                <Ionicons name="play-forward" size={16} color={colors.onSurfaceSecondary} />
-                <Text style={styles.skipTxt}>Atla</Text>
+                <Ionicons name="play-forward" size={16} color={colors.inkSecondary} />
+                <Text style={styles.skipTxt}>Kaydetmeden atla</Text>
               </Pressable>
             )}
-            <Pressable style={[styles.saveBtn, saving && { opacity: 0.6 }]} onPress={save} disabled={saving} testID="review-save-btn">
+            <Pressable style={[styles.saveBtn, saving && { opacity: 0.6 }]} onPress={save}
+                       disabled={saving} testID="review-save-btn">
               {saving ? <ActivityIndicator color={colors.onBrand} /> : (
                 <>
                   <Ionicons name={hasMore ? "arrow-forward" : "checkmark"} size={18} color={colors.onBrand} />
-                  <Text style={styles.saveTxt}>{hasMore ? "Kaydet & Sonraki" : "Kaydet"}</Text>
+                  <Text style={styles.saveTxt} numberOfLines={1}>
+                    {hasMore ? "Kaydet & Sonraki" : "Kaydet"}
+                  </Text>
                 </>
               )}
             </Pressable>
@@ -509,13 +501,14 @@ const styles = StyleSheet.create({
   saveBtn: {
     backgroundColor: colors.brand, borderRadius: radius.pill, paddingHorizontal: spacing.xl,
     minHeight: 54, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 6,
+    flex: 1,
   },
   saveTxt: { ...T.emph, color: colors.onBrand },
   error: { ...T.bodySb, color: colors.negative, textAlign: "center" },
   skipBtn: {
     flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: spacing.lg,
     minHeight: 54, borderRadius: radius.pill, backgroundColor: colors.surfaceSecondary,
-    justifyContent: "center",
+    justifyContent: "center", flexShrink: 1,
   },
   skipTxt: { ...T.bodySb, color: colors.inkSecondary },
 });

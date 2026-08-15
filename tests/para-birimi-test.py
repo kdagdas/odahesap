@@ -67,28 +67,33 @@ check("harcama TRY olarak kaydedildi", r.json()["expense"]["currency"] == "TRY",
 print("\n== harcama YOKKEN degistirilebiliyor ==")
 r = c.patch(f"{API}/households", headers=hdr(alice), json={"country": "TR"})
 check("ulke degisti", r.json()["household"]["country"] == "TR", str(r.json()["household"]))
-check("para birimi de degisti", r.json()["household"]["currency"] == "TRY", str(r.json()["household"]))
+# Ulke para birimini YALNIZCA ev kurulurken belirliyor. PATCH sirasinda
+# turetmek, zararsiz bir ulke degisikligini gizlice para birimi degisikligine
+# ceviriyor ve kullaniciya alakasiz bir hata gosteriyordu.
+check("ulke para birimini SURUKLEMIYOR", r.json()["household"]["currency"] == "EUR",
+      str(r.json()["household"]["currency"]))
 
-r = c.patch(f"{API}/households", headers=hdr(alice), json={"currency": "EUR"})
-check("para birimi ayrica secilebiliyor", r.json()["household"]["currency"] == "EUR",
+r = c.patch(f"{API}/households", headers=hdr(alice), json={"currency": "TRY"})
+check("para birimi ayrica secilebiliyor", r.json()["household"]["currency"] == "TRY",
       str(r.json()["household"]["currency"]))
 check("ulke degismedi", r.json()["household"]["country"] == "TR",
       str(r.json()["household"]["country"]))
+c.patch(f"{API}/households", headers=hdr(alice), json={"currency": "EUR", "country": "DE"})
 
-print("\n== harcama VARKEN para birimi kilitli ==")
+print("\n== harcama VARKEN IKISI DE kilitli ==")
 # Kur cevrimi yapmiyoruz: degistirmek "40 EUR" yazan kaydi "40 TL" diye
-# gostermek demek. Tutar ayni kalir, anlami degisir.
+# gostermek demek. Ulkeyi tek basina degistirmek de yarim bir tasinma olurdu.
 c.post(f"{API}/expenses", headers=hdr(alice), json={
     "target_type": "household", "total": 10.0, "source": "manual", "items": []})
 r = c.patch(f"{API}/households", headers=hdr(alice), json={"currency": "TRY"})
-check("harcama varken reddediliyor", r.status_code == 400, str(r.status_code))
+check("para birimi reddediliyor", r.status_code == 400, str(r.status_code))
 check("sebep aciklaniyor", "harcama" in r.text.lower(), r.text[:120])
-r = c.patch(f"{API}/households", headers=hdr(alice), json={"country": "DE"})
-check("ulke yine de degistirilebiliyor", r.status_code == 200, str(r.status_code))
-check("para birimi bozulmadi", r.json()["household"]["currency"] == "EUR",
-      str(r.json()["household"]["currency"]))
+r = c.patch(f"{API}/households", headers=hdr(alice), json={"country": "TR"})
+check("ulke de reddediliyor", r.status_code == 400, str(r.status_code))
 r = c.patch(f"{API}/households", headers=hdr(alice), json={"currency": "EUR"})
 check("ayni degeri yazmak sorun degil", r.status_code == 200, str(r.status_code))
+r = c.patch(f"{API}/households", headers=hdr(alice), json={"country": "DE"})
+check("ayni ulkeyi yazmak sorun degil", r.status_code == 200, str(r.status_code))
 
 print("\n== ad degistirme hala calisiyor ==")
 r = c.patch(f"{API}/households", headers=hdr(alice), json={"name": "Yeni Ad"})
