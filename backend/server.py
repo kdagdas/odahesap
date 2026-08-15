@@ -1693,27 +1693,41 @@ async def _notify_expense_change(before: dict, patch: dict, user: dict, action: 
         return
 
     after = {**before, **patch}
-    target_type = after.get("target_type")
-    if target_type == "self":
-        audience: List[str] = []   # kişisel harcama kimseyi ilgilendirmiyor
-    else:
-        audience = list(expense_shares(after, hh["member_ids"]))
-    # Bölüşümden çıkarılan kişi de haberdar olmalı: borcu düştü ve bunu ancak
-    # kendisi görüp fark ederse öğrenir.
-    if before.get("target_type") != "self":
-        audience += list(expense_shares(before, hh["member_ids"]))
-    audience = [a for a in dict.fromkeys(audience) if a != user["user_id"]]
-    if not audience:
-        return
+    # Kişisel harcama kimseyi ilgilendirmez — ne eski ne yeni hâlinde.
+    was = set() if before.get("target_type") == "self" else set(
+        expense_shares(before, hh["member_ids"]))
+    now = set() if after.get("target_type") == "self" else set(
+        expense_shares(after, hh["member_ids"]))
+    me = user["user_id"]
 
     label = before.get("merchant") or before.get("category") or "Harcama"
     total = patch.get("total", before.get("total", 0))
     amount = f"{float(total):.2f}".replace(".", ",")
+    data = {"expense_id": before["expense_id"]}
+
     if action == "delete":
-        title, msg = "Harcama silindi", f"{user['name']} · {label} · {amount} € kaydını sildi"
-    else:
-        title, msg = "Harcama güncellendi", f"{user['name']} · {label} · artık {amount} €"
-    await notify(audience, title, msg, "new_expense", {"expense_id": before["expense_id"]})
+        await notify(
+            [a for a in was if a != me],
+            "Harcama silindi",
+            f"{user['name']} · {label} · {amount} € kaydını sildi",
+            "new_expense", data,
+        )
+        return
+
+    # Üç ayrı kitle, üç ayrı cümle. Hepsine "harcama güncellendi" demek en
+    # önemli iki durumu gizler: bölüşüme yeni giren kişinin borcu arttı,
+    # çıkarılanınki düştü. Bunu ancak kendisi ekrana bakıp fark ederse
+    # öğrenirdi — ve "artık 90 €" mesajı ikisine de yanlış okunuyordu.
+    for people, title, msg in (
+        ([a for a in now - was if a != me], "Bir harcamaya eklendin",
+         f"{user['name']} · {label} · {amount} € · artık sen de bölüşüyorsun"),
+        ([a for a in was - now if a != me], "Bir harcamadan çıkarıldın",
+         f"{user['name']} · {label} · {amount} € · bu harcamada payın kalmadı"),
+        ([a for a in now & was if a != me], "Harcama güncellendi",
+         f"{user['name']} · {label} · artık {amount} €"),
+    ):
+        if people:
+            await notify(people, title, msg, "new_expense", data)
 
 
 @api.patch("/expenses/{expense_id}")

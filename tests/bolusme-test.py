@@ -215,6 +215,34 @@ r = c.patch(f"{API}/expenses/{kira['expense_id']}", headers=hdr(bob), json={
 check("tutar + bolusum birlikte degistirilebildi", r.status_code == 200, r.text[:160])
 
 
+print("\n-- 7b. bolusum degisince kime ne yaziliyor --")
+# Duzenleme fiilen yeni bir bolusum demek. Uc ayri kitle var ve ucune ayni
+# cumleyi yazmak en onemli ikisini gizler: eklenenin borcu artti, cikarilanin
+# dustu. "artik 90 EUR" mesaji ikisine de yanlis okunuyor.
+def titles(tok):
+    r = c.get(f"{API}/notifications", headers=hdr(tok)).json()
+    return [n["title"] for n in r.get("notifications", [])]
+
+r = add(alice, split_mode="equal", split_with={alice_id: 1, bob_id: 1}, total=60.0,
+        category="BILDIRIM")
+bildirim = r.json()["expense"]["expense_id"]
+before_c = len(titles(carol))
+# Carol eklendi, Bob cikarildi, Alice (ekleyen) hicbir sey almamali.
+r = c.patch(f"{API}/expenses/{bildirim}", headers=hdr(alice), json={
+    "split_mode": "equal", "split_with": {alice_id: 1, carol_id: 1}})
+check("bolusum degistirildi", r.status_code == 200, r.text[:160])
+check("eklenen kisiye 'eklendin' yazildi",
+      titles(carol)[0:1] == ["Bir harcamaya eklendin"], str(titles(carol)[:2]))
+check("cikarilan kisiye 'cikarildin' yazildi",
+      titles(bob)[0:1] == ["Bir harcamadan cikarildin"] or
+      titles(bob)[0:1] == ["Bir harcamadan çıkarıldın"], str(titles(bob)[:2]))
+check("ekleyene bildirim gitmedi",
+      "Bir harcamaya eklendin" not in titles(alice), str(titles(alice)[:3]))
+c.delete(f"{API}/expenses/{bildirim}", headers=hdr(alice))
+check("silinince de listedekilere gidiyor",
+      titles(carol)[0:1] == ["Harcama silindi"], str(titles(carol)[:2]))
+
+
 print("\n-- 8. eski kayitlar (split_with alani yok) --")
 # Eski APK'nin gonderdigi bicim: sadece target_type. Sunucu listeyi turetiyor.
 e2, e2_id = reg("eski")
