@@ -219,13 +219,25 @@ export default function Review() {
                        style={styles.backBtn}>
               <Ionicons name="chevron-back" size={20} color={colors.onDark} />
             </Pressable>
-            <Text style={styles.headTitle}>Fişi incele</Text>
+            {/* Kaç fişten kaçıncısındasınız — köşedeki küçük rozet tek başına
+                fark edilmiyordu, oysa sıradaki fişin geleceğini bilmek
+                "Kaydet"e mi "Kaydet & Sonraki"ye mi bastığınızı belirliyor. */}
+            <Text style={styles.headTitle}>
+              {batchN > 1 ? `Fiş ${batchI || 1} / ${batchN}` : "Fişi incele"}
+            </Text>
           </View>
           <Text style={styles.headMeta}>
             {merchant || "Market yok"} · {formatDateTR(fromDDMMYYYY(dateInput) || todayISO())}
           </Text>
           <Text style={styles.headTotal}>{formatEUR(total)}</Text>
           <Text style={styles.headHint}>{rows.length} kalem · fiyat, miktar ve kategoriyi düzenleyebilirsin</Text>
+          {batchN > 1 && (
+            <View style={styles.batchBar} testID="batch-progress-bar">
+              {Array.from({ length: batchN }).map((_, i) => (
+                <View key={i} style={[styles.batchDot, i < (batchI || 1) && styles.batchDotDone]} />
+              ))}
+            </View>
+          )}
         </ScreenHeader>
 
         <View style={styles.list}>
@@ -416,6 +428,9 @@ const styles = StyleSheet.create({
     paddingVertical: 6, borderRadius: radius.pill,
   },
   batchTxt: { ...T.captionSb, color: colors.onDark },
+  batchBar: { flexDirection: "row", gap: 4, marginTop: spacing.md },
+  batchDot: { flex: 1, height: 3, borderRadius: 2, backgroundColor: "rgba(255,255,255,0.22)" },
+  batchDotDone: { backgroundColor: colors.accentOnDark },
   list: {
     backgroundColor: colors.bg, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl,
     marginTop: -spacing.xl, padding: spacing.lg, gap: spacing.md, paddingBottom: spacing.xxxl,

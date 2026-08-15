@@ -13,7 +13,7 @@
 import React from "react";
 import {
   View, Text, Pressable, StyleSheet, ViewStyle, StyleProp, Image, TextStyle,
-  Keyboard, Platform,
+  Keyboard, Platform, Modal, Alert,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -375,14 +375,26 @@ export function HintCard({
  * yeni para birimleri). Yan yana düğme üçten sonra taşıyor; liste büyüdükçe
  * ekranı yeniden tasarlamamak için baştan açılır liste.
  */
+export type SelectOption<T extends string> = {
+  value: T;
+  label: string;
+  /** Solda duran kısa işaret: bayrak ya da para birimi simgesi. */
+  mark?: string;
+  hint?: string;
+  /** Henüz gelmedi — listede görünür ama seçilemez. */
+  soon?: boolean;
+};
+
 export function SelectRow<T extends string>({
-  label, value, options, onSelect, disabled, testID,
+  label, value, options, onSelect, locked, lockReason, testID,
 }: {
   label: string;
   value: T;
-  options: { value: T; label: string; hint?: string }[];
+  options: SelectOption<T>[];
   onSelect: (v: T) => void;
-  disabled?: boolean;
+  /** Kilitliyse kilit simgesi çıkar; dokununca sebebi söylenir. */
+  locked?: boolean;
+  lockReason?: string;
   testID?: string;
 }) {
   const [open, setOpen] = React.useState(false);
@@ -390,43 +402,60 @@ export function SelectRow<T extends string>({
   return (
     <>
       <Pressable
-        style={[styles.selectRow, disabled && { opacity: 0.5 }]}
-        onPress={() => !disabled && setOpen(true)}
-        disabled={disabled}
+        style={styles.selectRow}
+        onPress={() => (locked
+          ? Alert.alert(label, lockReason || "Bu ayar değiştirilemiyor.")
+          : setOpen(true))}
         testID={testID}
       >
+        {current?.mark ? <Text style={styles.selectMark}>{current.mark}</Text> : null}
         <View style={{ flex: 1 }}>
           <Text style={styles.selectLabel}>{label}</Text>
-          <Text style={styles.selectValue}>{current?.label ?? value}</Text>
+          <Text style={[styles.selectValue, locked && { color: colors.inkSecondary }]}>
+            {current?.label ?? value}
+          </Text>
         </View>
-        <Ionicons name="chevron-down" size={18} color={colors.inkTertiary} />
+        <Ionicons
+          name={locked ? "lock-closed" : "chevron-down"}
+          size={locked ? 16 : 18}
+          color={colors.inkTertiary}
+        />
       </Pressable>
 
-      {open && (
+      {/* Modal şart: alt sayfa kartın içinde `position: absolute` ile
+          konumlanınca ekranı değil KARTI kaplıyor ve metinlerin üstüne
+          yarı saydam biçimde biniyordu. React Native'de portal yok. */}
+      <Modal visible={open} transparent animationType="slide"
+             onRequestClose={() => setOpen(false)}>
         <Pressable style={styles.sheetScrim} onPress={() => setOpen(false)}>
           <Pressable style={styles.pickSheet} onPress={() => {}}>
+            <View style={styles.pickGrab} />
             <Text style={styles.pickTitle}>{label}</Text>
             {options.map((o, i) => (
               <React.Fragment key={o.value}>
-                {i > 0 && <View style={styles.divider} />}
+                {i > 0 && <View style={[styles.divider, { marginLeft: spacing.lg }]} />}
                 <Pressable
-                  style={styles.pickRow}
+                  style={[styles.pickRow, o.soon && { opacity: 0.4 }]}
+                  disabled={o.soon}
                   onPress={() => { setOpen(false); if (o.value !== value) onSelect(o.value); }}
                   testID={testID ? `${testID}-${o.value}` : undefined}
                 >
+                  {o.mark ? <Text style={styles.pickMark}>{o.mark}</Text> : null}
                   <View style={{ flex: 1 }}>
                     <Text style={styles.pickLabel}>{o.label}</Text>
                     {o.hint ? <Text style={styles.pickHint}>{o.hint}</Text> : null}
                   </View>
-                  {o.value === value && (
-                    <Ionicons name="checkmark" size={20} color={colors.accent} />
-                  )}
+                  {o.soon
+                    ? <Text style={styles.pickSoon}>yakında</Text>
+                    : o.value === value
+                      ? <Ionicons name="checkmark" size={20} color={colors.accent} />
+                      : null}
                 </Pressable>
               </React.Fragment>
             ))}
           </Pressable>
         </Pressable>
-      )}
+      </Modal>
     </>
   );
 }
@@ -621,6 +650,7 @@ const styles = StyleSheet.create({
     flexDirection: "row", alignItems: "center", gap: spacing.md,
     paddingHorizontal: spacing.lg, paddingVertical: spacing.md, minHeight: metrics.rowHeight,
   },
+  selectMark: { fontSize: 22, lineHeight: 28, width: 30, textAlign: "center" },
   selectLabel: { ...T.caption, color: colors.inkTertiary },
   selectValue: { ...T.bodySb, color: colors.ink, marginTop: 1 },
   sheetScrim: {
@@ -631,7 +661,13 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface, borderTopLeftRadius: radius.xl,
     borderTopRightRadius: radius.xl, paddingTop: spacing.lg, paddingBottom: spacing.xxl,
   },
+  pickGrab: {
+    width: 36, height: 4, borderRadius: 2, backgroundColor: colors.border,
+    alignSelf: "center", marginBottom: spacing.md,
+  },
   pickTitle: { ...overline, paddingHorizontal: spacing.lg, marginBottom: spacing.sm },
+  pickMark: { fontSize: 24, lineHeight: 30, width: 34, textAlign: "center" },
+  pickSoon: { ...T.caption, color: colors.inkTertiary },
   pickRow: {
     flexDirection: "row", alignItems: "center", gap: spacing.md,
     paddingHorizontal: spacing.lg, minHeight: 56,

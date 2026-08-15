@@ -7,17 +7,38 @@ import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@/src/auth";
 import { useHousehold } from "@/src/household";
 import { api } from "@/src/api";
-import { Card, Divider, ScreenHeader, Sheet, Row, SelectRow } from "@/src/ui";
-import { colors, spacing, radius, type as T, metrics } from "@/src/theme";
+import { Card, Divider, ScreenHeader, Sheet, Row, SelectRow, SelectOption } from "@/src/ui";
+import { colors, spacing, type as T, metrics } from "@/src/theme";
 
-// Liste büyüyecek; bu yüzden yan yana düğme değil açılır liste.
-const COUNTRIES = [
-  { value: "DE" as const, label: "Almanya", hint: "Kassenbon · REWE, ALDI, LIDL…" },
-  { value: "TR" as const, label: "Türkiye", hint: "Fiş · BİM, A101, ŞOK…" },
+/**
+ * Listeler bilerek uzun: gelmemiş seçenekler de görünüyor ama seçilemiyor.
+ * Boş bir listede "yalnızca iki ülke var" hissi doğuyordu; sönük satırlar
+ * neyin planlandığını söylüyor ve liste büyüdüğünde ekran değişmiyor.
+ */
+const COUNTRIES: SelectOption<string>[] = [
+  { value: "DE", label: "Almanya", mark: "🇩🇪", hint: "Kassenbon · REWE, ALDI, LIDL" },
+  { value: "TR", label: "Türkiye", mark: "🇹🇷", hint: "Fiş · BİM, A101, ŞOK" },
+  { value: "AT", label: "Avusturya", mark: "🇦🇹", soon: true },
+  { value: "NL", label: "Hollanda", mark: "🇳🇱", soon: true },
+  { value: "FR", label: "Fransa", mark: "🇫🇷", soon: true },
+  { value: "GB", label: "Birleşik Krallık", mark: "🇬🇧", soon: true },
+  { value: "US", label: "ABD", mark: "🇺🇸", soon: true },
 ];
-const CURRENCIES = [
-  { value: "EUR" as const, label: "Euro (€)" },
-  { value: "TRY" as const, label: "Türk lirası (₺)" },
+
+const CURRENCIES: SelectOption<string>[] = [
+  { value: "EUR", label: "Euro", mark: "€" },
+  { value: "TRY", label: "Türk lirası", mark: "₺" },
+  { value: "USD", label: "ABD doları", mark: "$", soon: true },
+  { value: "GBP", label: "Sterlin", mark: "£", soon: true },
+  { value: "CHF", label: "İsviçre frangı", mark: "₣", soon: true },
+];
+
+// Dil ülkeden bağımsız ve KİŞİSEL: Almanya'daki bir evde biri Türkçe, biri
+// Almanca kullanabilmeli. Bu yüzden ev ayarı değil, cihaz ayarı.
+const LANGUAGES: SelectOption<string>[] = [
+  { value: "tr", label: "Türkçe", mark: "🇹🇷" },
+  { value: "en", label: "English", mark: "🇬🇧", soon: true },
+  { value: "de", label: "Deutsch", mark: "🇩🇪", soon: true },
 ];
 
 export default function Ayarlar() {
@@ -28,8 +49,9 @@ export default function Ayarlar() {
   const [error, setError] = useState<string | null>(null);
 
   // Para birimi evin kuralını değiştiriyor; ad değiştirmekle aynı yetki
-  // seviyesinde olamaz. Yalnızca evi kuran kişi.
+  // seviyesinde olamaz. Yalnızca evi kuran kişi, yalnızca harcama yokken.
   const isFounder = !!household && household.created_by === user?.user_id;
+  const currencyLocked = !isFounder;
 
   const patch = async (body: object) => {
     setBusy(true); setError(null);
@@ -58,47 +80,35 @@ export default function Ayarlar() {
 
         <Sheet>
           <View style={styles.scroll}>
-            {!isAdmin && (
-              <View style={styles.infoBox}>
-                <Ionicons name="information-circle" size={16} color={colors.inkSecondary} />
-                <Text style={styles.infoTxt}>
-                  Ev ayarlarını yalnızca ev yöneticisi değiştirebilir.
-                </Text>
-              </View>
-            )}
-
             <Card title="Ev Kuralları">
               <SelectRow
                 label="Ülke"
-                value={(household?.country ?? "DE") as "DE" | "TR"}
+                value={household?.country ?? "DE"}
                 options={COUNTRIES}
-                disabled={!isAdmin || busy}
+                locked={!isAdmin}
+                lockReason="Ülkeyi yalnızca ev yöneticisi değiştirebilir."
                 onSelect={(v) => patch({ country: v })}
                 testID="select-country"
               />
               <Divider inset={spacing.lg} />
               <SelectRow
                 label="Para birimi"
-                value={(household?.currency ?? "EUR") as "EUR" | "TRY"}
+                value={household?.currency ?? "EUR"}
                 options={CURRENCIES}
-                disabled={!isFounder || busy}
+                locked={currencyLocked}
+                lockReason={
+                  "Para birimini yalnızca evi kuran kişi ve yalnızca evde henüz " +
+                  "harcama yokken değiştirebilir.\n\nKur çevrimi yapılmaz — " +
+                  "değiştirmek \"40 €\" yazan kaydı \"40 ₺\" diye göstermek olur."
+                }
                 onSelect={(v) => patch({ currency: v })}
                 testID="select-currency"
               />
-              <View style={styles.noteBox}>
-                <Text style={styles.note}>
-                  Ülke yalnızca fiş okumada hangi market ve fiş düzeninin
-                  bekleneceğini belirler; kayıtlı hiçbir tutara dokunmaz.
-                </Text>
-                <Text style={styles.note}>
-                  <Text style={styles.noteStrong}>Para birimi başka.</Text> Kur çevrimi
-                  yapılmaz — değiştirmek "40 €" yazan kaydı "40 ₺" diye göstermek
-                  demektir. Bu yüzden yalnızca <Text style={styles.noteStrong}>evi kuran
-                  kişi</Text> ve yalnızca <Text style={styles.noteStrong}>evde henüz
-                  harcama yokken</Text> değiştirebilir. Başka bir para birimi
-                  kullanacaksanız yeni bir ev kurun.
-                </Text>
-              </View>
+              <Text style={styles.note}>
+                {isAdmin
+                  ? "Para birimi yalnızca hiç harcama yokken değiştirilebilir."
+                  : "Ev kurallarını yalnızca ev yöneticisi değiştirebilir."}
+              </Text>
               {busy && (
                 <View style={{ alignItems: "center", paddingBottom: spacing.md }}>
                   <ActivityIndicator size="small" color={colors.dark} />
@@ -107,6 +117,19 @@ export default function Ayarlar() {
             </Card>
 
             {error && <Text style={styles.error} testID="ayarlar-error">{error}</Text>}
+
+            <Card title="Dil">
+              <SelectRow
+                label="Uygulama dili"
+                value="tr"
+                options={LANGUAGES}
+                onSelect={() => {}}
+                testID="select-language"
+              />
+              <Text style={styles.note}>
+                Yalnızca bu cihazı etkiler, ev arkadaşlarını değil.
+              </Text>
+            </Card>
 
             <Card title="Hakkında">
               <Row title="Sürüm" right={<Text style={styles.value}>{version} ({build})</Text>} />
@@ -126,17 +149,10 @@ const styles = StyleSheet.create({
     alignItems: "center", justifyContent: "center",
   },
   scroll: { padding: spacing.lg, paddingTop: spacing.sm, gap: metrics.cardGap, paddingBottom: spacing.xxxl },
-  noteBox: {
-    gap: spacing.sm, paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md, paddingBottom: spacing.lg,
+  note: {
+    ...T.caption, color: colors.inkTertiary, lineHeight: 18,
+    paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.lg,
   },
-  note: { ...T.caption, color: colors.inkTertiary, lineHeight: 18 },
-  noteStrong: { color: colors.inkSecondary },
-  infoBox: {
-    flexDirection: "row", alignItems: "center", gap: 8,
-    backgroundColor: colors.surfaceSecondary, padding: spacing.md, borderRadius: radius.md,
-  },
-  infoTxt: { flex: 1, ...T.caption, color: colors.inkSecondary, lineHeight: 18 },
   error: { ...T.bodySb, color: colors.negative, textAlign: "center" },
   value: { ...T.caption, color: colors.inkTertiary },
 });
