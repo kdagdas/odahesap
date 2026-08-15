@@ -2499,6 +2499,11 @@ class RecurringConfirm(BaseModel):
     fazladan bir ekran koyar.
     """
     period_key: str            # "2026-08" — hangi ay için
+    # Onaylamak izin vermek değil, "bu ödendi" demek: oluşan harcamanın
+    # ödeyeni bakiyede alacaklı çıkıyor. Uygulamayı açan kişi ile parayı veren
+    # kişi çoğu zaman farklı ("kirayı Salih ödüyor, uygulamayı ben giriyorum"),
+    # o yüzden ödeyen ayrıca seçilebiliyor. Boşsa onaylayan kişidir.
+    paid_by: Optional[str] = None
     amount: Optional[float] = Field(default=None, gt=0)
     split_mode: Optional[Literal["equal", "exact"]] = None
     split_with: Optional[Dict[str, float]] = None
@@ -2694,6 +2699,14 @@ async def confirm_recurring(recurring_id: str, body: RecurringConfirm,
     if doc.get("last_confirmed") == body.period_key:
         raise HTTPException(status_code=409, detail="Bu ay zaten onaylanmış")
 
+    payer = body.paid_by or user["user_id"]
+    if payer not in hh["member_ids"]:
+        raise HTTPException(status_code=400, detail="Ödeyen bu evin üyesi değil")
+    if doc["scope"] == "self" and payer != user["user_id"]:
+        # Kişisel gider başkası adına kaydedilemez: kimse görmüyor, dolayısıyla
+        # yanlış girildiğinde düzeltecek kimse de yok.
+        raise HTTPException(status_code=400, detail="Kişisel gider başkası adına kaydedilemez")
+
     amount = round(body.amount if body.amount is not None else doc["amount"], 2)
     if doc["scope"] == "self":
         split_mode, split_with = "exact", {user["user_id"]: amount}
@@ -2701,7 +2714,7 @@ async def confirm_recurring(recurring_id: str, body: RecurringConfirm,
         split_mode = body.split_mode or "equal"
         split_with = validate_split(
             split_mode, body.split_with, amount,
-            list(dict.fromkeys(list(hh["member_ids"]) + [user["user_id"]])),
+            list(dict.fromkeys(list(hh["member_ids"]) + [payer])),
         )
     else:
         split_mode, split_with = doc["split_mode"], dict(doc["split_with"])
@@ -2711,14 +2724,15 @@ async def confirm_recurring(recurring_id: str, body: RecurringConfirm,
                 status_code=400,
                 detail="Tutar şablondakinden farklı, bölüşümü bu ay için düzenleyin",
             )
-    target_type = derive_target_type(user["user_id"], split_with, hh["member_ids"])
+    target_type = derive_target_type(payer, split_with, hh["member_ids"])
 
     expense_id = new_id("exp")
     exp = {
         "expense_id": expense_id,
         "household_id": hh["household_id"],
         "period_id": period["period_id"],
-        "added_by": user["user_id"],
+        # Parayi veren kisi. Bakiyede alacakli cikan bu.
+        "added_by": payer,
         "target_type": target_type,
         "target_user_id": next(iter(split_with)) if target_type == "roommate" else None,
         "split_mode": split_mode,
@@ -2738,6 +2752,9 @@ async def confirm_recurring(recurring_id: str, body: RecurringConfirm,
         # sorusunun cevabı aylar sonra da bulunabilsin.
         "recurring_id": recurring_id,
         "recurring_period": body.period_key,
+        # Kaydı giren, ödeyenden farklı olabilir. Ödeyen `added_by`; bu alan
+        # yalnızca izlenebilirlik için ve farklıysa yazılıyor.
+        "recorded_by": user["user_id"] if payer != user["user_id"] else None,
     }
     await db.expenses.insert_one(exp.copy())
     await db.recurring.update_one(
@@ -2745,16 +2762,22 @@ async def confirm_recurring(recurring_id: str, body: RecurringConfirm,
         {"$set": {"last_confirmed": body.period_key, "last_amount": amount}},
     )
 
-    audience = [u for u in split_with if u != user["user_id"]]
+    # Ödeyen de haber almalı: başkası onun adına bir ödeme kaydetti ve bakiyesi
+    # değişti. Bunu ancak kendisi ekrana bakıp fark ederse öğrenirdi.
+    audience = [u for u in dict.fromkeys(list(split_with) + [payer])
+                if u != user["user_id"]]
     if audience:
         txt = f"{doc['amount']:.2f}".replace(".", ",")
         got = f"{amount:.2f}".replace(".", ",")
         extra = "" if abs(amount - doc["amount"]) < 0.01 else f" (şablonda {txt} €)"
-        await notify(
-            audience, "Düzenli gider eklendi",
-            f"{user['name']} · {doc['name']} · {got} €{extra}",
-            "recurring", {"expense_id": expense_id},
-        )
+        if payer == user["user_id"]:
+            body_txt = f"{user['name']} ödedi · {doc['name']} · {got} €{extra}"
+        else:
+            payer_doc = await db.users.find_one({"user_id": payer}, {"_id": 0, "name": 1})
+            who = (payer_doc or {}).get("name", "biri")
+            body_txt = f"{who} ödedi · {doc['name']} · {got} €{extra} · {user['name']} kaydetti"
+        await notify(audience, "Düzenli gider eklendi", body_txt,
+                     "recurring", {"expense_id": expense_id})
     return {"expense": exp}
 
 

@@ -169,6 +169,47 @@ export default function Panel() {
             <ActivityIndicator color={colors.dark} style={{ marginTop: spacing.xxl }} />
           ) : (
             <View style={{ gap: metrics.cardGap }}>
+              {/* Vadesi gelen düzenli ödemeler. Onaylanmadan hiçbir kayıt
+                  oluşmuyor; kart yalnızca bekleyen varsa çıkıyor.
+
+                  En üstte, koyu başlığın hemen altında: bu bir iş ve
+                  yapılınca kart kayboluyor. Normal günlerde ekran eskisi
+                  gibi, çünkü bekleyen yoksa hiç çizilmiyor. */}
+              {due.length > 0 && (
+                <Card
+                  title={`Vadesi Gelenler · ${due.length}`}
+                  lead={<PulseDot trigger={focusTick} testID="due-dot" />}
+                  action={due.length > 3 ? `Tümü · +${due.length - 3}` : undefined}
+                  onAction={() => router.push("/duzenli")}
+                  style={styles.mx}
+                  testID="due-card"
+                >
+                  {due.slice(0, 3).map((d, i) => (
+                    <View key={d.recurring_id}>
+                      {i > 0 && <Divider />}
+                      <Pressable style={styles.dueRow} onPress={() => setConfirming(d)}
+                                 testID={`due-row-${d.recurring_id}`}>
+                        <View style={styles.dayBox}>
+                          <Text style={styles.dayTxt}>{d.day_of_month}</Text>
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.dueTitle}>{d.name}</Text>
+                          <Text style={styles.dueSub} numberOfLines={1}>
+                            {d.scope === "self"
+                              ? "Sadece ben"
+                              : splitSummary({ mode: d.split_mode, with: d.split_with },
+                                             members, user?.user_id)}
+                            {d.amount_fixed ? "" : " · değişken"}
+                          </Text>
+                        </View>
+                        <Money value={d.amount} />
+                        <Ionicons name="chevron-forward" size={16} color={colors.onSurfaceTertiary} />
+                      </Pressable>
+                    </View>
+                  ))}
+                </Card>
+              )}
+
               {cats.length > 0 && (
                 <Card title="Nereye Gitti" action="Tümü"
                       onAction={() => router.push("/harcamalar")} style={styles.mx}>
@@ -205,43 +246,6 @@ export default function Panel() {
                         right={<Money value={totalsPaid[m.user_id] || 0} />}
                       />
                       {i < members.length - 1 && <Divider />}
-                    </View>
-                  ))}
-                </Card>
-              )}
-
-              {/* Vadesi gelen düzenli ödemeler. Onaylanmadan hiçbir kayıt
-                  oluşmuyor; kart yalnızca bekleyen varsa çıkıyor. */}
-              {due.length > 0 && (
-                <Card
-                  title={`Onay Bekleyen · ${due.length}`}
-                  lead={<PulseDot trigger={focusTick} testID="due-dot" />}
-                  action={due.length > 3 ? `Tümü · +${due.length - 3}` : undefined}
-                  onAction={() => router.push("/duzenli")}
-                  style={styles.mx}
-                  testID="due-card"
-                >
-                  {due.slice(0, 3).map((d, i) => (
-                    <View key={d.recurring_id}>
-                      {i > 0 && <Divider />}
-                      <Pressable style={styles.dueRow} onPress={() => setConfirming(d)}
-                                 testID={`due-row-${d.recurring_id}`}>
-                        <View style={styles.dayBox}>
-                          <Text style={styles.dayTxt}>{d.day_of_month}</Text>
-                        </View>
-                        <View style={{ flex: 1 }}>
-                          <Text style={styles.dueTitle}>{d.name}</Text>
-                          <Text style={styles.dueSub} numberOfLines={1}>
-                            {d.scope === "self"
-                              ? "Sadece ben"
-                              : splitSummary({ mode: d.split_mode, with: d.split_with },
-                                             members, user?.user_id)}
-                            {d.amount_fixed ? "" : " · değişken"}
-                          </Text>
-                        </View>
-                        <Money value={d.amount} />
-                        <Ionicons name="chevron-forward" size={16} color={colors.onSurfaceTertiary} />
-                      </Pressable>
                     </View>
                   ))}
                 </Card>

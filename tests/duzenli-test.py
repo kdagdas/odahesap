@@ -196,6 +196,36 @@ check("Alice bu harcamayi gormuyor",
       {e["expense_id"] for e in c.get(f"{API}/expenses", headers=hdr(alice)).json()["expenses"]})
 
 
+print("\n-- 7b. odeyen secilebiliyor --")
+# "Kirayi Salih oduyor ama uygulamayi ben giriyorum." Onaylamak izin vermek
+# degil, "bu odendi" demek: olusan harcamanin odeyeni bakiyede ALACAKLI
+# cikiyor. Yanlis kisi yazilirsa borc tersine doner.
+r = kur(alice, name="Su", amount=60.0, day_of_month=gecmis_gun)
+su = r.json()["recurring"]
+before = net(alice)
+r = c.post(f"{API}/recurring/{su['recurring_id']}/confirm", headers=hdr(alice),
+           json={"period_key": BU_AY, "paid_by": bob_id})
+check("Alice, Bob adina kaydetti", r.status_code == 200, r.text[:200])
+exp = r.json()["expense"]
+check("harcamanin odeyeni Bob", exp["added_by"] == bob_id, exp["added_by"])
+check("kaydeden Alice olarak yazildi", exp.get("recorded_by") == alice_id, str(exp.get("recorded_by")))
+after = net(alice)
+check("Bob alacakli (+60-20)", near(after[bob_id] - before[bob_id], 40.0),
+      f"{before[bob_id]} -> {after[bob_id]}")
+check("Alice borclu (-20)", near(after[alice_id] - before[alice_id], -20.0),
+      f"{before[alice_id]} -> {after[alice_id]}")
+
+r = c.post(f"{API}/recurring/{su['recurring_id']}/confirm", headers=hdr(alice),
+           json={"period_key": BU_AY, "paid_by": "user_yok"})
+check("ev disindan odeyen reddedildi", r.status_code in (400, 409), f"{r.status_code}")
+
+r = kur(carol, name="Kitap", amount=15.0, day_of_month=gecmis_gun, scope="self")
+r = c.post(f"{API}/recurring/{r.json()['recurring']['recurring_id']}/confirm",
+           headers=hdr(carol), json={"period_key": BU_AY, "paid_by": alice_id})
+check("kisisel gider baskasi adina kaydedilemiyor", r.status_code == 400,
+      f"{r.status_code} {r.text[:140]}")
+
+
 print("\n-- 8. bu ay atla --")
 r = kur(alice, name="Temizlikci", amount=60.0, day_of_month=gecmis_gun)
 temizlik = r.json()["recurring"]

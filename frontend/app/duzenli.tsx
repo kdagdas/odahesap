@@ -12,7 +12,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   View, Text, StyleSheet, ScrollView, Pressable, TextInput, Modal,
-  ActivityIndicator, Alert, KeyboardAvoidingView, Platform,
+  ActivityIndicator, Alert, Platform,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -22,7 +22,7 @@ import { useAuth } from "@/src/auth";
 import { useHousehold } from "@/src/household";
 import {
   ScreenHeader, Sheet, Card, Divider, Chip, SplitPicker, splitAll, splitSummary,
-  formatEUR, todayISO, type Split,
+  useKeyboardHeight, formatEUR, todayISO, type Split,
 } from "@/src/ui";
 import {
   colors, spacing, radius, type as T, overline, fontFamily,
@@ -197,6 +197,7 @@ function EditSheet({
   onConfirmNow: (r: Recurring) => void;
 }) {
   const insets = useSafeAreaInsets();
+  const kb = useKeyboardHeight();
   const [name, setName] = useState(value?.name || "");
   const [amount, setAmount] = useState(value ? money(value.amount) : "");
   const [day, setDay] = useState(String(value?.day_of_month || 1));
@@ -268,9 +269,14 @@ function EditSheet({
 
   return (
     <Modal visible transparent animationType="slide" onRequestClose={onClose}>
-      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
         <Pressable style={styles.scrim} onPress={onClose}>
-          <Pressable style={[styles.sheet, { paddingBottom: spacing.lg + insets.bottom }]} onPress={() => {}}>
+          {/* KeyboardAvoidingView burada işe yaramıyor: alt sayfa mutlak
+              konumlu ve o bileşen böylelerini itmiyor (bkz. ui.tsx
+              useKeyboardHeight). Yüksekliği ölçüp elle itiyoruz. */}
+          <Pressable
+            style={[styles.sheet, { paddingBottom: spacing.lg + insets.bottom + kb }]}
+            onPress={() => {}}
+          >
             <View style={styles.grab} />
             <ScrollView keyboardShouldPersistTaps="handled" style={{ maxHeight: 520 }}>
               <Text style={[overline, styles.sheetTitle]}>
@@ -367,7 +373,6 @@ function EditSheet({
             )}
           </Pressable>
         </Pressable>
-      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -391,7 +396,13 @@ export function ConfirmSheet({
   onDone: () => void;
 }) {
   const insets = useSafeAreaInsets();
+  const kb = useKeyboardHeight();
   const [amount, setAmount] = useState(money(tpl.amount));
+  // Onaylamak izin vermek değil, "bu ödendi" demek: oluşan harcamanın ödeyeni
+  // bakiyede alacaklı çıkıyor. Uygulamayı açan ile parayı veren çoğu zaman
+  // farklı ("kirayı Salih ödüyor, uygulamayı ben giriyorum").
+  const [paidBy, setPaidBy] = useState<string | undefined>(meId);
+  const [payerOpen, setPayerOpen] = useState(false);
   const [dateInput, setDateInput] = useState(toDDMMYYYY(todayISO()));
   const [split, setSplit] = useState<Split>({ mode: tpl.split_mode, with: { ...tpl.split_with } });
   const [busy, setBusy] = useState(false);
@@ -425,6 +436,7 @@ export function ConfirmSheet({
         ...(path === "confirm"
           ? {
               amount: total,
+              paid_by: paidBy,
               expense_date: fromDDMMYYYY(dateInput),
               ...(isSelf ? {} : { split_mode: split.mode, split_with: split.with }),
             }
@@ -441,14 +453,18 @@ export function ConfirmSheet({
 
   return (
     <Modal visible transparent animationType="slide" onRequestClose={onClose}>
-      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
         <Pressable style={styles.scrim} onPress={onClose}>
-          <Pressable style={[styles.sheet, { paddingBottom: spacing.lg + insets.bottom }]} onPress={() => {}}>
+          <Pressable
+            style={[styles.sheet, { paddingBottom: spacing.lg + insets.bottom + kb }]}
+            onPress={() => {}}
+          >
             <View style={styles.grab} />
             <Text style={[overline, styles.sheetTitle]}>
               {tpl.name.toLocaleUpperCase("tr")} · {AYLAR[parseInt(monthName || "0", 10)] || ""}
             </Text>
 
+            {/* Kalem simgesi şart: rakam hazır geldiği için düzenlenebildiği
+                anlaşılmıyordu — kullanıcı değiştirebildiğini fark etmiyor. */}
             <View style={styles.amountRow}>
               <Text style={styles.currency}>€</Text>
               <TextInput
@@ -460,9 +476,27 @@ export function ConfirmSheet({
                 // kira da bir kez zamlanır ve o ay elle düzeltilebilmeli.
                 testID="onay-amount"
               />
+              <Ionicons name="pencil" size={16} color={colors.inkTertiary} />
             </View>
             {!tpl.amount_fixed && (
               <Text style={styles.hint}>Bu gider her ay değişiyor · şablonda {money(tpl.amount)} yazıyor</Text>
+            )}
+
+            {!isSelf && (
+              <View style={styles.confirmField}>
+                <Pressable style={styles.payerRow} onPress={() => setPayerOpen(true)}
+                           testID="onay-payer">
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.smallLabel}>ÖDEYEN</Text>
+                    <Text style={styles.payerName}>
+                      {paidBy === meId
+                        ? "Sen"
+                        : members.find((m) => m.user_id === paidBy)?.name || "—"}
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-down" size={18} color={colors.inkTertiary} />
+                </Pressable>
+              </View>
             )}
 
             {!isSelf && (
@@ -507,6 +541,34 @@ export function ConfirmSheet({
                     : <Text style={styles.primaryTxt}>Onayla ve ekle</Text>}
             </Pressable>
 
+            <Modal visible={payerOpen} transparent animationType="fade"
+                   onRequestClose={() => setPayerOpen(false)}>
+              <Pressable style={styles.scrim} onPress={() => setPayerOpen(false)}>
+                <Pressable style={[styles.sheet, { paddingBottom: spacing.lg + insets.bottom }]}
+                           onPress={() => {}}>
+                  <View style={styles.grab} />
+                  <Text style={[overline, styles.sheetTitle]}>PARAYI KİM ÖDEDİ?</Text>
+                  {members.map((m, i) => (
+                    <View key={m.user_id}>
+                      {i > 0 && <View style={styles.payerDivider} />}
+                      <Pressable
+                        style={styles.payerPick}
+                        onPress={() => { setPaidBy(m.user_id); setPayerOpen(false); }}
+                        testID={`onay-payer-${m.user_id}`}
+                      >
+                        <Text style={styles.payerPickTxt}>
+                          {m.name}{m.user_id === meId ? " (sen)" : ""}
+                        </Text>
+                        {paidBy === m.user_id && (
+                          <Ionicons name="checkmark" size={20} color={colors.accent} />
+                        )}
+                      </Pressable>
+                    </View>
+                  ))}
+                </Pressable>
+              </Pressable>
+            </Modal>
+
             <View style={styles.secondaryRow}>
               {/* "Sonra" sunucuya gitmiyor: kart bir dahaki açılışta yine çıkar.
                   "Bu ay atla" ise kalıcı — bu ay hiç sorulmaz. */}
@@ -519,7 +581,6 @@ export function ConfirmSheet({
             </View>
           </Pressable>
         </Pressable>
-      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -600,6 +661,20 @@ const styles = StyleSheet.create({
   amountInput: {
     fontSize: 36, lineHeight: 44, fontFamily: fontFamily.bold, color: colors.ink,
     flex: 1, padding: 0, letterSpacing: -1,
+  },
+  payerRow: {
+    flexDirection: "row", alignItems: "center",
+    paddingHorizontal: spacing.lg, paddingVertical: spacing.md,
+  },
+  payerName: { ...T.bodySb, color: colors.ink, marginTop: 1 },
+  payerPick: {
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    paddingHorizontal: spacing.lg, minHeight: 54,
+  },
+  payerPickTxt: { ...T.emph, color: colors.ink },
+  payerDivider: {
+    height: StyleSheet.hairlineWidth, backgroundColor: colors.divider,
+    marginLeft: spacing.lg,
   },
   hint: { ...T.caption, color: colors.inkTertiary, paddingHorizontal: spacing.lg, marginTop: -spacing.sm, marginBottom: spacing.sm },
   dateRow: { flexDirection: "row", paddingHorizontal: spacing.lg, paddingVertical: spacing.md },

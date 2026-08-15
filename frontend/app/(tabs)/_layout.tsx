@@ -33,6 +33,12 @@ export default function TabsLayout() {
             android: { elevation: 8 },
           }),
         },
+        // Tablette etiket ikonun ALTINA değil YANINA kayıyordu: React
+        // Navigation, sekme kutusu genişleyince `beside-icon` düzenine
+        // geçiyor. Telefonda sekme dar olduğu için hiç tetiklenmiyordu.
+        // Ortadaki dairesel ikon `marginTop: -22` ile yukarı kaldırıldığı
+        // için yatay düzende hizası da bozuluyordu — tek satır, iki belirti.
+        tabBarLabelPosition: "below-icon",
         tabBarLabelStyle: { fontSize: 10, fontFamily: fontFamily.semibold, marginTop: 2 },
         tabBarItemStyle: { paddingVertical: 4 },
       }}

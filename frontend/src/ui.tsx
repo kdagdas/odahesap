@@ -73,6 +73,7 @@ export function ScreenHeader({
       style={[styles.header, { paddingTop: insets.top + spacing.md }]}
       testID={testID}
     >
+      <View style={styles.headerInner}>
       {(over || title || right) && (
         <View style={styles.headerTop}>
           <View style={{ flex: 1 }}>
@@ -83,6 +84,7 @@ export function ScreenHeader({
         </View>
       )}
       {children}
+      </View>
     </LinearGradient>
   );
 }
@@ -163,9 +165,24 @@ export function useKeyboardHeight() {
   return height;
 }
 
+/**
+ * Telefon genişliği. Tabletlerde içerik bunun ötesine yayılmıyor.
+ *
+ * Uygulama telefon önceliklidir ve satırların çoğu `space-between` kullanır:
+ * ad solda, tutar sağda. 380 piksellik bir kutuda doğru duran bu düzen 1000
+ * piksellik bir tablette iki ucu birbirinden kopuk iki sütuna dönüşüyordu.
+ * Tek tek yamamak yerine kabı sınırlamak doğrusu — ekranların hepsi `Sheet`
+ * ve `ScreenHeader` kullandığı için kural iki yerde duruyor.
+ */
+export const CONTENT_MAX_WIDTH = 560;
+
 /** İçerik yüzeyi — koyu başlığın üzerine kavisle biner. */
 export function Sheet({ children, style }: { children: React.ReactNode; style?: StyleProp<ViewStyle> }) {
-  return <View style={[styles.sheet, style]}>{children}</View>;
+  return (
+    <View style={[styles.sheet, style]}>
+      <View style={styles.sheetInner}>{children}</View>
+    </View>
+  );
 }
 
 /* ---------------------------------------------------------------- kartlar */
@@ -188,8 +205,10 @@ export function Card({
     >
       {title ? (
         <View style={styles.cardHead}>
-          {lead ? <View style={{ marginRight: spacing.sm }}>{lead}</View> : null}
-          <Text style={styles.cardTitle}>{title}</Text>
+          <View style={styles.cardHeadLeft}>
+            {lead ? <View style={{ marginRight: spacing.sm }}>{lead}</View> : null}
+            <Text style={styles.cardTitle}>{title}</Text>
+          </View>
           {action ? (
             <Pressable onPress={onAction} hitSlop={10}>
               <Text style={styles.cardAction}>{action}</Text>
@@ -920,6 +939,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.xxl + spacing.md, // yüzey buraya biner
   },
+  headerInner: { width: "100%", maxWidth: CONTENT_MAX_WIDTH, alignSelf: "center" },
   headerTop: { flexDirection: "row", alignItems: "center", gap: spacing.md, marginBottom: spacing.lg },
   headerOverline: { ...overline, color: colors.onDarkMuted },
   headerTitle: { ...T.screen, color: colors.onDark },
@@ -939,11 +959,15 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl,
     marginTop: -spacing.xl, paddingTop: spacing.lg,
   },
+  // Zemin tam genişlikte kalır (kenardan kenara tasarım ögesi), yalnızca
+  // içindekiler ortalanır.
+  sheetInner: { width: "100%", maxWidth: CONTENT_MAX_WIDTH, alignSelf: "center", flex: 1 },
   card: {
     backgroundColor: colors.surface, borderRadius: radius.lg,
     borderWidth: 1, borderColor: colors.border, overflow: "hidden",
   },
   cardBody: { padding: spacing.lg, paddingTop: 0 },
+  cardHeadLeft: { flexDirection: "row", alignItems: "center", flexShrink: 1 },
   cardHead: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
     // Başlık ile veri arası bilerek geniş: başlık listeye yapışınca ikisi tek

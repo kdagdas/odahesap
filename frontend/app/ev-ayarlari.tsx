@@ -296,24 +296,6 @@ export default function EvAyarlari() {
               )}
             </Card>
 
-            {/* Ortak düzenli giderler. Ekran kişisel olanlarla aynı, "Ev"
-                sekmesi önseçili — Alınacaklar'daki desenin aynısı. */}
-            <Card>
-              <Pressable style={styles.navRow}
-                         onPress={() => router.push("/duzenli?scope=household")}
-                         testID="open-recurring-household"
-                         android_ripple={{ color: colors.divider }}>
-                <View style={styles.navIcon}>
-                  <Ionicons name="repeat" size={20} color={colors.accentDark} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.navTitle}>Düzenli ödemeler</Text>
-                  <Text style={styles.navDesc}>Kira, elektrik, internet · her ay onayına sunulur</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={20} color={colors.inkTertiary} />
-              </Pressable>
-            </Card>
-
             <Card title={`Üyeler (${members.length})`}>
               {members.map((m, i) => {
                 const memberIsAdmin = m.user_id === adminId;
@@ -426,16 +408,6 @@ const styles = StyleSheet.create({
   memberName: { ...T.bodySb, color: colors.ink },
   memberNameRow: { flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" },
   pendingActions: { flexDirection: "row", gap: spacing.sm },
-  navRow: {
-    flexDirection: "row", alignItems: "center", gap: spacing.md,
-    paddingHorizontal: spacing.lg, paddingVertical: spacing.md, minHeight: 64,
-  },
-  navIcon: {
-    width: 38, height: 38, borderRadius: 12, backgroundColor: colors.accentSoft,
-    alignItems: "center", justifyContent: "center",
-  },
-  navTitle: { ...T.emph, color: colors.ink },
-  navDesc: { ...T.caption, color: colors.inkTertiary, marginTop: 1 },
   approveBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: colors.accent, alignItems: "center", justifyContent: "center" },
   rejectBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: colors.negativeSoft, alignItems: "center", justifyContent: "center" },
 

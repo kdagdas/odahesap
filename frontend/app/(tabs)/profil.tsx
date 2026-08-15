@@ -174,15 +174,17 @@ export default function Profil() {
                 <Ionicons name="chevron-forward" size={20} color={colors.inkTertiary} />
               </Pressable>
               <Divider inset={spacing.lg} />
-              {/* Kişisel düzenli giderler — spor salonu, kendi aboneliğin.
-                  Ekran ortak olanlarla aynı, "Kişisel" sekmesi önseçili. */}
+              {/* Düzenli giderlerin TEK kapısı. Ev ayarlarında ikinci bir
+                  bağlantı vardı; aynı ekrana iki yerden gitmek "kirayı nereye
+                  eklemiştim" sorusunu doğuruyordu. Ev/Kişisel ayrımı zaten
+                  ekranın kendi sekmesinde. */}
               <Pressable style={styles.navRow}
-                         onPress={() => router.push("/duzenli?scope=self")}
-                         testID="open-recurring-self" android_ripple={{ color: colors.divider }}>
+                         onPress={() => router.push("/duzenli")}
+                         testID="open-recurring" android_ripple={{ color: colors.divider }}>
                 <IconPill name="repeat" color={colors.onWarning} tint={colors.warningSoft} size={38} />
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.navTitle}>Kişisel düzenli ödemeler</Text>
-                  <Text style={styles.navDesc}>Her ay tekrarlayan kendi giderlerin</Text>
+                  <Text style={styles.navTitle}>Düzenli giderler</Text>
+                  <Text style={styles.navDesc}>Kira, elektrik, abonelik · ev ve kişisel</Text>
                 </View>
                 <Ionicons name="chevron-forward" size={20} color={colors.inkTertiary} />
               </Pressable>
