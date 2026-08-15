@@ -380,8 +380,8 @@ export default function Review() {
           <View style={styles.footerRow}>
             {batchN > 1 && (
               <Pressable style={styles.skipBtn} onPress={skipReceipt} testID="review-skip-btn">
-                <Ionicons name="play-forward" size={16} color={colors.inkSecondary} />
-                <Text style={styles.skipTxt}>Kaydetmeden atla</Text>
+                <Ionicons name="play-forward" size={15} color={colors.inkSecondary} />
+                <Text style={styles.skipTxt}>Atla</Text>
               </Pressable>
             )}
             <Pressable style={[styles.saveBtn, saving && { opacity: 0.6 }]} onPress={save}
@@ -499,16 +499,18 @@ const styles = StyleSheet.create({
   footerLabel: { ...overline },
   footerTotal: { ...T.screen, color: colors.ink, fontVariant: ["tabular-nums"] },
   saveBtn: {
-    backgroundColor: colors.brand, borderRadius: radius.pill, paddingHorizontal: spacing.xl,
+    backgroundColor: colors.brand, borderRadius: radius.pill, paddingHorizontal: spacing.lg,
     minHeight: 54, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 6,
     flex: 1,
   },
-  saveTxt: { ...T.emph, color: colors.onBrand },
+  saveTxt: { ...T.bodySb, color: colors.onBrand, flexShrink: 1 },
   error: { ...T.bodySb, color: colors.negative, textAlign: "center" },
+  // Ikincil eylem: sabit ve dar. Asil dugmeyle yer paylasinca "Kaydet &
+  // Sonraki" yazisi sigmiyordu; birincil eylem her zaman genis kalmali.
   skipBtn: {
-    flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: spacing.lg,
+    flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: spacing.md,
     minHeight: 54, borderRadius: radius.pill, backgroundColor: colors.surfaceSecondary,
-    justifyContent: "center", flexShrink: 1,
+    justifyContent: "center", flexShrink: 0,
   },
-  skipTxt: { ...T.bodySb, color: colors.inkSecondary },
+  skipTxt: { ...T.captionSb, color: colors.inkSecondary },
 });

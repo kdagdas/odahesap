@@ -398,6 +398,8 @@ export function SelectRow<T extends string>({
   testID?: string;
 }) {
   const [open, setOpen] = React.useState(false);
+  // Listenin son satırı telefonun gezinme çubuğunun altında kalıyordu.
+  const insets = useSafeAreaInsets();
   const current = options.find((o) => o.value === value);
   return (
     <>
@@ -428,7 +430,8 @@ export function SelectRow<T extends string>({
       <Modal visible={open} transparent animationType="slide"
              onRequestClose={() => setOpen(false)}>
         <Pressable style={styles.sheetScrim} onPress={() => setOpen(false)}>
-          <Pressable style={styles.pickSheet} onPress={() => {}}>
+          <Pressable style={[styles.pickSheet, { paddingBottom: spacing.lg + insets.bottom }]}
+                     onPress={() => {}}>
             <View style={styles.pickGrab} />
             <Text style={styles.pickTitle}>{label}</Text>
             {options.map((o, i) => (
