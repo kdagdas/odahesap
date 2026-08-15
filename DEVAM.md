@@ -218,7 +218,7 @@ tek seferlik ve sonrasinda temizlik gerektigini bilerek yapin.
 
 ## Testler
 
-On beş takım, toplam **336 kontrol**, hepsi çalışan bir API'ye HTTP ile bağlanır. Yerel sunucuya da
+On dokuz takım, toplam **497 kontrol**, hepsi çalışan bir API'ye HTTP ile bağlanır. Yerel sunucuya da
 canlıya da aynı şekilde çalıştırılabilir:
 
 ```bash
@@ -236,7 +236,10 @@ cd backend
 | `profile-test.py` | ad/e-posta/şifre, fotoğraf yetkisi | 27 |
 | `settle-edit-test.py` | ödeme işaretleme, harcama düzenleme | 25 |
 | `session-401-test.py` | oturum hatası ile şifre hatası ayrımı | 16 |
-| `bolusme-test.py` | `split_with`, kişiye özel tutarlar, listenin donması | 47 |
+| `bolusme-test.py` | `split_with`, kişiye özel tutarlar, listenin donması | 52 |
+| `duzenli-test.py` | düzenli ödemeler: vade, çift onay koruması, ödeyen | 53 |
+| `aylik-test.py` | takvim ayı istatistiği: ay sınırı, kapsam, sabit/değişken | 33 |
+| `fiyat-test.py` | birim fiyat, paket sınıfı, fiyat hafızası | 46 |
 | Tur 1-3'ten: `donem-dondurma` · `duzenleme-gecmisi` · `market-tekrar` · `para-birimi` · `aktivite` · `stats` · `categorize` | | 147 |
 
 Betikler `tests/` altında. Hepsi kendi test hesaplarını
@@ -301,7 +304,7 @@ hissettiriyordu.
   önler. **Aynı Render hesabında ikinci bir ücretsiz servis açılmamalı** —
   aylık 750 saatlik kota tek servisi 7/24 ayakta tutmaya ancak yetiyor.
 - **iOS sürümü yok.** Mac ve yıllık geliştirici hesabı gerekiyor.
-- **Uygulama otomatik test edilmiyor.** Sunucu 336 testle korunuyor ama
+- **Uygulama otomatik test edilmiyor.** Sunucu 497 testle korunuyor ama
   arayüzün kendisi hiçbir cihazda otomatik çalıştırılmıyor; ekran hataları
   ancak elle denemeyle bulunuyor.
 

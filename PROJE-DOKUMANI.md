@@ -5,7 +5,7 @@
 > ihtiyaç duymaz. Günlük operasyon için [DEVAM.md](DEVAM.md), kurulum için
 > [README.md](README.md).
 >
-> Son güncelleme: 15 Ağustos 2026 · Uygulama sürümü 1.0.0 (versionCode 23)
+> Son güncelleme: 16 Ağustos 2026 · Uygulama sürümü 1.0.0 (versionCode 24)
 
 ---
 
@@ -47,9 +47,21 @@ kişiler** (fişteki yumurtayı iki kişi bölüşür) ve **kişiye özel tutarl
 (1200 € kira 350/400/450). Liste kayıt anında donuyor, bu da §11'deki "dönem
 ortasında katılan üye" sınırını kapattı.
 
-**Test sayısı:** 189 → 281 → **336**. Yeni dosyalar: `donem-dondurma-test.py`,
+**Tur 5 (v24).** **Düzenli ödemeler** — kira, elektrik, internet. Takvim
+tarihli (`day_of_month`), dönem değil: dönem üç hafta da sürebilir yedi hafta
+da, elektrik hep ayın 15'inde gelir. **Kapatmak asla sessizce eklemez**;
+vadesi gelen şablon bir öneri üretir, harcama yalnızca onayla oluşur. Onaylamak
+"bu ödendi" demek olduğu için **ödeyen ayrıca seçilebiliyor** — uygulamayı açan
+ile parayı veren çoğu zaman farklı.
+
+**Tur 6 (v24).** **İstatistikler** — takvim ayı bazlı, Ev/Kişisel sekmeli,
+kendi sayfasında. Turun asıl kazancı **sabit / değişken ayrımı**: Tur 5
+olmadan kurulamazdı.
+
+**Test sayısı:** 189 → 281 → 336 → **497**. Yeni dosyalar: `donem-dondurma-test.py`,
 `duzenleme-gecmisi-test.py`, `market-tekrar-test.py`, `para-birimi-test.py`,
-`aktivite-test.py`, `bolusme-test.py`.
+`aktivite-test.py`, `bolusme-test.py`, `fiyat-test.py`, `duzenli-test.py`,
+`aylik-test.py`.
 
 **Sıradaki işler ve gerekçeleri** için §12'ye bakın.
 
@@ -221,6 +233,7 @@ silinebilir.
 | `settlements` | `settlement_id`, `household_id`, `period_id`, `from_user_id`, `to_user_id`, `amount`, `recorded_by`, `created_at` |
 | `shopping_items` | `item_id`, `household_id`, `scope` (`household`/`self`), `text`, `added_by`, `done`, `done_by`, `created_at` |
 | `avatars` | `user_id` (tekil), `data` (ham JPEG), `mime`, `updated_at` |
+| `recurring` | `recurring_id`, `household_id`, `created_by`, `scope` (`household`/`self`), `name`, `amount`, `amount_fixed`, `day_of_month`, `split_mode`, `split_with`, `category`, `merchant`, `active`, `last_confirmed` (`"2026-08"`), `skipped[]` |
 | `price_points` | `merchant_key`, `merchant`, `product_key`, `product`, `pack_type`, `size_amount`, `size_unit`, `unit_price`, `price_unit`, `currency`, `country`, `week`, `category` — **kimlik alanı yoktur**, bkz. §12 |
 | `devices` | `token` (tekil, FCM), `user_id`, `platform`, `updated_at` |
 
@@ -390,6 +403,9 @@ Tümü `/api` önekiyle. Sağlık ucu dışında hepsi `Authorization: Bearer <j
 
 **Denge ve dönem**
 `POST /price-memory` — evin kendi fişlerinden, aynı market içinde ürün fiyatı geçmişi
+`GET /recurring` · `POST /recurring` · `PATCH /recurring/{id}` · `DELETE /recurring/{id}`
+`POST /recurring/{id}/confirm` · `POST /recurring/{id}/skip`
+`GET /stats/monthly` — takvim ayı bazlı, `?month=2026-08&scope=household|self`
 `GET /balances` · `GET /periods` · `POST /periods/close` · `POST /periods/reopen`
 `GET /settlements` · `POST /settlements` · `DELETE /settlements/{id}`
 
@@ -498,7 +514,7 @@ ayakta kalabiliyor (bu projede yaşandı).
 
 ## 10. Testler
 
-On beş takım, toplam **336 kontrol**, hepsi çalışan bir API'ye HTTP ile bağlanır.
+On dokuz takım, toplam **497 kontrol**, hepsi çalışan bir API'ye HTTP ile bağlanır.
 Yerelde de canlıda da aynı şekilde çalışır:
 
 ```bash
@@ -516,7 +532,10 @@ cd backend
 | `profile-test.py` | ad/e-posta/şifre, fotoğraf yetkisi | 27 |
 | `settle-edit-test.py` | ödeme işaretleme, harcama düzenleme | 25 |
 | `session-401-test.py` | oturum hatası ile şifre hatası ayrımı | 16 |
-| `bolusme-test.py` | `split_with`, kişiye özel tutarlar, listenin donması | 47 |
+| `bolusme-test.py` | `split_with`, kişiye özel tutarlar, listenin donması | 52 |
+| `duzenli-test.py` | düzenli ödemeler: vade, çift onay koruması, ödeyen | 53 |
+| `aylik-test.py` | takvim ayı istatistiği: ay sınırı, kapsam, sabit/değişken | 33 |
+| `fiyat-test.py` | birim fiyat, paket sınıfı, fiyat hafızası | 46 |
 | `donem-dondurma-test.py` · `duzenleme-gecmisi-test.py` · `market-tekrar-test.py` · `para-birimi-test.py` · `aktivite-test.py` · `stats-test.py` · `categorize-test.py` | Tur 1-3'ten | 147 |
 
 Hepsi kendi test hesaplarını oluşturup sonunda temizler; üretim verisine
@@ -559,16 +578,16 @@ Aşağıdaki sıra ev sahibiyle konuşulup kabul edildi. İki bağımlılık **k
    kayıt yetti. Fiş kalemleri de kendi listelerini taşıyor, aynı kişilerin
    bölüştüğü kalemler kaydederken tek harcamada toplanıyor. Evden ayrılma
    kuralı **bilinçli olarak değişmedi** — gerekçe aşağıda.
-2. **Düzenli ödemeler** — takvim tarihli (dönem değil: dönem 3 hafta da
-   sürebilir 7 hafta da, elektrik hep ayın 15'inde gelir). Vadesi gelince
-   "Onayla / Düzenle / Sonra". *Kapatmak asla sessizce eklememeli* — yanlış
-   eklenen bir kira, arkadaşlar arasında yanlış borç demek.
-   Ev gideri: biri onaylar, diğerlerine bildirim. Kişisel: herkesin kendisi.
-3. **İstatistikler sayfası** — **takvim ayı** bazlı, `[Ev]` / `[Kişisel]`
-   sekmeli. Kasa'ya değil kendi sayfasına: Kasa bir *eylem* ekranı
-   ("kim kime borçlu, dönemi kapat"), istatistik *gezinme* ekranı.
-   **Mutlaka 1 ve 2'den sonra**: kirli veriyle (yanlış birim, ayrışmamış
-   sabit gider) kurulursa güzel görünen ama yanlış bir ekran çıkar.
+2. ~~**Düzenli ödemeler**~~ — **Tur 5'te yapıldı** (v24). "Onayla / Düzenle"
+   tek şeye indi: karta dokunmak dolu gelen sayfayı açıyor. Ayrıca ödeyen
+   seçilebiliyor, çünkü onaylamak izin vermek değil "bu ödendi" demek ve
+   ödeyen bakiyede alacaklı çıkıyor.
+   **Yapılmadı:** vadesi gelince push bildirimi. Zamanlanmış iş yok; en ucuz
+   yol mevcut GitHub Actions'a günlük bir iş eklemek (~1,5-2 sa). Yeni ortam
+   değişkeni `render.yaml`'a da yazılmalı.
+3. ~~**İstatistikler sayfası**~~ — **Tur 6'da yapıldı** (v24). Sıra doğru
+   işledi: sabit/değişken ayrımı Tur 5'in `recurring_id`'sine dayanıyor ve
+   ondan önce kurulsaydı bu kesit hiç olmayacaktı.
 4. Arama (market + ürün + kişi), CSV ve logolu PDF dışa aktarma, dönem
    hatırlatması, ödeme yolları, avatarlar
 5. Çoklu yönetici + **kurucu** kavramı — yöneticiler işletme işlerini yapar,
@@ -704,7 +723,8 @@ sınırsız — çünkü kullanım başına para yakan tek şey odur.
 1. `curl https://odahesap-api.onrender.com/api/` — `push_ready: true` mü?
 2. `DEVAM.md` oku (günlük operasyon, tuzaklar)
 3. `backend/server.py` oku — sunucunun tamamı orada
-4. Testleri canlıya karşı çalıştır, 336'sının da geçtiğini gör
+4. Testleri **ayrı bir veritabanına** karşı çalıştır (`DB_NAME=odahesap_test`),
+   497'sinin de geçtiğini gör
 5. Kod değiştirmeden önce ilgili test takımını oku; iş kuralları oraya yazılı
 
 **Değiştirmeden önce iki kez düşünülecek yerler:** `_compute_balances()`,

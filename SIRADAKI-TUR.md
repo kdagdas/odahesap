@@ -1,78 +1,85 @@
-# Sıradaki tur — Tur 5: Düzenli ödemeler
+# Sıradaki tur — Tur 7: cila turu
 
 > Bu dosya yeni bir sohbet penceresine geçerken bağlamı taşımak için yazıldı.
-> Tur 5 bitince silinebilir ya da Tur 6 için yeniden yazılabilir.
 >
-> Son durum: **APK v23**, 336 sunucu kontrolü geçiyor, `main` çalışır durumda.
+> Son durum: **APK v24**, 497 sunucu kontrolü geçiyor, `main` çalışır durumda.
 > Ayrıntı için [PROJE-DOKUMANI.md](PROJE-DOKUMANI.md) §12.
 
-## Tur 4'ten devralınan zemin
+## Biten turlar
 
-Tur 4 bölüşme modelini değiştirdi ve Tur 5 doğrudan onun üstüne oturuyor:
+| Tur | Ne geldi |
+|---|---|
+| 1+2 (v17) | Dönem dondurma, düzenleme geçmişi, birim alanı, aynı fiş uyarısı |
+| 3 (v18) | Profil/Ev/Uygulama ayrımı, ülke + para birimi, Aktivite |
+| 4 (v23) | `{kişi: tutar}` bölüşme modeli — bkz. §5 |
+| — (v24) | Fiyat altyapısı: birim fiyat, paket sınıfı, anonim `price_points` |
+| 5 (v24) | Düzenli ödemeler + ödeyen seçici |
+| 6 (v24) | Takvim ayı bazlı istatistikler, sabit/değişken ayrımı |
 
-```
-split_mode "equal"  →  split_with = { user_id: ağırlık }
-split_mode "exact"  →  split_with = { user_id: tutar }
-```
+## Tur 7 — kararlaştırılan içerik
 
-Kira artık **tek kayıt**: `exact` kipinde `{Ali: 350, Bob: 400, Carol: 450}`.
-Düzenli ödemeler bu yapıyı olduğu gibi saklayıp her ay tekrar üretecek — yani
-"kimin ne kadar ödeyeceği" sorusu çözülmüş durumda, kalan tek soru *ne zaman*.
+Ekran seti oturdu, sıra cilada. Hepsi konuşuldu ve gerekçeleri var.
 
-Bilinmesi gerekenler:
+### 1. Alt sayfalar elle kaydırılabilsin
 
-- `split_of()` eski kayıtları `target_type`'tan türetir. **Bu yedek yol
-  kaldırılmamalı.**
-- Kişiye özel bölüşüm varken tutarı tek başına değiştirmek 400 döner. Düzenli
-  ödeme şablonundan üretilen kayıt bu kurala takılmamalı: tutar değişiyorsa
-  bölüşüm de birlikte gönderilmeli.
-- Bölüşme listesi kayıt anında donar.
+`ui.tsx`'te her alt sayfanın tepesinde 36×4'lük bir tutamak var ve **çekilmiyor**.
+Tutulup çekilmeyen bir tutamak, hiç tutamak olmamasından kötü: kullanıcı
+deniyor, tepki gelmiyor.
 
-## Ne yapılacak
+Uygulamadaki tüm `Modal` kullanımı `ui.tsx` içinde — ortak bir alt sayfa
+bileşeni çıkarılıp jest oraya konursa **her panel tek seferde düzelir**.
+`gesture-handler` ve `reanimated` kurulu, Yeni Mimari açık. ~2-3 sa.
+Bu bir estetik işi değil, **hata düzeltmesi**.
 
-### 1. Takvim tarihli şablon
+### 2. Tanıtım ekranları (giriş öncesi)
 
-**Dönem değil takvim.** Dönem 3 hafta da sürebilir 7 hafta da; elektrik hep
-ayın 15'inde gelir. Şablon `day_of_month` taşımalı, `period_id` değil.
+Bugün yeni katılan biri hiçbir açıklama görmeden e-posta/şifre ekranına
+düşüyor. Fişten kalem kalem okuma bu uygulamanın en ayırt edici özelliği ve
+hiçbir yerde anlatılmıyor. 3-4 ekran, veri gerektirmiyor. ~3 sa.
 
-Alanlar: ad, tutar, `split_mode` + `split_with`, kategori, market, ayın kaçı,
-"tutarı sabit mi" (kira sabit, elektrik değişken).
+**Kural:** animasyon içeriği geciktirmesin, dokunmayı bloklamasın, 250 ms'yi
+geçmesin. Uygulamanın hızlı hissettirmesi korunacak en değerli şey.
 
-### 2. Vadesi gelince onay — **asla sessizce ekleme**
+### 3. "Sana ne kazandırdı" rakamları
 
-Yanlış eklenen bir kira, arkadaşlar arasında yanlış borç demek. Vade gelince
-üç seçenek: **Onayla / Düzenle / Sonra**.
+Fresh it'in "12 kg gıda kurtardın" karşılığı. Dürüstçe söyleyebileceğimiz
+**iki** şey var, ikisi de zaten ölçülü:
 
-- Ev gideri: biri onaylar, diğerlerine bildirim gider
-- Kişisel: herkes kendisininkini onaylar
+- **"34 ayrı ödeme yerine 12 transfer."** `simplify_debts()` bunu her dönem
+  zaten hesaplıyor.
+- **"47 fiş tarandı, 380 kalem elle yazılmadı."** Kalem sayısı `items[]`'de.
 
-"Tutarı sabit" olanlarda bile onay istenmeli; sadece varsayılan tutar dolu
-gelir.
+Söylenmeyecekler: "para biriktirdin" (biriktirmedi), kim ne kadar tüketti
+(kimin daha müsait olduğunu ölçer, sürtüşme üretir).
 
-### 3. Nerede duracak
+Bu rakamlar Tur 6'nın hesaplarıyla aynı kaynaktan geliyor — ayrı yazılırsa
+iki ekran farklı sayı gösterir.
 
-Anasayfa'da vadesi gelmiş şablonlar için bir şerit, şablon yönetimi
-**Ev ayarları** altında (ortak) + **Profil** altında (kişisel) — Tur 3'te
-konan kural: "bu kime ait?" sorusu yeri belirler.
+## Genele açma paketi (Tur 7'den sonra)
 
-## Tur 4'te bilinçli olarak yapılmayanlar
-
-- **Evden ayrılma akışı değişmedi.** Kişi bazlı bakiye dondurma ("evde değil
-  ama borçlu üye") Kasa, üye listesi, bildirimler ve dönem kapatmanın hepsine
-  üçüncü bir durum ekliyor — yılda bir olan bir olay için kalıcı karmaşıklık.
-  "Dönemi kapat ve çıkar" tek düğmesi de konmadı: dönem kapatmak "bakiyeler
-  arşivlendi, bu rakamlar ödendi" demek, kolay basılan bir düğme insanları
-  ödeşmeden arşivlemeye iter. Doğru sıra: Kasa'dan ödeş → dönemi kapat → çıkar.
-- **Fiş kaleminde "Tutar gir" kapalı.** Kalemin fiyatı zaten belli; üçüncü bir
-  tutar sorusu fiş başına on beş kez karşıya çıkardı.
+- **Düzenli ödeme hatırlatma bildirimi** ~1,5-2 sa. Render cron ücretli ve
+  ikinci ücretsiz servis açılamaz; en ucuz yol mevcut **GitHub Actions**'a
+  günlük bir iş eklemek. `last_confirmed` + `skipped` zaten çift bildirimi
+  engelliyor. Yeni ortam değişkeni **`render.yaml`'a da yazılmalı**.
+- **Şube adresi + ödeme yöntemi toplama.** ⚠️ **Açılıştan ÖNCE açılmalı** —
+  fiş fotoğrafları saklanmadığı için bugün çıkarılmayan hiçbir bilgi sonradan
+  çıkarılamaz. Ödeme yönteminde yalnızca sınıf (nakit/kart); kart numarası,
+  terminal kimliği asla. Ayrıntı: §12 "Fiyat verisi".
+- Rıza katmanı (opt-in), gizlilik metni, saklama süresi, veri silme
+- E-posta doğrulama, gerçek şifre sıfırlama, hız sınırlama
 
 ## Bilinmesi gereken tuzaklar
 
+- **Testleri ayrı veritabanında çalıştırın:** `DB_NAME=odahesap_test`.
+  Yapılmazsa üretim kirlenir ve **fiyat kayıtları geri ayıklanamaz** (kimlik
+  alanı taşımıyorlar); tek çare `fiyat-doldur.py --sifirla --yaz`.
 - Derlemeden önce `gradlew.bat --stop` + `app/build/intermediates/lint-cache`
   silinmeli; yoksa `lintVitalAnalyzeRelease` sebep yazmadan düşüyor.
 - Her APK'dan sonra izin listesi kontrol edilmeli (beklenen 11 izin).
-- `frontend/android/` `.gitignore` içinde; oradaki elle yapılan değişiklikler
-  (imzalama, tek mimari) commit'e girmiyor.
+- Alt sayfalarda `KeyboardAvoidingView` **çalışmıyor** — `useKeyboardHeight()`
+  kullanın. Sebebi `ui.tsx` içinde yazılı.
+- Tablette içerik `CONTENT_MAX_WIDTH` ile sınırlı; yeni ekranlar `Sheet` ve
+  `ScreenHeader` kullandığı sürece kendiliğinden doğru davranır.
 - Ayrıntılar: [DEVAM.md](DEVAM.md)
 
 ## Yeni sohbete yapıştırılacak metin
@@ -80,5 +87,5 @@ konan kural: "bu kime ait?" sorusu yeri belirler.
 ```
 D:\SettleUp\OdaHesap üzerinde çalışıyoruz. Önce şu üç dosyayı oku:
 SIRADAKI-TUR.md, PROJE-DOKUMANI.md, DEVAM.md.
-Sonra Tur 5'e başla.
+Sonra Tur 7'ye başla.
 ```
