@@ -588,6 +588,7 @@ async def create_household(body: HouseholdCreate, user=Depends(get_current_user)
         "started_at": now_utc(),
         "closed_at": None,
         "status": "active",
+        "participant_ids": [user["user_id"]],
     }
     await db.households.insert_one(household.copy())
     await db.periods.insert_one(period.copy())
@@ -708,6 +709,14 @@ async def approve_member(body: MemberActionReq, user=Depends(get_current_user)):
             "$addToSet": {"member_ids": body.user_id},
         },
     )
+    # Yeni üye yalnızca AÇIK döneme yazılır. Kapalı dönemlerin listesi dondu;
+    # bugün eve katılan biri aylar önce kapanmış bir hesaba karışmamalı.
+    active = await get_active_period(hh["household_id"])
+    if active:
+        await db.periods.update_one(
+            {"period_id": active["period_id"]},
+            {"$addToSet": {"participant_ids": body.user_id}},
+        )
     await notify(
         [body.user_id],
         "İsteğin onaylandı",
@@ -1488,12 +1497,30 @@ def simplify_debts(net: Dict[str, float]) -> List[dict]:
 
 
 async def period_participants(household_id: str, period_id: str, member_ids: List[str]) -> List[str]:
-    """Current members plus anyone who took part in this period.
+    """Who this period's expenses are split between.
 
-    A member who has since been removed still belongs in the maths for the
-    periods they lived through — otherwise closing the books on an old period
-    would re-split their share among whoever happens to be around today.
+    A closed period carries its own frozen list (`participant_ids`) and that
+    list wins. Without it the answer was computed from the household's *current*
+    members, so somebody joining today changed the split of a period closed
+    months ago — their share appeared retroactively in settled books.
+
+    While a period is open the list is still derived, so that members joining
+    or leaving mid-period are picked up without a write on every membership
+    change. Anyone who actually took part is always included: a member who has
+    since been removed still belongs in the maths for the periods they lived
+    through.
     """
+    period = await db.periods.find_one(
+        {"period_id": period_id}, {"_id": 0, "participant_ids": 1, "status": 1}
+    )
+    if period and period.get("status") == "closed" and period.get("participant_ids"):
+        return list(period["participant_ids"])
+
+    # Açık dönemde liste yapışkan: dönem boyunca üye olmuş herkes içeride kalır.
+    # Hiç harcama yapmamış, kimseye hedef olmamış, hiç ödeşmemiş bir üye evden
+    # çıkarılınca aşağıdaki türetme onu bulamıyordu ve payı kalanlara dağılıyordu.
+    sticky = list((period or {}).get("participant_ids") or [])
+
     rows = await db.expenses.find(
         {"household_id": household_id, "period_id": period_id},
         {"_id": 0, "added_by": 1, "target_user_id": 1},
@@ -1511,7 +1538,12 @@ async def period_participants(household_id: str, period_id: str, member_ids: Lis
     ).to_list(1000):
         extra.add(s["from_user_id"])
         extra.add(s["to_user_id"])
-    return list(member_ids) + [u for u in sorted(extra) if u not in member_ids]
+
+    out = list(member_ids)
+    for u in sticky + sorted(extra):
+        if u not in out:
+            out.append(u)
+    return out
 
 
 async def _compute_balances(household_id: str, period_id: str) -> dict:
@@ -1590,7 +1622,17 @@ async def balances(period_id: Optional[str] = None, user=Depends(get_current_use
         period = await get_active_period(hh["household_id"])
     if not period:
         return {"net": {}, "transfers": [], "totals_paid": {}, "members": []}
-    result = await _compute_balances(hh["household_id"], period["period_id"])
+
+    # Kapalı dönem kapanışta ne yazdıysa onu gösterir, yeniden hesaplanmaz.
+    # Anlık görüntü kapanışta zaten alınıyordu ama hiç okunmuyordu; her açılışta
+    # baştan hesaplanınca bugünkü üye listesi geçmişi değiştirebiliyordu.
+    # Kapalı dönemde harcama ve ödeme kaydı zaten değiştirilemiyor, yani
+    # kayıtlı görüntü ile veri her zaman tutarlı.
+    snap = period.get("final_balances") if period.get("status") == "closed" else None
+    # dict(...) şart: `snap` doğrudan `period` içindeki alt sözlük. Kopyalamadan
+    # kullanırsak aşağıdaki `result["period"] = period` kendine dönen bir halka
+    # kurar ve yanıt JSON'a çevrilirken sonsuz özyinelemeye giriyor.
+    result = dict(snap) if snap else await _compute_balances(hh["household_id"], period["period_id"])
     # Include former members who took part in this period, so archived views
     # show their name instead of an unresolved id.
     participants = await period_participants(
@@ -1760,10 +1802,21 @@ async def close_period(user=Depends(get_current_user)):
     period = await get_active_period(hh["household_id"])
     if not period:
         raise HTTPException(status_code=400, detail="Aktif dönem yok")
+    # Katılımcı listesi bakiyelerden ÖNCE donuyor: hesap bu listeyle yapıldı,
+    # aynı liste kayda geçmezse dönem sonradan başka bir kadroyla yeniden
+    # hesaplanabilir hale gelir.
+    frozen = await period_participants(
+        hh["household_id"], period["period_id"], hh["member_ids"]
+    )
     snap = await _compute_balances(hh["household_id"], period["period_id"])
     await db.periods.update_one(
         {"period_id": period["period_id"]},
-        {"$set": {"status": "closed", "closed_at": now_utc(), "final_balances": snap}},
+        {"$set": {
+            "status": "closed",
+            "closed_at": now_utc(),
+            "participant_ids": frozen,
+            "final_balances": snap,
+        }},
     )
     new_period_id = new_id("per")
     new_period = {
@@ -1772,6 +1825,7 @@ async def close_period(user=Depends(get_current_user)):
         "started_at": now_utc(),
         "closed_at": None,
         "status": "active",
+        "participant_ids": list(hh["member_ids"]),
     }
     await db.periods.insert_one(new_period.copy())
     await db.households.update_one(
