@@ -294,6 +294,34 @@ Bugünkü çözüm (`src/ui.tsx` → `BottomSheet`) ölçümü tümden bırakıy
 Ayrıca **iki alt sayfayı üst üste açmayın.** Kasa'daki "Öde → ödeme yolları"
 akışı bunu yapıyordu; artık tek `BottomSheet` içinde içerik değişiyor.
 
+### Sekme çubuğu hangi ekranda kalır
+
+Ayrım **"gezinme mi, iş mi"**:
+
+- **Çubuk KALIR** (gezilen ekranlar, `(tabs)` grubunda `href: null` ile):
+  İstatistik, Harcamalar, Aktivite, üye dökümü. İstatistiğe bakıp Kasa'ya
+  geçmek isteyen biri önce geri çıkmak zorunda kalmamalı.
+- **Çubuk GİTER** (iş ekranları, tam ekran rota): Ayarlar, Ev ayarları,
+  Düzenli ödemeler, Ödeme bilgilerim, elle giriş, fiş inceleme, harcama
+  düzenleme. Yarım kalmış bir formun üstünde sekmeye basmak girileni
+  kaybettirir.
+
+Yeni bir ekran eklerken bu soruyu sorun; `(tabs)` altına koyduğunuz her
+dosyayı `_layout.tsx` içinde `href: null` ile bildirmezseniz sekme olarak
+görünür.
+
+### Yatay şerit büyüyen listeyi taşımaz
+
+Kişi süzgeci, dönem çipleri ve ay gezinmesi yatay şeritti; üç kişilik evde ve
+iki dönemde çalışıyordu. Altı kişilik bir evde uzun isimler taşıyor, iki yıllık
+kullanımda ~24 dönem şeridin sonuna ulaşılmaz yapıyor, ay okları geçen yılın
+Ocak'ına 19 dokunuşta götürüyordu.
+
+Kural: **oklar komşu için, seçici sıçramak için.** Büyüyebilen her liste
+`SelectRow` + `BottomSheet` ile seçilir; İstatistik'te ek olarak yıl + 12
+aylık ızgara var. Oklar kaldırılmadı — "geçen ay ne olmuş" ile "geçen şubat ne
+olmuştu" aynı hareket değil.
+
 ### Alt boşluk elle yazılmaz
 
 `useScrollPad()` (`src/ui.tsx`) kaydırma alanının alt boşluğunu üretir;
@@ -306,6 +334,43 @@ son kart çubuğun altında kalıyordu.
 
 Yeni bir tam ekran ya da alt sayfa yazarken bunu **cihazda** doğrulayın;
 emülatörde gezinme çubuğu farklı davranabiliyor.
+
+## Ödeme bilgisi paylaşımı — bağlantı neden `#` taşır
+
+Paylaşım bağlantısı `https://odahesap-api.onrender.com/o#u=…&iban=…` biçimindedir.
+
+- **Neden `https`:** `odahesap://` WhatsApp'ta tıklanabilir olmuyor; mesajlaşma
+  uygulamaları yalnızca bildikleri şemaları bağlantıya çevirir. Uygulamanın
+  hatası değil, yöntemin sınırı.
+- **Neden çapa (`#`) ve sorgu (`?`) değil:** çapadan sonrası HTTP isteğine
+  **hiç eklenmez**. Sorgu dizesine konsaydı IBAN Render'ın günlüklerine düşerdi
+  ve "IBAN cihazda kalır" kararı orada çökerdi. Ölçüldü: sunucu günlüğünde
+  yalnızca `GET /o` görünüyor, IBAN sıfır kez geçiyor.
+- **`assetlinks.json` sunucudan servis ediliyor** (`/.well-known/assetlinks.json`).
+  Parmak izi `build-tools/odahesap-release.keystore`'dan geliyor;
+  **keystore değişirse `server.py` içindeki `_ASSETLINKS` de değişmeli.**
+  Dosya erişilebilir değilse Android "hangi uygulamayla açılsın" diye sorar —
+  yine çalışır, bir dokunuş fazla.
+- Eski `odahesap://odeme?…` biçimi **kalıcı olarak destekleniyor**: daha önce
+  paylaşılmış mesajlar WhatsApp geçmişinde duruyor.
+
+**Sunucu deploy edilmeden bağlantı yarım çalışır:** uygulaması olmayan biri
+404 görür ve App Links doğrulanmaz.
+
+## IBAN doğrulaması gerçek bir sağlamadır
+
+`looksLikeIban` artık şekle değil **ISO 13616 mod-97**'ye bakıyor, üstüne
+gerçek ülke kodu listesi ve ülkeye göre sabit uzunluk. Önceki karar
+("mod-97 bilerek yapılmıyor, yanlış IBAN'ı yakalamak bankanın işi") **yanlıştı**:
+SEPA transferi IBAN'a bakar, isme bakmaz — yapısal olarak geçerli ama hatalı
+bir IBAN reddedilmez, para bir yabancıya gider.
+
+**Harf yasaklanmadı.** DE ve TR'de gövde tamamen rakam ama `GB29NWBK…` ve
+`NL91ABNA…` harf taşıyor; yasaklamak ev arkadaşının hesabını engellerdi.
+Uzunluk + sağlama harf hatasını zaten yakalıyor.
+
+Yakalanamayan tek şey **başkasına ait geçerli bir IBAN**; onun panzehiri
+ödeyenin ekranında hesap sahibinin adını görmesi.
 
 ## Kolay gözden kaçan tasarım kararları
 
