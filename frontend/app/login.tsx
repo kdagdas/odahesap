@@ -79,7 +79,7 @@ export default function LoginScreen() {
             <View style={styles.hero}>
               <View style={styles.badge}>
                 <Ionicons name="sparkles" size={13} color={colors.accentOnDark} />
-                <Text style={styles.badgeTxt}>Türkçe · Almanca fiş desteği</Text>
+                <Text style={styles.badgeTxt}>Fişi tara, kalem kalem böl</Text>
               </View>
               <Text style={styles.title}>Ev harcamaları{"\n"}artık dert değil.</Text>
               <Text style={styles.subtitle}>

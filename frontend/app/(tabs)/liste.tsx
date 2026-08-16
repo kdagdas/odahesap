@@ -10,7 +10,9 @@ import { useFocusEffect } from "expo-router";
 import { apiGet, apiPost, apiDelete, api } from "@/src/api";
 import { useAuth } from "@/src/auth";
 import { useHousehold } from "@/src/household";
-import { ScreenHeader, Sheet, Card, Row, Divider, Avatar, IconPill, Overline } from "@/src/ui";
+import {
+  ScreenHeader, Sheet, Card, Row, Divider, Avatar, IconPill, Overline, TabSwitch,
+} from "@/src/ui";
 import { colors, spacing, radius, type as T, metrics } from "@/src/theme";
 
 type Scope = "household" | "self";
@@ -104,23 +106,16 @@ export default function Liste() {
             overline="ALINACAKLAR"
             title={pending.length > 0 ? `${pending.length} Ürün Bekliyor` : "Liste Temiz"}
           >
-            <View style={styles.segment}>
-              {([
-                { key: "household", label: "Ev", icon: "home" },
-                { key: "self", label: "Kendim", icon: "person" },
-              ] as const).map((s) => {
-                const on = scope === s.key;
-                return (
-                  <Pressable key={s.key} style={[styles.segItem, on && styles.segItemOn]}
-                             onPress={() => { setScope(s.key); setLoading(true); }}
-                             testID={`liste-tab-${s.key}`}>
-                    <Ionicons name={on ? s.icon : `${s.icon}-outline` as any} size={15}
-                              color={on ? colors.dark : colors.onDarkMuted} />
-                    <Text style={[styles.segTxt, on && styles.segTxtOn]}>{s.label}</Text>
-                  </Pressable>
-                );
-              })}
-            </View>
+            <TabSwitch
+              value={scope}
+              onChange={(v) => { setScope(v); setLoading(true); }}
+              onDark
+              options={[
+                { value: "household" as const, label: "Ev", icon: "home" },
+                { value: "self" as const, label: "Kendim", icon: "person" },
+              ]}
+              testID="liste-tab"
+            />
           </ScreenHeader>
 
           <Sheet>
@@ -232,17 +227,6 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.dark },
   scroll: { paddingBottom: 130, backgroundColor: colors.bg, flexGrow: 1 },
   mx: { marginHorizontal: spacing.lg },
-  segment: {
-    flexDirection: "row", backgroundColor: "rgba(255,255,255,0.10)",
-    borderRadius: radius.pill, padding: 4, marginTop: spacing.lg,
-  },
-  segItem: {
-    flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center",
-    gap: 6, paddingVertical: 9, borderRadius: radius.pill,
-  },
-  segItemOn: { backgroundColor: colors.onDark },
-  segTxt: { ...T.bodySb, color: colors.onDarkMuted },
-  segTxtOn: { color: colors.dark },
   addRow: { flexDirection: "row", gap: spacing.sm },
   addInput: {
     flex: 1, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border,

@@ -1187,8 +1187,18 @@ async def gemini_vision(system_prompt: str, user_text: str, image_b64: str, mime
             last_status, last_body = r.status_code, r.text[:300]
             logger.warning("Gemini %s (deneme %s): %s", r.status_code, attempt, last_body)
             if r.status_code == 429:
-                raise HTTPException(status_code=429,
-                                    detail="Ücretsiz OCR kotası doldu, birazdan tekrar deneyin")
+                # Ücretsiz katmanın kotası DAKİKALIK: arka arkaya iki fiş
+                # taramak ikincisini düşürüyordu ve kullanıcı için bu "uygulama
+                # sadece bir fiş okuyor" gibi görünüyordu. Bir kez bekleyip
+                # tekrar deniyoruz; kalıcıysa dürüstçe söylüyoruz.
+                if attempt == 1:
+                    logger.warning("Gemini kota (429), 20 sn bekleyip tekrar denenecek")
+                    await asyncio.sleep(20)
+                    continue
+                raise HTTPException(
+                    status_code=429,
+                    detail="Ücretsiz OCR kotası doldu. Bir dakika sonra tekrar deneyin.",
+                )
             if r.status_code < 500 and r.status_code != 408:
                 break  # kalıcı hata, tekrar denemenin anlamı yok
 

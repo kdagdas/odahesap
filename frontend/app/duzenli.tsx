@@ -22,7 +22,7 @@ import { useAuth } from "@/src/auth";
 import { useHousehold } from "@/src/household";
 import {
   ScreenHeader, Sheet, Card, Divider, Chip, SplitPicker, splitAll, splitSummary,
-  BottomSheet, formatEUR, todayISO, type Split,
+  BottomSheet, TabSwitch, formatEUR, todayISO, type Split,
 } from "@/src/ui";
 import {
   colors, spacing, radius, type as T, overline, fontFamily,
@@ -90,20 +90,15 @@ export default function Duzenli() {
 
         <Sheet>
           <View style={styles.body}>
-            <View style={styles.tabs}>
-              {(["household", "self"] as const).map((s) => (
-                <Pressable
-                  key={s}
-                  style={[styles.tab, scope === s && styles.tabOn]}
-                  onPress={() => setScope(s)}
-                  testID={`duzenli-tab-${s}`}
-                >
-                  <Text style={[styles.tabTxt, scope === s && styles.tabTxtOn]}>
-                    {s === "household" ? "Ev" : "Kişisel"}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
+            <TabSwitch
+              value={scope}
+              onChange={setScope}
+              options={[
+                { value: "household" as const, label: "Ev" },
+                { value: "self" as const, label: "Kişisel" },
+              ]}
+              testID="duzenli-tab"
+            />
 
             {loading ? (
               <ActivityIndicator color={colors.dark} style={{ marginTop: spacing.xxl }} />
@@ -564,14 +559,6 @@ const styles = StyleSheet.create({
   },
   heroSub: { ...T.caption, color: colors.onDarkMuted, marginTop: spacing.xs },
   body: { padding: spacing.lg, gap: spacing.md, paddingBottom: spacing.xxl },
-  tabs: {
-    flexDirection: "row", gap: spacing.xs, backgroundColor: colors.surfaceSecondary,
-    borderRadius: radius.pill, padding: 3,
-  },
-  tab: { flex: 1, alignItems: "center", paddingVertical: spacing.sm, borderRadius: radius.pill },
-  tabOn: { backgroundColor: colors.dark },
-  tabTxt: { ...T.captionSb, color: colors.inkSecondary },
-  tabTxtOn: { color: colors.onDark },
   row: {
     flexDirection: "row", alignItems: "center", gap: spacing.md,
     paddingHorizontal: spacing.lg, paddingVertical: spacing.md, minHeight: 62,

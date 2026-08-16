@@ -633,7 +633,14 @@ export function BottomSheet({
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={close}>
-      <Pressable style={styles.sheetScrim} onPress={close}>
+      {/* Perde AYRI bir katman, sayfanin ATASI degil.
+          Onceki halde sayfa perdenin cocuguydu ve icerigi bir `Pressable`
+          sariyordu ("dokunma asagi gecmesin" diye). O Pressable dokunma
+          sorumlulugunu daha ilk temasta ustlendigi icin PanResponder'a hic
+          sira gelmiyordu -- tutamak tutuluyor ama cekilmiyordu. Kardes
+          duzende sayfaya dokunmak zaten perdeye ulasmiyor. */}
+      <View style={styles.sheetScrim}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={close} testID="sheet-scrim" />
         <Animated.View
           style={[
             styles.pickSheet,
@@ -646,18 +653,92 @@ export function BottomSheet({
           onLayout={(e) => { height.current = e.nativeEvent.layout.height; }}
           testID={testID}
         >
-          {/* Basma olayi asagi gecmesin: sayfanin icine dokunmak kapatmamali. */}
-          <Pressable onPress={() => {}}>
-            <View {...pan.panHandlers}>
-              <View style={styles.grabZone}>
-                <View style={styles.pickGrab} />
-              </View>
-            </View>
-            {children}
-          </Pressable>
+          {/* Surukleme yalnizca tutamak bolgesinden. Icerikten de surukleseydik
+              sayfanin icindeki listelerin kendi kaydirmasiyla kavga ederdi. */}
+          <View {...pan.panHandlers} style={styles.grabZone}>
+            <View style={styles.pickGrab} />
+          </View>
+          {children}
         </Animated.View>
-      </Pressable>
+      </View>
     </Modal>
+  );
+}
+
+/**
+ * Iki secenekli sekme seridi -- secili olan altinda kayan bir hap ile.
+ *
+ * Onceki halde arka plan aniden yer degistiriyordu; goz nereye gittigini
+ * takip edemiyor ve gecis "tiklandi mi acaba" hissi veriyordu. Kayan hap ayni
+ * bilgiyi tasiyip hareketi gozle izlenebilir kiliyor.
+ *
+ * Sure 180 ms: 250 ms'yi gecen bir gecis uygulamayi yavas hissettiriyor ve
+ * bu uygulamanin en degerli ozelligi hizli hissettirmesi.
+ */
+export function TabSwitch<T extends string>({
+  value, options, onChange, onDark = false, testID,
+}: {
+  value: T;
+  options: { value: T; label: string; icon?: string }[];
+  onChange: (v: T) => void;
+  /** Koyu başlığın içinde kullanılıyorsa: renkler tersine döner. */
+  onDark?: boolean;
+  testID?: string;
+}) {
+  const index = Math.max(0, options.findIndex((o) => o.value === value));
+  const slide = React.useRef(new Animated.Value(index)).current;
+  const [w, setW] = React.useState(0);
+
+  React.useEffect(() => {
+    Animated.timing(slide, {
+      toValue: index, duration: 180, useNativeDriver: true,
+    }).start();
+  }, [index]);
+
+  const step = w > 0 ? (w - 6) / options.length : 0;
+
+  return (
+    <View
+      style={[styles.tabs, onDark && styles.tabsOnDark]}
+      onLayout={(e) => setW(e.nativeEvent.layout.width)}
+      testID={testID}
+    >
+      {w > 0 && (
+        <Animated.View
+          style={[styles.tabPill, onDark && styles.tabPillOnDark, {
+            width: step,
+            transform: [{
+              translateX: slide.interpolate({
+                inputRange: options.map((_, i) => i),
+                outputRange: options.map((_, i) => i * step),
+              }),
+            }],
+          }]}
+        />
+      )}
+      {options.map((o) => {
+        const on = o.value === value;
+        const renk = onDark
+          ? (on ? colors.dark : colors.onDarkMuted)
+          : (on ? colors.onDark : colors.inkSecondary);
+        return (
+          <Pressable
+            key={o.value}
+            style={styles.tab}
+            onPress={() => onChange(o.value)}
+            testID={testID ? `${testID}-${o.value}` : undefined}
+          >
+            {o.icon ? (
+              <Ionicons
+                name={(on ? o.icon : `${o.icon}-outline`) as any}
+                size={15} color={renk}
+              />
+            ) : null}
+            <Text style={[styles.tabTxt, { color: renk }]}>{o.label}</Text>
+          </Pressable>
+        );
+      })}
+    </View>
   );
 }
 
@@ -1150,7 +1231,22 @@ const styles = StyleSheet.create({
   },
   // Tutamagin kendisi 4 piksel; parmakla yakalanabilmesi icin cevresindeki
   // bos alan da surukleme bolgesine dahil.
-  grabZone: { paddingTop: spacing.xs, paddingBottom: 2 },
+  grabZone: { paddingTop: spacing.sm, paddingBottom: spacing.xs },
+  tabs: {
+    flexDirection: "row", backgroundColor: colors.surfaceSecondary,
+    borderRadius: radius.pill, padding: 3,
+  },
+  tabPill: {
+    position: "absolute", top: 3, bottom: 3, left: 3,
+    backgroundColor: colors.dark, borderRadius: radius.pill,
+  },
+  tabsOnDark: { backgroundColor: "rgba(255,255,255,0.10)", padding: 4 },
+  tabPillOnDark: { backgroundColor: colors.onDark, top: 4, bottom: 4, left: 4 },
+  tab: {
+    flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center",
+    gap: 6, paddingVertical: spacing.sm,
+  },
+  tabTxt: { ...T.captionSb },
   pickTitle: { ...overline, paddingHorizontal: spacing.lg, marginBottom: spacing.sm },
   pickMark: { fontSize: 24, lineHeight: 30, width: 34, textAlign: "center" },
   pickSoon: { ...T.caption, color: colors.inkTertiary },

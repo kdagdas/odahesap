@@ -26,7 +26,7 @@ import { useAuth } from "@/src/auth";
 import { useHousehold } from "@/src/household";
 import {
   ScreenHeader, Sheet, Card, Row, Divider, Avatar, Money, CategoryIcon,
-  categoryLabel, MerchantBadge, Donut, formatEUR, formatEURShort,
+  categoryLabel, MerchantBadge, Donut, TabSwitch, formatEUR, formatEURShort,
 } from "@/src/ui";
 import {
   colors, spacing, radius, type as T, overline, fontFamily, metrics, CATEGORY_ICONS,
@@ -195,15 +195,16 @@ export default function Istatistik() {
 
         <Sheet>
           <View style={{ gap: metrics.cardGap }}>
-            <View style={styles.tabs}>
-              {(["household", "self"] as const).map((s) => (
-                <Pressable key={s} style={[styles.tab, scope === s && styles.tabOn]}
-                           onPress={() => setScope(s)} testID={`stat-tab-${s}`}>
-                  <Text style={[styles.tabTxt, scope === s && styles.tabTxtOn]}>
-                    {s === "household" ? "Ev" : "Kişisel"}
-                  </Text>
-                </Pressable>
-              ))}
+            <View style={styles.mx}>
+              <TabSwitch
+                value={scope}
+                onChange={setScope}
+                options={[
+                  { value: "household" as const, label: "Ev" },
+                  { value: "self" as const, label: "Kişisel" },
+                ]}
+                testID="stat-tab"
+              />
             </View>
 
             {loading ? (
@@ -324,7 +325,7 @@ export default function Istatistik() {
                     toplam -- "kisiselin evin yuzde 35'i" garip bir sayi,
                     "bu ay toplam su kadar harcadin" gercek bir soruya cevap. */}
                 {scope === "household" && (
-                  <Card title="Senin Çıkışın" style={styles.mx} padded>
+                  <Card title="Senin Katkın" style={styles.mx} padded>
                     <View style={styles.outRow}>
                       <View style={{ flex: 1 }}>
                         <Text style={styles.legendLabel}>Ev payın</Text>
@@ -408,14 +409,6 @@ const styles = StyleSheet.create({
   },
   trendTxt: { ...T.captionSb, color: colors.accentOnDark },
   mx: { marginHorizontal: spacing.lg },
-  tabs: {
-    flexDirection: "row", gap: spacing.xs, marginHorizontal: spacing.lg,
-    backgroundColor: colors.surfaceSecondary, borderRadius: radius.pill, padding: 3,
-  },
-  tab: { flex: 1, alignItems: "center", paddingVertical: spacing.sm, borderRadius: radius.pill },
-  tabOn: { backgroundColor: colors.dark },
-  tabTxt: { ...T.captionSb, color: colors.inkSecondary },
-  tabTxtOn: { color: colors.onDark },
   empty: { alignItems: "center", gap: spacing.sm, paddingVertical: spacing.xxxl, paddingHorizontal: spacing.xl },
   emptyTitle: { ...T.emph, color: colors.ink },
   emptyDesc: { ...T.caption, color: colors.inkTertiary, textAlign: "center", lineHeight: 19 },

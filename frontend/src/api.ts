@@ -84,7 +84,12 @@ export async function api<T = any>(
   let res: Response | null = null;
   let lastError: any = null;
   let markedSlow = false;
-  const slowTimer = setTimeout(() => {
+  // Fis okuma HER ZAMAN 10-20 saniye suruyor -- model calisiyor, sunucu
+  // uyanmiyor. Serit orada "sunucu uyaniyor" diye yanlis bir sey soyluyor ve
+  // her taramada cikinca kullanicida "surekli baglaniyor" izlenimi birakiyor.
+  // O ekranin kendi ilerleme gostergesi var; serit susuyor.
+  const uzunIs = path.startsWith("/ocr/");
+  const slowTimer = uzunIs ? null : setTimeout(() => {
     markedSlow = true;
     setSlow(true);
   }, SLOW_AFTER_MS);
@@ -108,7 +113,7 @@ export async function api<T = any>(
       }
     }
   } finally {
-    clearTimeout(slowTimer);
+    if (slowTimer) clearTimeout(slowTimer);
     if (markedSlow) setSlow(false);
   }
 

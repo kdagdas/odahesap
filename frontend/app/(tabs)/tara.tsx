@@ -1,6 +1,7 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   View, Text, StyleSheet, Pressable, ActivityIndicator, ScrollView,
+  Animated,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
@@ -11,6 +12,68 @@ import * as MediaLibrary from "expo-media-library";
 import { apiPost } from "@/src/api";
 import { setQueue, clearQueue } from "@/src/pendingReviews";
 import { colors, spacing, radius, type as T, fontFamily } from "@/src/theme";
+
+/**
+ * Fis okunurken gosterilen tarama katmani.
+ *
+ * OCR 10-20 saniye suruyor ve bu suslemenin degil BILGININ isi: donen bir
+ * cember "calisiyor" der ama ne kadar kaldigini ya da ne yapildigini
+ * soylemez. Yazilar sirayla degisince bekleme kisalmiyor ama BELIRSIZ
+ * olmaktan cikiyor -- insanlarin tahammul edemedigi sey sure degil belirsizlik.
+ *
+ * Yazilar gercek is sirasini anlatiyor ve ilerlemeyi UYDURMUYOR: bir yuzde
+ * cubugu koysaydik sayilari uydurmak zorunda kalirdik, cunku model bize ara
+ * durum bildirmiyor.
+ */
+function ScanOverlay({ note }: { note?: string }) {
+  const AKIS = [
+    "Fiş okunuyor",
+    "Ürünler tanınıyor",
+    "Fiyatlar çıkarılıyor",
+    "Adet ve birimler alınıyor",
+    "Kategorilere ayrılıyor",
+    "Neredeyse bitti",
+  ];
+  const [adim, setAdim] = useState(0);
+  const line = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    // Son yazida duruyor: donup basa sarmak "takildi" hissi veriyordu.
+    const t = setInterval(() => setAdim((a) => Math.min(a + 1, AKIS.length - 1)), 2600);
+    const dongu = Animated.loop(
+      Animated.sequence([
+        Animated.timing(line, { toValue: 1, duration: 1500, useNativeDriver: true }),
+        Animated.timing(line, { toValue: 0, duration: 1500, useNativeDriver: true }),
+      ])
+    );
+    dongu.start();
+    return () => { clearInterval(t); dongu.stop(); };
+  }, []);
+
+  return (
+    <View style={styles.processing} testID="ocr-processing">
+      <View style={styles.scanBox}>
+        <View style={[styles.scanCorner, styles.scanTL]} />
+        <View style={[styles.scanCorner, styles.scanTR]} />
+        <View style={[styles.scanCorner, styles.scanBL]} />
+        <View style={[styles.scanCorner, styles.scanBR]} />
+        <Animated.View
+          style={[styles.scanLine, {
+            transform: [{
+              translateY: line.interpolate({ inputRange: [0, 1], outputRange: [6, 152] }),
+            }],
+          }]}
+        />
+      </View>
+      <Text style={styles.processingTxt}>{note || AKIS[adim]}</Text>
+      <View style={styles.dots}>
+        {AKIS.map((_, i) => (
+          <View key={i} style={[styles.dot, i <= adim && styles.dotOn]} />
+        ))}
+      </View>
+    </View>
+  );
+}
 
 export default function Tara() {
   const router = useRouter();
@@ -37,16 +100,24 @@ export default function Tara() {
     clearQueue();
     const payloads: string[] = [];
     try {
+      const hatalar: string[] = [];
       for (let i = 0; i < base64Images.length; i++) {
-        setProgressTxt(`Fiş ${i + 1} / ${base64Images.length} okunuyor…`);
+        setProgressTxt(`Fiş ${i + 1} / ${base64Images.length}`);
         try {
           const res = await apiPost("/ocr/receipt", { image_base64: base64Images[i] });
           payloads.push(JSON.stringify(res));
         } catch (e: any) {
-          console.log(`OCR failed for image ${i}`, e);
+          // Sessizce yutulurdu: kullanici iki fis secip bir tane gorunce
+          // sebebini bilemiyordu. En sik sebep Gemini ucretsiz katmaninin
+          // dakikalik kotasi (429) ve bunu SOYLEMEK gerekiyor.
+          hatalar.push(`${i + 1}. fiş: ${e?.message || "okunamadı"}`);
         }
       }
-      if (payloads.length === 0) { setError("Hiçbir fiş okunamadı."); return; }
+      if (payloads.length === 0) {
+        setError(hatalar.join("\n") || "Hiçbir fiş okunamadı.");
+        return;
+      }
+      if (hatalar.length) setError(hatalar.join("\n"));
       const [first, ...rest] = payloads;
       setQueue(rest);
       router.push({
@@ -138,13 +209,7 @@ export default function Tara() {
         </View>
       </View>
 
-      {processing && (
-        <View style={styles.processing} testID="ocr-processing">
-          <ActivityIndicator size="large" color={colors.onDark} />
-          <Text style={styles.processingTxt}>{progressTxt || "Fatura okunuyor…"}</Text>
-          <Text style={styles.processingSub}>Almanca fiş desteği ile</Text>
-        </View>
-      )}
+      {processing && <ScanOverlay note={progressTxt || undefined} />}
       {error && (
         <ScrollView style={styles.errorWrap} contentContainerStyle={styles.errorInner}>
           <Text style={styles.errorTxt} testID="ocr-error">{error}</Text>
@@ -208,7 +273,25 @@ const styles = StyleSheet.create({
     alignItems: "center", justifyContent: "center", gap: spacing.md,
   },
   processingTxt: { ...T.emph, color: colors.onDark },
-  processingSub: { ...T.caption, color: colors.accentOnDark },
+  scanBox: {
+    width: 200, height: 164, borderRadius: radius.md, overflow: "hidden",
+    backgroundColor: "rgba(255,255,255,0.04)",
+  },
+  scanCorner: {
+    position: "absolute", width: 22, height: 22,
+    borderColor: colors.accentOnDark, borderWidth: 2.5,
+  },
+  scanTL: { top: 0, left: 0, borderRightWidth: 0, borderBottomWidth: 0, borderTopLeftRadius: 8 },
+  scanTR: { top: 0, right: 0, borderLeftWidth: 0, borderBottomWidth: 0, borderTopRightRadius: 8 },
+  scanBL: { bottom: 0, left: 0, borderRightWidth: 0, borderTopWidth: 0, borderBottomLeftRadius: 8 },
+  scanBR: { bottom: 0, right: 0, borderLeftWidth: 0, borderTopWidth: 0, borderBottomRightRadius: 8 },
+  scanLine: {
+    position: "absolute", left: 10, right: 10, height: 2,
+    backgroundColor: colors.accentOnDark, borderRadius: 1,
+  },
+  dots: { flexDirection: "row", gap: 6 },
+  dot: { width: 5, height: 5, borderRadius: 3, backgroundColor: "rgba(255,255,255,0.25)" },
+  dotOn: { backgroundColor: colors.accentOnDark },
   errorWrap: { position: "absolute", top: 60, left: 16, right: 16 },
   errorInner: { backgroundColor: colors.negative, padding: spacing.md, borderRadius: radius.md },
   errorTxt: { ...T.bodySb, color: colors.onDark, textAlign: "center" },
