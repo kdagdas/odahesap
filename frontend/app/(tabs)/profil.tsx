@@ -42,7 +42,8 @@ export default function Profil() {
   useFocusEffect(useCallback(() => { refresh(); }, [refresh]));
 
   const prefs = (user as any)?.notif_prefs ?? {
-    new_expense: true, join_request: true, period_closed: true,
+    new_expense: true, expense_edit: true, settlement: true,
+    join_request: true, period_closed: true,
   };
 
   const setPref = async (key: string, value: boolean) => {
@@ -325,7 +326,13 @@ export default function Profil() {
 
             <Card title="Bildirimler">
               {[
+                // Harcama tarafi UCE ayrildi. Tek anahtarken duzenleme
+                // gurultusunden bunalan biri, kapatmak icin yeni harcamalari
+                // da kapatmak zorundaydi -- yani parasini ilgilendiren seyleri
+                // duymamayi gozeliyordu.
                 { key: "new_expense", label: "Yeni harcama", desc: "Ev arkadaşın harcama eklediğinde" },
+                { key: "expense_edit", label: "Düzenleme ve silme", desc: "Tutarı ya da kimin bölüştüğü değiştiğinde" },
+                { key: "settlement", label: "Ödeme kaydı", desc: "Ödeme işaretlendiğinde veya geri alındığında" },
                 { key: "join_request", label: "Katılma istekleri", desc: "İstek geldiğinde veya onaylandığında" },
                 { key: "period_closed", label: "Dönem kapatma", desc: "Dönem kapatılıp sıfırlandığında" },
               ].map((row, i) => (

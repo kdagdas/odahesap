@@ -1,5 +1,6 @@
 """OdaHesap — Roommate Household Expense Splitter Backend."""
 from fastapi import FastAPI, APIRouter, Header, HTTPException, Depends, Response
+from fastapi.responses import HTMLResponse, JSONResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -115,8 +116,14 @@ class DeviceRegisterReq(BaseModel):
 
 class NotificationPrefs(BaseModel):
     """Per-user switches. Expense pushes are the chatty ones, so they get
-    their own toggle — a busy household can fire a dozen a day."""
+    their own toggles — a busy household can fire a dozen a day.
+
+    Harcama tarafi UCE ayrildi: yeni harcama / duzenleme-silme / odeme kaydi.
+    Tek anahtarken, duzenleme gurultusunden bunalan biri kapatmak icin yeni
+    harcamalari da kapatmak zorunda kaliyordu."""
     new_expense: Optional[bool] = None
+    expense_edit: Optional[bool] = None
+    settlement: Optional[bool] = None
     join_request: Optional[bool] = None
     period_closed: Optional[bool] = None
 
@@ -367,7 +374,39 @@ def admin_id(hh: dict) -> str:
     return hh.get("admin_id") or hh["created_by"]
 
 
-DEFAULT_PREFS = {"new_expense": True, "join_request": True, "period_closed": True}
+DEFAULT_PREFS = {
+    "new_expense": True,     # yeni harcama eklendi
+    "expense_edit": True,    # var olan harcama duzenlendi ya da silindi
+    "settlement": True,      # odeme kaydedildi ya da geri alindi
+    "join_request": True,
+    "period_closed": True,
+}
+
+# Once dordu birden `new_expense` anahtarini paylasiyordu: "duzenleme
+# bildirimleri beni yoruyor" diyen biri, kapatmak icin yeni harcamalari da
+# kapatmak zorunda kaliyordu -- yani parasini ilgilendiren seyleri duymamayi
+# gozeliyordu. Rakiplerde (Splitwise, Tricount) bu turler ayri.
+_INHERIT_FROM_NEW_EXPENSE = ("expense_edit", "settlement")
+
+
+def pref_allows(prefs: Optional[dict], kind: str) -> bool:
+    """Kullanici bu turu istiyor mu?
+
+    Yeni anahtarlar acikca ayarlanana kadar eski `new_expense` secimini
+    **miras alir**: `new_expense`'i kapatmis biri, biz anahtari bolduk diye
+    aniden yeniden bildirim almaya baslamamali.
+    """
+    p = prefs or {}
+    if kind in _INHERIT_FROM_NEW_EXPENSE and kind not in p:
+        return {**DEFAULT_PREFS, **p}.get("new_expense", True)
+    return {**DEFAULT_PREFS, **p}.get(kind, True)
+
+
+def money_str(amount: float, hh: Optional[dict] = None) -> str:
+    """Bildirim metnindeki tutar. Simge evin para biriminden gelir; sabit "EUR"
+    yazmak TRY kullanan bir eve yanlis para birimi gosteriyordu."""
+    sign = "₺" if (hh or {}).get("currency") == "TRY" else "€"
+    return f"{float(amount):.2f}".replace(".", ",") + f" {sign}"
 
 
 async def notify(user_ids: Iterable[str], title: str, body: str,
@@ -404,8 +443,7 @@ async def notify(user_ids: Iterable[str], title: str, body: str,
             {"user_id": {"$in": ids}}, {"_id": 0, "user_id": 1, "notif_prefs": 1}
         ).to_list(50)
         allowed = {
-            u["user_id"] for u in users
-            if {**DEFAULT_PREFS, **(u.get("notif_prefs") or {})}.get(kind, True)
+            u["user_id"] for u in users if pref_allows(u.get("notif_prefs"), kind)
         }
         if not allowed:
             return
@@ -521,7 +559,11 @@ async def update_profile(body: ProfileUpdate, user=Depends(get_current_user)):
 @api.get("/auth/me")
 async def auth_me(user=Depends(get_current_user)):
     u = public_user(user)
-    u["notif_prefs"] = {**DEFAULT_PREFS, **(user.get("notif_prefs") or {})}
+    # ETKIN deger donuyor, ham deger degil: `new_expense`'i kapatmis ama yeni
+    # anahtarlari hic gormemis kullaniciya "acik" gostermek yalan olurdu --
+    # `pref_allows` onlari kapali sayiyor.
+    prefs = user.get("notif_prefs") or {}
+    u["notif_prefs"] = {k: pref_allows(prefs, k) for k in DEFAULT_PREFS}
     return {"user": u, "push_enabled": push.is_configured()}
 
 
@@ -1534,14 +1576,14 @@ async def create_expense(body: ExpenseCreate, user=Depends(get_current_user)):
     audience = [u for u in split_with if u != user["user_id"]]
     if audience:
         label = body.merchant or body.category or ("Fiş" if body.source == "receipt" else "Harcama")
-        amount = f"{doc['total']:.2f}".replace(".", ",")
+        amount = money_str(doc["total"], hh)
         if target_type == "household":
-            title, msg = "Yeni ev harcaması", f"{user['name']} · {label} · {amount} €"
+            title, msg = "Yeni ev harcaması", f"{user['name']} · {label} · {amount}"
         elif target_type == "roommate":
-            title, msg = "Senin için bir harcama", f"{user['name']} senin için {label} aldı · {amount} €"
+            title, msg = "Senin için bir harcama", f"{user['name']} senin için {label} aldı · {amount}"
         else:
             title = "Ortak bir harcama"
-            msg = f"{user['name']} · {label} · {amount} € · {len(split_with)} kişi bölüşüyor"
+            msg = f"{user['name']} · {label} · {amount} · {len(split_with)} kişi bölüşüyor"
         await notify(audience, title, msg, "new_expense", {"expense_id": expense_id})
     return {"expense": doc}
 
@@ -1992,15 +2034,15 @@ async def _notify_expense_change(before: dict, patch: dict, user: dict, action: 
 
     label = before.get("merchant") or before.get("category") or "Harcama"
     total = patch.get("total", before.get("total", 0))
-    amount = f"{float(total):.2f}".replace(".", ",")
+    tutar_txt = money_str(total, hh)
     data = {"expense_id": before["expense_id"]}
 
     if action == "delete":
         await notify(
             [a for a in was if a != me],
             "Harcama silindi",
-            f"{user['name']} · {label} · {amount} € kaydını sildi",
-            "new_expense", data,
+            f"{user['name']} · {label} · {tutar_txt} kaydını sildi",
+            "expense_edit", data,
         )
         return
 
@@ -2010,14 +2052,14 @@ async def _notify_expense_change(before: dict, patch: dict, user: dict, action: 
     # öğrenirdi — ve "artık 90 €" mesajı ikisine de yanlış okunuyordu.
     for people, title, msg in (
         ([a for a in now - was if a != me], "Bir harcamaya eklendin",
-         f"{user['name']} · {label} · {amount} € · artık sen de bölüşüyorsun"),
+         f"{user['name']} · {label} · {tutar_txt} · artık sen de bölüşüyorsun"),
         ([a for a in was - now if a != me], "Bir harcamadan çıkarıldın",
-         f"{user['name']} · {label} · {amount} € · bu harcamada payın kalmadı"),
+         f"{user['name']} · {label} · {tutar_txt} · bu harcamada payın kalmadı"),
         ([a for a in now & was if a != me], "Harcama güncellendi",
-         f"{user['name']} · {label} · artık {amount} €"),
+         f"{user['name']} · {label} · artık {tutar_txt}"),
     ):
         if people:
-            await notify(people, title, msg, "new_expense", data)
+            await notify(people, title, msg, "expense_edit", data)
 
 
 @api.patch("/expenses/{expense_id}")
@@ -2312,12 +2354,11 @@ async def create_settlement(body: SettlementCreate, user=Depends(get_current_use
     await db.settlements.insert_one(doc.copy())
 
     other = body.to_user_id if user["user_id"] == body.from_user_id else body.from_user_id
-    amount = f"{doc['amount']:.2f}".replace(".", ",")
     await notify(
         [other],
         "Ödeme kaydedildi",
-        f"{user['name']} {amount} € tutarında bir ödeme işaretledi.",
-        "new_expense",
+        f"{user['name']} {money_str(doc['amount'], hh)} tutarında bir ödeme işaretledi.",
+        "settlement",
         {"settlement_id": doc["settlement_id"]},
     )
     return {"settlement": doc}
@@ -2339,6 +2380,20 @@ async def delete_settlement(settlement_id: str, user=Depends(get_current_user)):
         raise HTTPException(status_code=400, detail="Kapatılmış dönemdeki ödeme kaydı değiştirilemez")
 
     await db.settlements.delete_one({"settlement_id": settlement_id})
+
+    # Geri alma SESSIZ olamaz. Kayit olusturmak surpriz degil -- borcun zaten
+    # oradaydi. Ama odenmis sanilan bir borcun geri gelmesi surpriz: karsi
+    # tarafin bakiyesi habersiz artiyor ve bunu ancak ekrana bakarsa gorur.
+    # Bildirimi hak eden iki olaydan asil bu.
+    other = row["to_user_id"] if user["user_id"] == row["from_user_id"] else row["from_user_id"]
+    await notify(
+        [other],
+        "Ödeme kaydı geri alındı",
+        f"{user['name']} {money_str(row['amount'], hh)} tutarındaki ödeme kaydını kaldırdı; "
+        "borç yeniden görünüyor.",
+        "settlement",
+        {"settlement_id": settlement_id},
+    )
     return {"ok": True}
 
 
@@ -3144,17 +3199,48 @@ def _expense_day(e: dict) -> str:
     return d or make_aware(e["created_at"]).date().isoformat()
 
 
-async def _month_expenses(household_id: str, month: str, scope: str, user_id: str) -> List[dict]:
+async def _month_expenses(
+    household_id: str, month: str, scope: str, user_id: str, members: List[str]
+) -> List[dict]:
+    """Bir ayın harcamaları, kapsamına göre süzülmüş.
+
+    **Kapsam `target_type` etiketinden değil bölüşme LİSTESİNDEN çıkar.**
+    Önceden `self` yalnızca `target_type == "self"`, `household` ise
+    `["household", "custom"]` demekti — yani `roommate` hiçbirine girmiyordu
+    ve **hiçbir istatistikte görünmüyordu**: Salih senin için bir şey aldıysa
+    o harcama kayıptı. `custom` de (evin bir bölümünün bölüştüğü şey) ev
+    harcaması sayılıyor, evin almadığı şey ev toplamını şişiriyordu.
+
+    Kural: **ev bölüşmüyorsa ev harcaması değildir.** Evin tamamı listedeyse
+    ev, değilse kişisel. Kişiselde tutar harcamanın toplamı değil **senin
+    payın** — Salih'in senin için aldığı 20 €'yu sen ödeyeceksin, ama üçe
+    bölünen bir akşam yemeğinin sana düşeni yalnızca payın kadar.
+
+    "Evin tamamı listede mi" testi `members <= shares` biçiminde: evden ayrılan
+    biri eski bir ev harcamasının listesinde durmaya devam ettiği için eşitlik
+    araması o kayıtları yanlışlıkla kişisele düşürürdü.
+    """
     lo, hi = _month_bounds(month)
-    q: dict = {"household_id": household_id}
-    if scope == "self":
-        # Kişisel harcamalar: yalnızca kendi ekledikleri ve yalnızca kişisel
-        # olanlar. Başkasının kişisel harcaması zaten hiçbir yerde görünmüyor.
-        q.update({"target_type": "self", "added_by": user_id})
-    else:
-        q["target_type"] = {"$in": ["household", "custom"]}
-    rows = await db.expenses.find(q, {"_id": 0}).to_list(5000)
-    return [e for e in rows if lo <= _expense_day(e) < hi]
+    rows = await db.expenses.find({"household_id": household_id}, {"_id": 0}).to_list(5000)
+    rows = [e for e in rows if lo <= _expense_day(e) < hi]
+
+    out: List[dict] = []
+    uyeler = set(members)
+    for e in rows:
+        shares = expense_shares(e, members)
+        if not shares:
+            continue
+        # `target_type == "self"` acik bir beyandir ve korunur: tek kisilik bir
+        # evde "evin tamami" testi her seyi ev harcamasi yapardi.
+        kisisel = e.get("target_type") == "self" or not (uyeler and uyeler <= set(shares))
+        if scope == "self":
+            if kisisel and user_id in shares:
+                # `_breakdown` kalemleri harcamanin toplamina olcekliyor, yani
+                # toplami degistirmek kategori dokumunu de dogru olcekliyor.
+                out.append({**e, "total": round(float(shares[user_id]), 2)})
+        elif not kisisel:
+            out.append(e)
+    return out
 
 
 def _breakdown(exps: List[dict]) -> dict:
@@ -3219,9 +3305,14 @@ async def monthly_stats(
     if not hh:
         return empty
 
-    exps = await _month_expenses(hh["household_id"], month, scope, user["user_id"])
+    uyeler = await period_participants(
+        hh["household_id"],
+        (await get_active_period(hh["household_id"]) or {}).get("period_id", ""),
+        hh["member_ids"],
+    )
+    exps = await _month_expenses(hh["household_id"], month, scope, user["user_id"], uyeler)
     prev = await _month_expenses(
-        hh["household_id"], _prev_month(month), scope, user["user_id"])
+        hh["household_id"], _prev_month(month), scope, user["user_id"], uyeler)
 
     total = round(sum(float(e["total"]) for e in exps), 2)
     prev_total = round(sum(float(e["total"]) for e in prev), 2)
@@ -3251,11 +3342,7 @@ async def monthly_stats(
     ).to_list(5000)
     months = sorted({_expense_day(e)[:7] for e in all_rows} | {month_key(today)}, reverse=True)
 
-    members = await period_participants(
-        hh["household_id"],
-        (await get_active_period(hh["household_id"]) or {}).get("period_id", ""),
-        hh["member_ids"],
-    ) if scope == "household" else [user["user_id"]]
+    members = uyeler if scope == "household" else [user["user_id"]]
 
     bd = _breakdown(exps)
     pbd = _breakdown(prev)
@@ -3318,7 +3405,7 @@ async def monthly_stats(
             my_share += expense_shares(e, members).get(user["user_id"], 0.0)
     my_personal = round(sum(
         float(e["total"]) for e in await _month_expenses(
-            hh["household_id"], month, "self", user["user_id"])), 2)
+            hh["household_id"], month, "self", user["user_id"], uyeler)), 2)
 
     return {
         **empty,
@@ -3465,6 +3552,67 @@ async def root():
         "push_ready": bool(check.get("token")),
         "push_detail": check.get("detail"),
     }
+
+
+# ---------- Odeme bilgisi paylasim baglantisi ----------
+#
+# `odahesap://` semasi WhatsApp'ta TIKLANABILIR OLMUYOR: mesajlasma
+# uygulamalari yalnizca bildikleri semalari baglantiya cevirir. `https` bunu
+# cozuyor -- ama veri sorgu dizesine konsaydi IBAN buraya, yani sunucunun
+# gunluklerine dusederdi ve "IBAN cihazda kalir" karari cokerdi.
+#
+# Bu yuzden veri CAPADA (`#...`) tasiniyor: capadan sonrasi HTTP istegine hic
+# eklenmez. Asagidaki uc yalnizca `/o` yolunu gorur, iceriginde ne yazdigini
+# GOREMEZ. Uygulama kuruluysa Android baglantiyi zaten uygulamaya yonlendirir;
+# bu sayfa yalnizca kurulu degilken gorunur.
+_PAYLAS_SAYFA = """<!doctype html><html lang="tr"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>KaSa — ödeme bilgisi</title>
+<style>body{font-family:system-ui,sans-serif;background:#F6F8FB;color:#0C1626;
+margin:0;padding:32px 20px;line-height:1.6}main{max-width:420px;margin:0 auto}
+h1{font-size:20px;margin:0 0 4px}p{color:#5F6F85;margin:0 0 16px}
+pre{background:#fff;border:1px solid #E9EEF4;border-radius:12px;padding:16px;
+white-space:pre-wrap;word-break:break-all;font-size:15px}
+small{color:#98A5B6}</style></head><body><main>
+<h1>KaSa ödeme bilgisi</h1>
+<p>KaSa kuruluysa bu bağlantı uygulamada açılır. Değilse bilgiler aşağıda.</p>
+<pre id="c">—</pre>
+<small>Bu bilgi sunucuya hiç gönderilmedi; bağlantının # işaretinden sonraki
+kısmı yalnızca bu telefonda kaldı.</small>
+</main><script>
+var q=new URLSearchParams(location.hash.slice(1)),s=[];
+if(q.get("n"))s.push(q.get("n"));
+if(q.get("h"))s.push("Ad: "+q.get("h"));
+if(q.get("iban"))s.push("IBAN: "+q.get("iban").replace(/(.{4})/g,"$1 ").trim());
+if(q.get("pp"))s.push("PayPal: paypal.me/"+q.get("pp"));
+document.getElementById("c").textContent=s.length?s.join("\\n"):"Bağlantı eksik.";
+</script></body></html>"""
+
+
+@app.get("/o", response_class=HTMLResponse)
+async def paylasim_sayfasi():
+    return HTMLResponse(_PAYLAS_SAYFA)
+
+
+# Android App Links dogrulamasi. Bu dosya olmadan Android "hangi uygulamayla
+# acilsin" diye sorar; oldugunda dogrudan KaSa'yi acar. Parmak izi surum
+# imzalama keystore'undan (`build-tools/odahesap-release.keystore`) geliyor --
+# keystore degisirse BURASI DA degismeli.
+_ASSETLINKS = [{
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+        "namespace": "android_app",
+        "package_name": "com.odahesap.app",
+        "sha256_cert_fingerprints": [
+            "2E:9F:C4:1D:33:7F:72:51:3E:56:8C:41:D2:0E:39:CE:41:DF:AB:41:EA:EB:0E:F8:5B:E3:A9:8E:A9:D9:AD:3C"
+        ],
+    },
+}]
+
+
+@app.get("/.well-known/assetlinks.json")
+async def assetlinks():
+    return JSONResponse(_ASSETLINKS)
 
 
 # ---------- App ----------
