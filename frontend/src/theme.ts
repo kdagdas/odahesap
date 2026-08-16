@@ -151,15 +151,20 @@ export const font = {
 
 /** Kategori ikonları — Gemini'nin atadığı anahtarlarla birebir eşleşir. */
 export const CATEGORY_ICONS: Record<string, { icon: string; color: string; bg: string }> = {
-  sut_urunleri: { icon: "cup-outline",         color: "#0EA5A5", bg: "#D7F4F3" },
-  meyve_sebze:  { icon: "food-apple-outline",  color: "#10B981", bg: "#DBF7ED" },
-  et_balik:     { icon: "food-steak",          color: "#E14141", bg: "#FEE8E8" },
-  firin:        { icon: "bread-slice-outline", color: "#D97706", bg: "#FEF0D6" },
-  icecek:       { icon: "bottle-soda-outline", color: "#3B82F6", bg: "#E2EEFF" },
-  atistirmalik: { icon: "candy-outline",       color: "#DB2777", bg: "#FCE7F3" },
-  temel_gida:   { icon: "sack",                color: "#A16207", bg: "#FBF0DA" },
-  ev_urunleri:  { icon: "spray-bottle",        color: "#7C3AED", bg: "#EDE9FE" },
-  diger:        { icon: "basket-outline",      color: "#5F6F85", bg: "#EEF2F7" },
+  // Renkler halka grafiğinde yan yana duruyor ve orada aynı zamanda
+  // AÇIKLAMA görevi görüyorlar: liste satırındaki nokta hangi dilim olduğunu
+  // söylüyor. Bu yüzden birbirinden ayırt edilebilir ve canlı olmaları şart —
+  // önceki ton seti kâğıtta hoştu ama 9 dilim yan yana gelince griye çalıyordu.
+  // "diger" bilerek soluk: bir kategori değil, kalanların adı.
+  sut_urunleri: { icon: "cup-outline",         color: "#06B6D4", bg: "#CFFAFE" },
+  meyve_sebze:  { icon: "food-apple-outline",  color: "#22C55E", bg: "#DCFCE7" },
+  et_balik:     { icon: "food-steak",          color: "#EF4444", bg: "#FEE2E2" },
+  firin:        { icon: "bread-slice-outline", color: "#FBBF24", bg: "#FEF3C7" },
+  icecek:       { icon: "bottle-soda-outline", color: "#3B82F6", bg: "#DBEAFE" },
+  atistirmalik: { icon: "candy-outline",       color: "#EC4899", bg: "#FCE7F3" },
+  temel_gida:   { icon: "sack",                color: "#F97316", bg: "#FFEDD5" },
+  ev_urunleri:  { icon: "spray-bottle",        color: "#8B5CF6", bg: "#EDE9FE" },
+  diger:        { icon: "basket-outline",      color: "#64748B", bg: "#EEF2F7" },
 };
 
 export const CATEGORY_LABEL_TR: Record<string, string> = {

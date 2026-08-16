@@ -20,25 +20,91 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import Svg, { Circle, Path, Line as SvgLine, Text as SvgText } from "react-native-svg";
 import { apiGet } from "@/src/api";
 import { useAuth } from "@/src/auth";
 import { useHousehold } from "@/src/household";
 import {
   ScreenHeader, Sheet, Card, Row, Divider, Avatar, Money, CategoryIcon,
-  categoryLabel, MerchantBadge, formatEUR, formatEURShort,
+  categoryLabel, MerchantBadge, Donut, formatEUR, formatEURShort,
 } from "@/src/ui";
-import { colors, spacing, radius, type as T, overline, fontFamily, metrics } from "@/src/theme";
+import {
+  colors, spacing, radius, type as T, overline, fontFamily, metrics, CATEGORY_ICONS,
+} from "@/src/theme";
 
 type Monthly = {
   month: string; total: number; expense_count: number;
   prev_total: number; prev_month?: string; change_pct: number | null;
   fixed: number; variable: number; per_person: number; member_count: number;
-  categories: { key: string; total: number }[];
+  my_share: number; my_personal: number;
+  categories: { key: string; total: number; prev_total: number; change_pct: number | null }[];
   merchants: { name: string; total: number }[];
   by_member: { user_id: string; total: number }[];
-  daily_series: { day: string; total: number }[];
+  cumulative: { day: string; total: number }[];
+  prev_cumulative: { day: string; total: number }[];
   months: string[];
 };
+
+/**
+ * Biriken harcama eğrisi — bu ay dolu, geçen ay kesikli gölge.
+ *
+ * Günlük çubukların yerine geçti: çubuklar az harcamada seyrek ve çirkin
+ * duruyordu, biriken eğri tek harcamada bile düzgün. Daha iyi bir soruya da
+ * cevap veriyor — "geçen ayın bu gününde neredeydik?"
+ */
+function Curve({ now, prev, height = 132 }: {
+  now: { day: string; total: number }[];
+  prev: { day: string; total: number }[];
+  height?: number;
+}) {
+  const W = 300, H = height, padL = 40, padB = 18, padT = 8;
+  const max = Math.max(1, now.at(-1)?.total ?? 0, prev.at(-1)?.total ?? 0);
+  const plotW = W - padL - 8;
+  const plotH = H - padB - padT;
+  const path = (rows: { total: number }[], upto?: number) => {
+    const list = upto != null ? rows.slice(0, upto) : rows;
+    if (!list.length) return "";
+    return list.map((r, i) => {
+      const x = padL + (i / Math.max(rows.length - 1, 1)) * plotW;
+      const y = padT + plotH - (r.total / max) * plotH;
+      return `${i === 0 ? "M" : "L"}${x.toFixed(1)} ${y.toFixed(1)}`;
+    }).join(" ");
+  };
+  // Bu ay henüz bitmediyse eğri bugünde duruyor: ayın sonuna kadar düz bir
+  // çizgi çekmek "harcama durdu" demek olurdu, oysa gün gelmedi.
+  const today = new Date().toISOString().slice(0, 10);
+  const upto = now.findIndex((r) => r.day > today);
+  const shown = upto === -1 ? now.length : Math.max(upto, 1);
+  const last = now[shown - 1];
+  const lastX = padL + ((shown - 1) / Math.max(now.length - 1, 1)) * plotW;
+  const lastY = padT + plotH - ((last?.total ?? 0) / max) * plotH;
+
+  return (
+    <Svg width="100%" height={H} viewBox={`0 0 ${W} ${H}`}>
+      {[0, 0.5, 1].map((f) => (
+        <SvgLine key={f} x1={padL} y1={padT + plotH * f} x2={W - 8} y2={padT + plotH * f}
+                 stroke={colors.divider} strokeWidth={1} />
+      ))}
+      {[1, 0.5, 0].map((f) => (
+        <SvgText key={f} x={padL - 6} y={padT + plotH * (1 - f) + 4} textAnchor="end"
+                 fontSize={9} fill={colors.inkTertiary}>
+          {formatEURShort(max * f)}
+        </SvgText>
+      ))}
+      {prev.length > 1 && (
+        <Path d={path(prev)} fill="none" stroke={colors.inkTertiary}
+              strokeWidth={1.6} strokeDasharray="4 4" />
+      )}
+      <Path d={path(now, shown)} fill="none" stroke={colors.dark}
+            strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" />
+      {last && <Circle cx={lastX} cy={lastY} r={4} fill={colors.dark} />}
+      <SvgText x={padL} y={H - 4} fontSize={9} fill={colors.inkTertiary}>1</SvgText>
+      <SvgText x={W - 8} y={H - 4} textAnchor="end" fontSize={9} fill={colors.inkTertiary}>
+        {now.length}
+      </SvgText>
+    </Svg>
+  );
+}
 
 const AYLAR = ["", "Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran",
                "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"];
@@ -75,8 +141,9 @@ export default function Istatistik() {
   useEffect(() => { load(); }, [load]);
 
   const member = (id: string) => members.find((m) => m.user_id === id);
-  const maxDaily = Math.max(1, ...(data?.daily_series || []).map((d) => d.total));
-  const maxCat = Math.max(1, ...(data?.categories || []).map((c) => c.total));
+  const cats = (data?.categories || []).map((c) => ({
+    total: c.total, color: (CATEGORY_ICONS[c.key] || CATEGORY_ICONS.diger).color,
+  }));
   // İleri gitmek bugünün ayını aşmamalı: boş bir geleceğe dolaşmanın anlamı yok.
   const canForward = month < thisMonth();
 
@@ -151,71 +218,92 @@ export default function Istatistik() {
               </View>
             ) : (
               <>
-                {/* Sabit / değişken ayrımı Tur 5'in getirdiği kesit ve
-                    insanların asıl sorduğu ayrım: "kira dışında ne harcadık?" */}
-                <Card title="Sabit ve Değişken" style={styles.mx} padded>
-                  <View style={styles.splitBar}>
-                    <View style={[styles.barFixed, { flex: Math.max(data.fixed, 0.001) }]} />
-                    <View style={[styles.barVariable, { flex: Math.max(data.variable, 0.001) }]} />
-                  </View>
-                  <View style={styles.legendRow}>
-                    <View style={styles.legendItem}>
-                      <View style={[styles.dot, { backgroundColor: colors.dark }]} />
-                      <Text style={styles.legendLabel}>Sabit gider</Text>
-                      <Text style={styles.legendValue}>{formatEUR(data.fixed)}</Text>
-                    </View>
-                    <View style={styles.legendItem}>
-                      <View style={[styles.dot, { backgroundColor: colors.accent }]} />
-                      <Text style={styles.legendLabel}>Değişken</Text>
-                      <Text style={styles.legendValue}>{formatEUR(data.variable)}</Text>
-                    </View>
-                  </View>
-                  {scope === "household" && (
-                    <Text style={styles.foot}>
-                      {data.member_count} kişi · kişi başı {formatEUR(data.per_person)}
-                    </Text>
-                  )}
-                </Card>
-
-                <Card title="Günlük Akış" style={styles.mx} padded>
-                  <View style={styles.bars}>
-                    {data.daily_series.map((d) => (
-                      <View key={d.day} style={styles.barCol}>
-                        <View style={[
-                          styles.bar,
-                          {
-                            height: Math.max(2, (d.total / maxDaily) * 76),
-                            backgroundColor: d.total > 0 ? colors.dark : colors.border,
-                          },
-                        ]} />
-                      </View>
-                    ))}
-                  </View>
-                  <View style={styles.barsAxis}>
-                    <Text style={styles.axisTxt}>1</Text>
-                    <Text style={styles.axisTxt}>{data.daily_series.length}</Text>
-                  </View>
-                </Card>
-
+                {/* Halka ve kategori dokumu TEK kartta. Listedeki renk noktasi
+                    halkanin dilimiyle eslesiyor, yani liste ayni zamanda
+                    aciklama gorevi goruyor -- ayri bir legend satirina gerek
+                    kalmiyor. Ay-ay degisim de ayni satirda: "neye gitti" ve
+                    "neresi degisti" ayni soru. */}
                 {data.categories.length > 0 && (
                   <Card title="Nereye Gitti" style={styles.mx}>
-                    {data.categories.slice(0, 7).map((cat, i) => (
+                    <View style={styles.donutWrap}>
+                      <Donut parts={cats} size={148} stroke={13}>
+                        <View style={{ alignItems: "center" }}>
+                          <Text style={styles.donutTotal}>{formatEURShort(data.total)}</Text>
+                          <Text style={styles.donutSub}>{data.expense_count} harcama</Text>
+                        </View>
+                      </Donut>
+                    </View>
+                    {data.categories.map((cat, i) => (
                       <View key={cat.key}>
-                        {i > 0 && <Divider inset={spacing.lg} />}
+                        <Divider inset={i === 0 ? 0 : spacing.lg} />
                         <View style={styles.catRow}>
-                          <CategoryIcon category={cat.key} />
-                          <View style={{ flex: 1, gap: 5 }}>
-                            <View style={styles.catHead}>
-                              <Text style={styles.catName}>{categoryLabel(cat.key)}</Text>
-                              <Money value={cat.total} />
+                          <View style={[styles.catDot, {
+                            backgroundColor: (CATEGORY_ICONS[cat.key] || CATEGORY_ICONS.diger).color,
+                          }]} />
+                          <Text style={styles.catName} numberOfLines={1}>
+                            {categoryLabel(cat.key)}
+                          </Text>
+                          {cat.change_pct === null ? (
+                            <View style={[styles.deltaTag, { backgroundColor: colors.infoSoft }]}>
+                              <Text style={[styles.deltaTxt, { color: colors.onInfo }]}>yeni</Text>
                             </View>
-                            <View style={styles.track}>
-                              <View style={[styles.fill, { width: `${(cat.total / maxCat) * 100}%` }]} />
+                          ) : Math.abs(cat.change_pct) >= 5 ? (
+                            <View style={[styles.deltaTag, {
+                              backgroundColor: cat.change_pct > 0 ? colors.negativeSoft : colors.accentSoft,
+                            }]}>
+                              <Text style={[styles.deltaTxt, {
+                                color: cat.change_pct > 0 ? colors.negative : colors.accentDark,
+                              }]}>
+                                {cat.change_pct > 0 ? "↑" : "↓"} %{Math.abs(cat.change_pct)}
+                              </Text>
                             </View>
-                          </View>
+                          ) : null}
+                          <Money value={cat.total} style={styles.catValue} />
                         </View>
                       </View>
                     ))}
+                  </Card>
+                )}
+
+                <Card title="Ay Boyunca" style={styles.mx} padded>
+                  <Curve now={data.cumulative} prev={data.prev_cumulative} />
+                  <View style={styles.curveLegend}>
+                    <View style={styles.legendItem}>
+                      <View style={[styles.legendLine, { backgroundColor: colors.dark }]} />
+                      <Text style={styles.legendLabel}>bu ay {formatEURShort(data.total)}</Text>
+                    </View>
+                    {data.prev_total > 0 && (
+                      <View style={styles.legendItem}>
+                        <View style={[styles.legendLine, styles.legendDashed]} />
+                        <Text style={styles.legendLabel}>
+                          geçen ay {formatEURShort(data.prev_total)}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                </Card>
+
+                {/* Senin toplam cikisin: ev payin + kisiselin. Oran degil
+                    toplam -- "kisiselin evin yuzde 35'i" garip bir sayi,
+                    "bu ay toplam su kadar harcadin" gercek bir soruya cevap. */}
+                {scope === "household" && (
+                  <Card title="Senin Çıkışın" style={styles.mx} padded>
+                    <View style={styles.outRow}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.legendLabel}>Ev payın</Text>
+                        <Text style={styles.outValue}>{formatEUR(data.my_share)}</Text>
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.legendLabel}>Kişisel</Text>
+                        <Text style={styles.outValue}>{formatEUR(data.my_personal)}</Text>
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.legendLabel}>Toplam</Text>
+                        <Text style={[styles.outValue, { color: colors.accentDark }]}>
+                          {formatEUR(data.my_share + data.my_personal)}
+                        </Text>
+                      </View>
+                    </View>
                   </Card>
                 )}
 
@@ -235,11 +323,6 @@ export default function Istatistik() {
                         </View>
                       );
                     })}
-                    {/* Ödemek tüketmek değildir: bu liste kimin daha çok
-                        harcadığını değil, kimin kasadan çıktığını gösterir. */}
-                    <Text style={styles.foot}>
-                      Ödenen tutarlar — kimin ne tükettiği değil, ödeşmenin girdisi.
-                    </Text>
                   </Card>
                 )}
 
@@ -299,29 +382,27 @@ const styles = StyleSheet.create({
   empty: { alignItems: "center", gap: spacing.sm, paddingVertical: spacing.xxxl, paddingHorizontal: spacing.xl },
   emptyTitle: { ...T.emph, color: colors.ink },
   emptyDesc: { ...T.caption, color: colors.inkTertiary, textAlign: "center", lineHeight: 19 },
-  splitBar: { flexDirection: "row", height: 12, borderRadius: 6, overflow: "hidden", gap: 2 },
-  barFixed: { backgroundColor: colors.dark, borderRadius: 6 },
-  barVariable: { backgroundColor: colors.accent, borderRadius: 6 },
-  legendRow: { flexDirection: "row", gap: spacing.lg, marginTop: spacing.md },
-  legendItem: { flex: 1, gap: 2 },
-  dot: { width: 8, height: 8, borderRadius: 4 },
+  donutWrap: { alignItems: "center", paddingVertical: spacing.lg },
+  donutTotal: { ...T.emph, fontSize: 20, color: colors.ink },
+  donutSub: { ...T.caption, color: colors.inkTertiary },
+  catDot: { width: 9, height: 9, borderRadius: 5 },
+  catValue: { minWidth: 74, textAlign: "right" },
+  deltaTag: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: radius.sm },
+  deltaTxt: { fontSize: 11, lineHeight: 15, fontFamily: fontFamily.medium },
+  curveLegend: { flexDirection: "row", gap: spacing.lg, marginTop: spacing.sm },
+  legendItem: { flexDirection: "row", alignItems: "center", gap: 6 },
+  legendLine: { width: 14, height: 2, borderRadius: 1 },
+  legendDashed: { backgroundColor: colors.inkTertiary, opacity: 0.7 },
   legendLabel: { ...T.caption, color: colors.inkTertiary },
-  legendValue: { ...T.bodySb, color: colors.ink },
+  outRow: { flexDirection: "row", gap: spacing.md },
+  outValue: { ...T.bodySb, fontSize: 16, color: colors.ink, marginTop: 2 },
   foot: { ...T.caption, color: colors.inkTertiary, marginTop: spacing.md,
           paddingHorizontal: spacing.lg, paddingBottom: spacing.md, lineHeight: 17 },
-  bars: { flexDirection: "row", alignItems: "flex-end", height: 80, gap: 1 },
-  barCol: { flex: 1, justifyContent: "flex-end" },
-  bar: { width: "100%", borderRadius: 2 },
-  barsAxis: { flexDirection: "row", justifyContent: "space-between", marginTop: spacing.xs },
-  axisTxt: { ...T.caption, fontSize: 11, color: colors.inkTertiary },
   catRow: {
     flexDirection: "row", alignItems: "center", gap: spacing.md,
-    paddingHorizontal: spacing.lg, paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg, paddingVertical: spacing.md, minHeight: 50,
   },
-  catHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  catName: { ...T.emph, color: colors.ink },
-  track: { height: 5, borderRadius: 3, backgroundColor: colors.surfaceSecondary, overflow: "hidden" },
-  fill: { height: 5, borderRadius: 3, backgroundColor: colors.accent },
+  catName: { ...T.body, color: colors.ink, flex: 1 },
   merchWrap: { gap: spacing.sm },
   merchRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   merchTotal: { ...T.bodySb, color: colors.ink },

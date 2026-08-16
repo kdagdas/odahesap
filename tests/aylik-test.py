@@ -164,22 +164,52 @@ check("kategori toplami harcama toplamina esit",
       f'{sum(x["total"] for x in s["categories"])} vs {s["total"]}')
 
 
-print("\n-- 8. gunluk seri ve ay listesi --")
+print("\n-- 8. kumulatif egri ve ay listesi --")
+# Gunluk cubuklarin yerine biriken egri: az harcamada bile duzgun cikiyor ve
+# "gecen ayin bu gununde neredeydik" sorusuna cevap veriyor.
 s = stat(alice)
-check("mayis 31 gun", len(s["daily_series"]) == 31, len(s["daily_series"]))
-gun = {d["day"]: d["total"] for d in s["daily_series"]}
-check("1 mayis 60", near(gun.get("2026-05-01"), 60.0), str(gun.get("2026-05-01")))
-check("31 mayis 40", near(gun.get("2026-05-31"), 40.0), str(gun.get("2026-05-31")))
-check("harcamasiz gun 0 ile duruyor", near(gun.get("2026-05-20"), 0.0), str(gun.get("2026-05-20")))
+check("mayis 31 gun", len(s["cumulative"]) == 31, len(s["cumulative"]))
+gun = {d["day"]: d["total"] for d in s["cumulative"]}
+check("1 mayis 60 (ilk harcama)", near(gun.get("2026-05-01"), 60.0), str(gun.get("2026-05-01")))
+check("egri hic dusmuyor",
+      all(a["total"] <= b["total"] + 1e-9 for a, b in zip(s["cumulative"], s["cumulative"][1:])))
+check("son gun ay toplamina esit", near(s["cumulative"][-1]["total"], s["total"]),
+      f'{s["cumulative"][-1]["total"]} vs {s["total"]}')
+check("harcamasiz gunde deger korunuyor (dusmuyor)",
+      near(gun.get("2026-05-20"), gun.get("2026-05-13")), str(gun.get("2026-05-20")))
+check("gecen ayin egrisi de geliyor", len(s["prev_cumulative"]) == 30,
+      len(s["prev_cumulative"]))
+# Nisan 30 gun: kisa ayi 31'e germek yanlis bir egri uretirdi.
+check("kisa ay gerilmemis", len(s["prev_cumulative"]) == 30)
 check("ay listesinde nisan-mayis-haziran var",
       {"2026-04", "2026-05", "2026-06"} <= set(s["months"]), str(s["months"]))
+
+
+print("\n-- 8b. kategori ay-ay degisimi --")
+kat = {x["key"]: x for x in s["categories"]}
+check("kategorilerde onceki ay ve degisim alanlari var",
+      all("prev_total" in x and "change_pct" in x for x in s["categories"]),
+      str(s["categories"][:1]))
+# Gecen ay hic olmayan bir kategoride yuzde uretmek yaniltici olur ("yeni").
+check("gecen ay olmayan kategoride degisim None",
+      kat.get("sut_urunleri", {}).get("change_pct") is None, str(kat.get("sut_urunleri")))
+
+
+print("\n-- 8c. senin toplam cikisin --")
+# Ev payin + kisiselin. Oran degil toplam: "kisiselin evin %35'i" garip bir
+# sayi, "bu ay toplam su kadar harcadin" gercek bir soruya cevap.
+s = stat(alice)
+check("ev payi hesaplandi", s["my_share"] > 0, str(s["my_share"]))
+check("kisisel harcama ayri geliyor", near(s["my_personal"], 250.0), str(s["my_personal"]))
+check("ev payi ev toplamindan kucuk", s["my_share"] < s["total"],
+      f'{s["my_share"]} / {s["total"]}')
 
 
 print("\n-- 9. bos ay dusurmuyor --")
 s = stat(alice, month="2020-01")
 check("veri olmayan ay sifir donuyor", near(s["total"], 0.0), s["total"])
 check("degisim None", s["change_pct"] is None, str(s["change_pct"]))
-check("gunluk seri yine dolu (31 gun)", len(s["daily_series"]) == 31, len(s["daily_series"]))
+check("kumulatif seri yine dolu (31 gun)", len(s["cumulative"]) == 31, len(s["cumulative"]))
 s = c.get(f"{API}/stats/monthly?month=bozuk", headers=hdr(alice)).json()
 check("bozuk ay parametresi dusurmuyor", "total" in s, str(s)[:120])
 

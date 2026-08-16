@@ -7,14 +7,14 @@ import {
   RefreshControl, TextInput, KeyboardAvoidingView, Platform,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useFocusEffect, useLocalSearchParams } from "expo-router";
+import { useFocusEffect } from "expo-router";
 
 import { apiGet, apiPost, apiDelete } from "@/src/api";
 import { useAuth } from "@/src/auth";
 import { useHousehold } from "@/src/household";
 import {
   ScreenHeader, HeaderSplit, Sheet, Card, Row, Divider, Avatar, Money,
-  IconPill, Chip, PrimaryButton, MerchantBadge, formatEUR, useKeyboardHeight,
+  IconPill, Chip, PrimaryButton, formatEUR, useKeyboardHeight,
 } from "@/src/ui";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors, spacing, radius, type as T, overline, fontFamily, metrics } from "@/src/theme";
@@ -44,42 +44,14 @@ const relativeDay = (iso: string) => {
   return days <= 0 ? "bugün" : days === 1 ? "dün" : `${days} gün önce`;
 };
 
-/**
- * 14 günlük çubuk grafik. Kütüphane yok: her çubuk yüksekliği en büyük güne
- * oranlanmış bir View. Harcaması olmayan gün bir kırıntı yükseklikte kalıyor,
- * böylece taban çizgisi kesintisiz okunuyor.
- */
-function Bars({ data }: { data: { day: string; total: number }[] }) {
-  const max = Math.max(...data.map((d) => d.total), 1);
-  const today = new Date().toISOString().slice(0, 10);
-  return (
-    <View style={styles.bars}>
-      {data.map((d) => {
-        const h = Math.max(3, Math.round((d.total / max) * 64));
-        const isToday = d.day === today;
-        return (
-          <View key={d.day} style={styles.barCol}>
-            <View style={[
-              styles.bar,
-              { height: h, backgroundColor: isToday ? colors.dark : d.total > 0 ? colors.accent : colors.border },
-            ]} />
-          </View>
-        );
-      })}
-    </View>
-  );
-}
 
 export default function Denge() {
   const { user } = useAuth();
   const { members, activePeriod, isAdmin, refresh: refreshHH } = useHousehold();
   // Anasayfadaki değişim rozetinden gelindiğinde doğrudan istatistiklere in.
-  const { focus } = useLocalSearchParams<{ focus?: string }>();
   const kbHeight = useKeyboardHeight();
   const insets = useSafeAreaInsets();
   const scrollRef = useRef<ScrollView>(null);
-  const statsY = useRef(0);
-  const jumped = useRef<string | null>(null);
 
   const [periods, setPeriods] = useState<Period[]>([]);
   const [selected, setSelected] = useState<string | undefined>(undefined);
@@ -87,7 +59,6 @@ export default function Denge() {
   const [transfers, setTransfers] = useState<Transfer[]>([]);
   const [settlements, setSettlements] = useState<Settlement[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
-  const [showStats, setShowStats] = useState(true);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -259,6 +230,17 @@ export default function Denge() {
                     ilgilendirmeyen borç aynı kutunun altında tek satıra iniyor
                     ki ev büyürse blok şişmesin. */}
                 <Card title="Kim Kime Borçlu" style={styles.mx}>
+                  {/* Bir istatistik degil, odesmenin girdisi: "ben ne odedim,
+                      payim neydi" sorusu borcun kendisiyle ayni yerde durmali.
+                      Istatistik karti bu ekrandan kalkti; sayfasi ayri. */}
+                  {stats && stats.expense_count > 0 && (
+                    <View style={styles.paidLine}>
+                      <Text style={styles.paidLabel}>Senin ödediğin</Text>
+                      <Text style={styles.paidValue}>{formatEUR(myPaid)}</Text>
+                      <Text style={styles.paidLabel}>· payın</Text>
+                      <Text style={styles.paidValue}>{formatEUR(stats.per_person)}</Text>
+                    </View>
+                  )}
                   {ordered.length === 0 ? (
                     <Row
                       leading={<IconPill name="checkmark-circle" color={colors.accent}
@@ -354,77 +336,6 @@ export default function Denge() {
                         </View>
                       );
                     })}
-                  </Card>
-                )}
-
-                {stats && stats.expense_count > 0 && (
-                  <Card
-                    title="İstatistikler"
-                    action={showStats ? "Gizle" : "Göster"}
-                    onAction={() => setShowStats((v) => !v)}
-                    style={styles.mx}
-                    testID="stats-card"
-                    onLayout={(y) => {
-                      statsY.current = y;
-                      // Kartın yeri ölçülür ölçülmez atla; ölçümden önce
-                      // scrollTo çağırmak hiçbir yere gitmiyordu.
-                      if (focus === "stats" && jumped.current !== String(focus) + y) {
-                        jumped.current = String(focus) + y;
-                        requestAnimationFrame(() =>
-                          scrollRef.current?.scrollTo({ y: Math.max(0, y - 12), animated: true }));
-                      }
-                    }}
-                  >
-                    {showStats && (
-                      <View style={styles.statsBody}>
-                        <Text style={styles.statLabel}>SON 14 GÜN</Text>
-                        <Bars data={stats.daily_series} />
-                        <View style={styles.barsAxis}>
-                          <Text style={styles.axisTxt}>14 gün önce</Text>
-                          <Text style={styles.axisTxt}>bugün</Text>
-                        </View>
-
-                        <View style={styles.tiles}>
-                          <View style={styles.tile}>
-                            <Text style={styles.tileLabel}>SENİN ÖDEDİĞİN</Text>
-                            <Text style={styles.tileValue}>{formatEUR(myPaid)}</Text>
-                            <Text style={styles.tileHint}>
-                              payın {formatEUR(stats.per_person)}
-                            </Text>
-                          </View>
-                          <View style={styles.tile}>
-                            <Text style={styles.tileLabel}>ORTALAMA FİŞ</Text>
-                            <Text style={styles.tileValue}>{formatEUR(stats.avg_expense)}</Text>
-                            <Text style={styles.tileHint}>
-                              {stats.expense_count} harcama · {stats.item_count} kalem
-                            </Text>
-                          </View>
-                        </View>
-
-                        {stats.merchants.length > 0 && (
-                          <>
-                            <Text style={styles.statLabel}>EN ÇOK HARCANAN YER</Text>
-                            {stats.merchants.slice(0, 4).map((m) => (
-                              <View key={m.name} style={styles.merchRow}>
-                                <View style={styles.merchHead}>
-                                  <MerchantBadge name={m.name} />
-                                  <Money value={m.total} style={styles.merchVal} />
-                                </View>
-                                <View style={styles.track}>
-                                  <View style={[styles.trackFill, {
-                                    width: `${Math.max(4, (m.total / (stats.merchants[0].total || 1)) * 100)}%`,
-                                  }]} />
-                                </View>
-                              </View>
-                            ))}
-                          </>
-                        )}
-
-                        <Text style={styles.statsFoot}>
-                          Günlük ortalama {formatEUR(stats.daily_average)} · {stats.member_count} kişi
-                        </Text>
-                      </View>
-                    )}
                   </Card>
                 )}
 
@@ -586,29 +497,12 @@ const styles = StyleSheet.create({
   stlRight: { alignItems: "flex-end", gap: 2 },
   undo: { ...T.caption, color: colors.negative },
 
-  // --- istatistikler ---
-  statsBody: { paddingHorizontal: spacing.lg, paddingBottom: spacing.lg, gap: spacing.md },
-  statLabel: { ...overline, marginTop: spacing.xs },
-  bars: { flexDirection: "row", alignItems: "flex-end", height: 64, gap: 4 },
-  barCol: { flex: 1, justifyContent: "flex-end" },
-  bar: { width: "100%", borderRadius: 3 },
-  barsAxis: { flexDirection: "row", justifyContent: "space-between", marginTop: -spacing.sm },
-  axisTxt: { ...T.caption, fontSize: 10, color: colors.inkTertiary },
-  tiles: { flexDirection: "row", gap: spacing.md },
-  tile: {
-    flex: 1, backgroundColor: colors.surfaceAlt, borderRadius: radius.md,
-    padding: spacing.md, gap: 2,
+  paidLine: {
+    flexDirection: "row", alignItems: "center", gap: 5, flexWrap: "wrap",
+    paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.xs,
   },
-  tileLabel: { ...overline, fontSize: 10, letterSpacing: 0.8 },
-  tileValue: { ...T.emph, color: colors.ink, fontVariant: ["tabular-nums"] },
-  tileHint: { ...T.caption, fontSize: 11, color: colors.inkTertiary },
-  merchRow: { gap: 6 },
-  merchHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  merchVal: { ...T.captionSb, color: colors.ink },
-  track: { height: 6, borderRadius: 3, backgroundColor: colors.surfaceSecondary, overflow: "hidden" },
-  trackFill: { height: 6, borderRadius: 3, backgroundColor: colors.dark },
-  statsFoot: { ...T.caption, color: colors.inkTertiary, textAlign: "center", marginTop: spacing.xs },
-
+  paidLabel: { ...T.caption, color: colors.inkTertiary },
+  paidValue: { ...T.captionSb, color: colors.ink },
   msg: { ...T.bodySb, color: colors.accentDark, textAlign: "center" },
   err: { ...T.bodySb, color: colors.negative, textAlign: "center" },
   confirm: { backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1,

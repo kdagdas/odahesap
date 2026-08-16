@@ -16,6 +16,7 @@ import {
   Keyboard, Platform, Modal, Alert, TextInput, Animated,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
+import Svg, { Circle } from "react-native-svg";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 
@@ -528,6 +529,51 @@ export function PulseDot({
         }}
       />
       <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: color }} />
+    </View>
+  );
+}
+
+/**
+ * Kategori dağılımı halkası. Dikdörtgen olmayan tek görsel öğe.
+ *
+ * Çap aynı, çizgi ince: kalın halka pasta grafiğe yaklaşıp ağırlaşıyordu.
+ * İnce halka aynı bilgiyi taşıyıp ortadaki toplama yer açıyor.
+ *
+ * Anasayfa ve istatistik sayfası aynı bileşeni kullanıyor: iki ayrı çizim
+ * olsaydı biri güncellenip öteki unutulurdu.
+ */
+export function Donut({
+  parts, size = 108, stroke = 9, children,
+}: {
+  parts: { total: number; color: string }[];
+  size?: number; stroke?: number; children?: React.ReactNode;
+}) {
+  const r = (size - stroke) / 2;
+  const circ = 2 * Math.PI * r;
+  const sum = parts.reduce((s, p) => s + p.total, 0) || 1;
+  let offset = 0;
+  return (
+    <View style={{ width: size, height: size, alignItems: "center", justifyContent: "center" }}>
+      <Svg width={size} height={size} style={StyleSheet.absoluteFill}>
+        {/* Sessiz taban halkası: tek kategori varsa bile daire kapalı okunuyor. */}
+        <Circle cx={size / 2} cy={size / 2} r={r} fill="none"
+                stroke={colors.border} strokeWidth={stroke} />
+        {parts.map((p, i) => {
+          const len = (p.total / sum) * circ;
+          const el = (
+            <Circle
+              key={i} cx={size / 2} cy={size / 2} r={r} fill="none"
+              stroke={p.color} strokeWidth={stroke} strokeLinecap="butt"
+              strokeDasharray={`${len} ${circ - len}`}
+              strokeDashoffset={-offset}
+              transform={`rotate(-90 ${size / 2} ${size / 2})`}
+            />
+          );
+          offset += len;
+          return el;
+        })}
+      </Svg>
+      {children}
     </View>
   );
 }

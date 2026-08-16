@@ -3108,14 +3108,27 @@ def _breakdown(exps: List[dict]) -> dict:
             cats["diger"] = cats.get("diger", 0) + total
         name = (e.get("merchant") or "Diğer").strip() or "Diğer"
         merchants[name] = merchants.get(name, 0) + total
-    return {
-        "categories": sorted(
-            [{"key": k, "total": round(v, 2)} for k, v in cats.items() if v > 0.005],
-            key=lambda x: -x["total"]),
-        "merchants": sorted(
-            [{"name": k, "total": round(v, 2)} for k, v in merchants.items()],
-            key=lambda x: -x["total"])[:8],
-    }
+    return {"cats": cats, "merchants": merchants}
+
+
+def _cumulative(exps: List[dict], lo: str, days: int) -> List[dict]:
+    """Ayın başından itibaren biriken toplam.
+
+    Günlük çubukların yerine geçiyor. Çubuklar az harcamada seyrek ve çirkin
+    duruyordu; biriken eğri tek harcamada bile düzgün. Daha iyi bir soruya da
+    cevap veriyor: "geçen ayın bu gününde neredeydik?"
+    """
+    daily = {(date.fromisoformat(lo) + timedelta(days=i)).isoformat(): 0.0
+             for i in range(days)}
+    for e in exps:
+        d = _expense_day(e)
+        if d in daily:
+            daily[d] += float(e["total"])
+    out, run = [], 0.0
+    for day in sorted(daily):
+        run += daily[day]
+        out.append({"day": day, "total": round(run, 2)})
+    return out
 
 
 @api.get("/stats/monthly")
@@ -3130,8 +3143,10 @@ async def monthly_stats(
     empty = {
         "month": month, "scope": scope, "total": 0, "expense_count": 0,
         "prev_total": 0, "change_pct": None, "fixed": 0, "variable": 0,
-        "categories": [], "merchants": [], "by_member": [], "daily_series": [],
+        "categories": [], "merchants": [], "by_member": [],
+        "cumulative": [], "prev_cumulative": [],
         "months": [], "member_count": 0, "per_person": 0,
+        "my_share": 0, "my_personal": 0,
     }
     if not hh:
         return empty
@@ -3144,10 +3159,11 @@ async def monthly_stats(
     prev_total = round(sum(float(e["total"]) for e in prev), 2)
     change = round((total - prev_total) / prev_total * 100) if prev_total > 0 else None
 
-    # Sabit / değişken ayrımı Tur 5'in getirdiği yeni kesit: `recurring_id`
-    # taşıyan harcama bir şablondan geldi, yani kira-elektrik-abonelik.
-    # "Bu ay 340 € market, 1.290 € sabit gider" cümlesi bundan önce
-    # kurulamıyordu ve insanların asıl sorduğu ayrım bu.
+    # Düzenli ödemeden gelen toplam. Ekranda ayrı bir kart olarak
+    # gösterilmiyor: kira aydan aya değişmediği için o kart her ay aynı şeyi
+    # söylüyordu. Alan duruyor çünkü asıl ilginç kesit -- DEĞİŞKEN tutarlı
+    # faturaların (elektrik, su, doğalgaz) ay ay seyri -- buradan çıkacak,
+    # ama anlamlı olması için iki üç aylık veri birikmesi gerekiyor.
     fixed = round(sum(float(e["total"]) for e in exps if e.get("recurring_id")), 2)
 
     by_member: Dict[str, float] = {}
@@ -3157,12 +3173,8 @@ async def monthly_stats(
 
     lo, hi = _month_bounds(month)
     days = (date.fromisoformat(hi) - date.fromisoformat(lo)).days
-    daily = {(date.fromisoformat(lo) + timedelta(days=i)).isoformat(): 0.0
-             for i in range(days)}
-    for e in exps:
-        d = _expense_day(e)
-        if d in daily:
-            daily[d] += float(e["total"])
+    plo, phi = _month_bounds(_prev_month(month))
+    pdays = (date.fromisoformat(phi) - date.fromisoformat(plo)).days
 
     # Ay seçicisinin dolaşabileceği aylar: veri olan aylar + içinde bulunulan.
     all_rows = await db.expenses.find(
@@ -3176,6 +3188,30 @@ async def monthly_stats(
         (await get_active_period(hh["household_id"]) or {}).get("period_id", ""),
         hh["member_ids"],
     ) if scope == "household" else [user["user_id"]]
+
+    bd = _breakdown(exps)
+    pbd = _breakdown(prev)
+    # Kategori ay-ay değişimi. Geçen ay hiç yoksa "yeni", vardı ve şimdi yoksa
+    # listede görünmüyor -- olmayan bir şeyin yüzdesi yanıltıcı olur.
+    cat_rows = []
+    for k, v in bd["cats"].items():
+        if v <= 0.005:
+            continue
+        pv = pbd["cats"].get(k, 0.0)
+        cat_rows.append({
+            "key": k, "total": round(v, 2), "prev_total": round(pv, 2),
+            "change_pct": round((v - pv) / pv * 100) if pv > 0.005 else None,
+        })
+    cat_rows.sort(key=lambda x: -x["total"])
+
+    # Ev harcamalarında bu kişinin payı
+    my_share = 0.0
+    if scope == "household":
+        for e in exps:
+            my_share += expense_shares(e, members).get(user["user_id"], 0.0)
+    my_personal = round(sum(
+        float(e["total"]) for e in await _month_expenses(
+            hh["household_id"], month, "self", user["user_id"])), 2)
 
     return {
         **empty,
@@ -3191,9 +3227,21 @@ async def monthly_stats(
         "by_member": sorted(
             [{"user_id": k, "total": round(v, 2)} for k, v in by_member.items()],
             key=lambda x: -x["total"]),
-        "daily_series": [{"day": d, "total": round(v, 2)} for d, v in daily.items()],
+        "cumulative": _cumulative(exps, lo, days),
+        # Geçen ayın eğrisi arkada gölge olarak çiziliyor. Ayları aynı gün
+        # sayısına indirgemiyoruz: 28 günlük şubatı 31'e germek yanlış bir
+        # eğri üretir, kısa ay kısa çizilsin.
+        "prev_cumulative": _cumulative(prev, plo, pdays),
         "months": months,
-        **_breakdown(exps),
+        "categories": cat_rows,
+        "merchants": sorted(
+            [{"name": k, "total": round(v, 2)} for k, v in bd["merchants"].items()],
+            key=lambda x: -x["total"])[:8],
+        # Senin toplam çıkışın: ev harcamalarındaki payın + kişisel harcaman.
+        # Oran değil toplam: "kişiselin evin %35'i" garip bir sayı, "bu ay
+        # toplam 720 € harcadın" gerçek bir soruya cevap.
+        "my_share": round(my_share, 2),
+        "my_personal": my_personal,
     }
 
 

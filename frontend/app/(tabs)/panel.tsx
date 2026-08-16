@@ -4,7 +4,6 @@ import { useCallback, useState } from "react";
 import { View, Text, StyleSheet, ScrollView, RefreshControl, Pressable, ActivityIndicator } from "react-native";
 import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import Svg, { Circle } from "react-native-svg";
 
 import { apiGet } from "@/src/api";
 import { useAuth } from "@/src/auth";
@@ -12,7 +11,7 @@ import { useHousehold } from "@/src/household";
 import {
   ScreenHeader, HeaderSplit, TrendBadge, Sheet, Card, Row, Divider, Avatar,
   Money, IconPill, CategoryIcon, categoryLabel, splitBadge, splitSummary, PulseDot,
-  formatEUR, formatEURShort,
+  Donut, formatEUR, formatEURShort,
 } from "@/src/ui";
 import { ConfirmSheet } from "@/app/duzenli";
 import { colors, spacing, type as T, overline, fontFamily, metrics, CATEGORY_ICONS } from "@/src/theme";
@@ -34,43 +33,6 @@ type Stats = {
   merchants: { name: string; total: number }[];
 };
 type ShopItem = { item_id: string; text: string; added_by: string; done: boolean };
-
-/**
- * Halka grafik — kategori dağılımı. Dikdörtgen olmayan tek görsel öğe.
- *
- * Çap aynı, çizgi ince: kalın halka pasta grafiğe yaklaşıp ağırlaşıyordu.
- * İnce halka aynı bilgiyi taşıyıp ortadaki toplama yer açıyor.
- */
-function Donut({ parts, size = 108, stroke = 9 }: {
-  parts: { total: number; color: string }[]; size?: number; stroke?: number;
-}) {
-  const r = (size - stroke) / 2;
-  const circ = 2 * Math.PI * r;
-  const sum = parts.reduce((s, p) => s + p.total, 0) || 1;
-  let offset = 0;
-  return (
-    <Svg width={size} height={size}>
-      {/* Sessiz taban halkası: tek kategori varsa bile daire kapalı okunuyor. */}
-      <Circle cx={size / 2} cy={size / 2} r={r} fill="none"
-              stroke={colors.border} strokeWidth={stroke} />
-      {parts.map((p, i) => {
-        const len = (p.total / sum) * circ;
-        const el = (
-          <Circle
-            key={i} cx={size / 2} cy={size / 2} r={r} fill="none"
-            stroke={p.color} strokeWidth={stroke} strokeLinecap="butt"
-            strokeDasharray={`${len} ${circ - len}`}
-            strokeDashoffset={-offset}
-            // -90°: ilk dilim tepeden başlasın
-            transform={`rotate(-90 ${size / 2} ${size / 2})`}
-          />
-        );
-        offset += len;
-        return el;
-      })}
-    </Svg>
-  );
-}
 
 export default function Panel() {
   const { user } = useAuth();
@@ -212,7 +174,7 @@ export default function Panel() {
 
               {cats.length > 0 && (
                 <Card title="Nereye Gitti" action="Tümü"
-                      onAction={() => router.push("/harcamalar")} style={styles.mx}>
+                      onAction={() => router.push("/istatistik")} style={styles.mx}>
                   <View style={styles.donutRow}>
                     <View style={styles.donutWrap}>
                       <Donut parts={cats} />
