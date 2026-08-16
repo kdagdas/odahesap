@@ -4,6 +4,9 @@ import { useEffect } from "react";
 import { LogBox, View, ActivityIndicator, StyleSheet } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
+import * as Linking from "expo-linking";
+import { Alert } from "react-native";
+import { savePaymentFor } from "@/src/payment";
 
 import { useIconFonts } from "@/src/hooks/use-icon-fonts";
 import { AuthProvider, useAuth } from "@/src/auth";
@@ -50,6 +53,37 @@ function Gate() {
 export default function RootLayout() {
   const [loaded, error] = useIconFonts();
   useEffect(() => { if (loaded || error) SplashScreen.hideAsync(); }, [loaded, error]);
+
+  /**
+   * Paylasilan odeme bilgisini kaydeder.
+   *
+   * Bilgi sunucuya hic ugramiyor: WhatsApp mesajindaki baglantiyi acan kisinin
+   * KENDI cihazina yaziliyor. IBAN'i sunucuda tutmama kararinin bedeli bu bir
+   * kerelik paylasim, kazanci ise kimsenin finansal verisinin bizde olmamasi.
+   */
+  useEffect(() => {
+    const isle = (url?: string | null) => {
+      if (!url) return;
+      try {
+        const { hostname, path, queryParams } = Linking.parse(url);
+        if (hostname !== "odeme" && path !== "odeme") return;
+        const q = (queryParams || {}) as Record<string, string>;
+        if (!q.u) return;
+        savePaymentFor(q.u, { iban: q.iban, paypal: q.pp, holder: q.h });
+        Alert.alert(
+          "Ödeme bilgisi kaydedildi",
+          `${q.n || "Ev arkadaşın"} kişisine ödeme yaparken kullanılacak. ` +
+          "Bu bilgi yalnızca bu telefonda saklanıyor.",
+        );
+      } catch { /* bozuk baglanti sessizce yok sayilir */ }
+    };
+    Linking.getInitialURL().then(isle);
+    const sub = Linking.addEventListener("url", (e) => isle(e.url));
+    return () => sub.remove();
+  }, []);
+
+  // Kancalardan SONRA: erken dönüş kancaların önüne geçerse React'in kanca
+  // sayısı render'dan render'a değişir ve uygulama açılışta çöker.
   if (!loaded && !error) return null;
 
   return (

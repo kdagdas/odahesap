@@ -157,6 +157,19 @@ export default function Profil() {
             {/* Ayrı ekranlara açılan iki kapı. Ev ve uygulama ayarları artık
                 burada değil; bu ekran yalnızca sana ait olanı tutuyor. */}
             <Card>
+              {/* Odeme bilgisi burada: kendine ait, cihazda saklaniyor.
+                  Ev ayarlarina koymak yanlis olurdu -- ortak degil. */}
+              <Pressable style={styles.navRow}
+                         onPress={() => router.push("/odeme-bilgilerim")}
+                         testID="open-payment-info" android_ripple={{ color: colors.divider }}>
+                <IconPill name="card-outline" color={colors.accentDark} tint={colors.accentSoft} size={38} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.navTitle}>Ödeme bilgilerim</Text>
+                  <Text style={styles.navDesc}>IBAN ve PayPal · telefonunda saklanır</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color={colors.inkTertiary} />
+              </Pressable>
+              <Divider inset={spacing.lg} />
               <Pressable style={styles.navRow} onPress={() => router.push("/ev-ayarlari")}
                          testID="open-household-settings" android_ripple={{ color: colors.divider }}>
                 <IconPill name="home" color={colors.accentDark} tint={colors.accentSoft} size={38} />

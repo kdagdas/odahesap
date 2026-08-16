@@ -4,8 +4,9 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import {
   View, Text, StyleSheet, ScrollView, ActivityIndicator, Pressable,
-  RefreshControl, TextInput, KeyboardAvoidingView, Platform,
+  RefreshControl, TextInput, KeyboardAvoidingView, Platform, Alert, Share, Linking,
 } from "react-native";
+import * as Clipboard from "expo-clipboard";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "expo-router";
 
@@ -14,8 +15,11 @@ import { useAuth } from "@/src/auth";
 import { useHousehold } from "@/src/household";
 import {
   ScreenHeader, HeaderSplit, Sheet, Card, Row, Divider, Avatar, Money,
-  IconPill, Chip, PrimaryButton, formatEUR, useKeyboardHeight,
+  IconPill, Chip, PrimaryButton, BottomSheet, formatEUR, useKeyboardHeight,
 } from "@/src/ui";
+import {
+  getPaymentFor, paypalLink, formatIban, type PaymentInfo,
+} from "@/src/payment";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors, spacing, radius, type as T, overline, fontFamily, metrics } from "@/src/theme";
 
@@ -116,6 +120,62 @@ export default function Denge() {
 
   const myPaid = stats?.by_member.find((b) => b.user_id === me)?.total ?? 0;
 
+  const [payWays, setPayWays] = useState(false);
+  const [karsiBilgi, setKarsiBilgi] = useState<PaymentInfo | null>(null);
+
+  const odeYollari = async () => {
+    if (!payFor) return;
+    setKarsiBilgi(await getPaymentFor(payFor.to));
+    setPayWays(true);
+  };
+
+  const tutar = () => parseFloat(payAmount.replace(",", ".")) || 0;
+
+  const acPaypal = async () => {
+    if (!karsiBilgi?.paypal) return;
+    await Linking.openURL(paypalLink(karsiBilgi.paypal, tutar()));
+    setPayWays(false);
+    sorKaydet();
+  };
+
+  const kopyalaIban = async () => {
+    if (!karsiBilgi?.iban) return;
+    await Clipboard.setStringAsync(karsiBilgi.iban);
+    setPayWays(false);
+    setMessage("IBAN kopyalandı");
+    sorKaydet();
+  };
+
+  /**
+   * Odeme yolundan donunce sorulur. Bunsuz insanlar odeyip isaretlemeyi
+   * unutuyor ve borc ekranda asili kaliyor -- uygulamanin en cok guven
+   * kaybettigi yer orasi olurdu.
+   */
+  const sorKaydet = () => {
+    setTimeout(() => {
+      Alert.alert(
+        "Ödemeyi kaydedelim mi?",
+        `${formatEUR(tutar())} ödediysen kaydedelim; ödemediysen borç olduğu gibi kalır.`,
+        [
+          { text: "Henüz ödemedim", style: "cancel" },
+          { text: "Ödedim, kaydet", onPress: () => confirmPay() },
+        ],
+      );
+    }, 600);
+  };
+
+  const isteBilgi = async () => {
+    if (!payFor) return;
+    const ad = nameOf(payFor.to).split(" ")[0];
+    try {
+      await Share.share({
+        message: `Merhaba ${ad}, KaSa'da ${formatEUR(tutar())} borcum var. `
+          + "Ödeme bilgini paylaşır mısın? (Profil → Ödeme Bilgilerim → Paylaş)",
+      });
+    } catch { /* iptal */ }
+    setPayWays(false);
+  };
+
   const openPay = (t: Transfer) => {
     setPayFor(t);
     setPayAmount(t.amount.toFixed(2).replace(".", ","));
@@ -133,6 +193,7 @@ export default function Denge() {
         from_user_id: payFor.from, to_user_id: payFor.to, amount,
       });
       setPayFor(null);
+      setPayWays(false);
       await load();
       setMessage("Ödeme kaydedildi");
     } catch (e: any) { setError(e?.message || "Kaydedilemedi"); }
@@ -408,33 +469,45 @@ export default function Denge() {
         </ScrollView>
 
         {payFor && (
-          <Pressable style={styles.payWrap} onPress={() => { setPayFor(null); setError(null); }}>
-            {/* Klavye açılınca sayfa onun üstüne çıkıyor; mutlak konumlu
-                olduğu için KeyboardAvoidingView bunu kendisi yapamıyor. */}
-            <Pressable
-              style={[styles.paySheet, { marginBottom: kbHeight, paddingBottom: spacing.xl + (kbHeight ? 0 : insets.bottom) }]}
-              onPress={() => {}}
-            >
-              <Text style={styles.payTitle}>
-                {payFor.from === me
-                  ? `${nameOf(payFor.to).split(" ")[0]} kişisine ödeme`
-                  : `${nameOf(payFor.from).split(" ")[0]} kişisinden tahsilat`}
-              </Text>
-              <Text style={styles.payHint}>
-                Tutarı değiştirebilirsin — kısmi ödeme de kaydedilir.
-              </Text>
-              <View style={styles.payRow}>
-                <TextInput
-                  style={styles.payInput}
-                  value={payAmount}
-                  onChangeText={(t) => setPayAmount(t.replace(/[^\d.,]/g, ""))}
-                  keyboardType="decimal-pad"
-                  autoFocus
-                  testID="settlement-amount"
-                />
-                <Text style={styles.payCur}>€</Text>
+          <BottomSheet visible onClose={() => { setPayFor(null); setError(null); setPayWays(false); }}>
+            <Text style={styles.payTitle}>
+              {payFor.from === me
+                ? `${nameOf(payFor.to).split(" ")[0]} kişisine ödeme`
+                : `${nameOf(payFor.from).split(" ")[0]} kişisinden tahsilat`}
+            </Text>
+            <Text style={styles.payHint}>
+              Tutarı değiştirebilirsin — kısmi ödeme de kaydedilir.
+            </Text>
+            <View style={styles.payRow}>
+              <TextInput
+                style={styles.payInput}
+                value={payAmount}
+                onChangeText={(t) => setPayAmount(t.replace(/[^\d.,]/g, ""))}
+                keyboardType="decimal-pad"
+                testID="settlement-amount"
+              />
+              <Text style={styles.payCur}>€</Text>
+            </View>
+            {error && <Text style={styles.err}>{error}</Text>}
+
+            {/* "Ode" ve "Odedim" AYNI tutar sayfasindan cikiyor: kismi odeme
+                tek yerde giriliyor. Ode kayit olusturmuyor -- banka yolunu
+                aciyor; asil transferi kullanici kendi bankasinda tamamliyor.
+                Donuste "kaydedelim mi?" diye soruluyor, yoksa insanlar odeyip
+                isaretlemeyi unutuyor. */}
+            {payFor.from === me && (
+              <View style={styles.confirmRow}>
+                <Pressable style={styles.solid} onPress={odeYollari} testID="pay-open">
+                  <Text style={styles.solidTxt}>Öde</Text>
+                </Pressable>
+                <Pressable style={styles.ghost} onPress={confirmPay} disabled={busy}
+                           testID="confirm-settlement">
+                  {busy ? <ActivityIndicator color={colors.dark} />
+                        : <Text style={styles.ghostTxt}>Ödedim</Text>}
+                </Pressable>
               </View>
-              {error && <Text style={styles.err}>{error}</Text>}
+            )}
+            {payFor.from !== me && (
               <View style={styles.confirmRow}>
                 <Pressable style={styles.ghost} onPress={() => { setPayFor(null); setError(null); }}
                            testID="cancel-settlement">
@@ -446,8 +519,62 @@ export default function Denge() {
                         : <Text style={styles.solidTxt}>Kaydet</Text>}
                 </Pressable>
               </View>
-            </Pressable>
-          </Pressable>
+            )}
+            {payFor.from === me && (
+              <Text style={styles.payFoot}>
+                "Öde" kayıt oluşturmaz — banka ya da PayPal'ı açar.
+              </Text>
+            )}
+          </BottomSheet>
+        )}
+
+        {/* Odeme yollari. Karsi tarafin bilgisi CIHAZDA: sunucuda tutulmuyor,
+            bir kez paylasildiginda kaydediliyor. Yoksa istenebiliyor. */}
+        {payWays && payFor && (
+          <BottomSheet visible onClose={() => setPayWays(false)}>
+            <Text style={[overline, styles.waysTitle]}>
+              {nameOf(payFor.to).split(" ")[0].toLocaleUpperCase("tr")} · {formatEUR(parseFloat(payAmount.replace(",", ".")) || 0)}
+            </Text>
+            {karsiBilgi?.paypal ? (
+              <Pressable style={styles.wayRow} onPress={() => acPaypal()} testID="way-paypal">
+                <View style={styles.wayIcon}>
+                  <Ionicons name="logo-paypal" size={18} color={colors.onInfo} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.wayTitle}>PayPal ile öde</Text>
+                  <Text style={styles.wayDesc}>Tutar dolu gelir, tek dokunuş</Text>
+                </View>
+                <Ionicons name="open-outline" size={18} color={colors.inkTertiary} />
+              </Pressable>
+            ) : null}
+            {karsiBilgi?.iban ? (
+              <>
+                {karsiBilgi?.paypal ? <Divider inset={spacing.lg} /> : null}
+                <Pressable style={styles.wayRow} onPress={() => kopyalaIban()} testID="way-iban">
+                  <View style={styles.wayIcon}>
+                    <Ionicons name="copy-outline" size={18} color={colors.inkSecondary} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.wayTitle}>IBAN'ı kopyala</Text>
+                    <Text style={styles.wayIban}>{formatIban(karsiBilgi.iban)}</Text>
+                    {karsiBilgi.holder ? (
+                      <Text style={styles.wayDesc}>{karsiBilgi.holder}</Text>
+                    ) : null}
+                  </View>
+                </Pressable>
+              </>
+            ) : null}
+            {!karsiBilgi?.iban && !karsiBilgi?.paypal && (
+              <View style={styles.wayEmpty}>
+                <Text style={styles.wayEmptyTxt}>
+                  {nameOf(payFor.to).split(" ")[0]} ödeme bilgisini henüz paylaşmamış.
+                </Text>
+                <Pressable style={styles.solid} onPress={() => isteBilgi()} testID="way-ask">
+                  <Text style={styles.solidTxt}>İste</Text>
+                </Pressable>
+              </View>
+            )}
+          </BottomSheet>
         )}
       </KeyboardAvoidingView>
     </View>
@@ -531,5 +658,23 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg, paddingVertical: spacing.md, minHeight: 56,
     fontSize: 26, lineHeight: 32, fontFamily: fontFamily.semibold, color: colors.ink,
   },
+  payFoot: {
+    ...T.caption, color: colors.inkTertiary, textAlign: "center",
+    paddingHorizontal: spacing.lg, marginTop: spacing.sm, lineHeight: 17,
+  },
+  waysTitle: { paddingHorizontal: spacing.lg, marginBottom: spacing.sm },
+  wayRow: {
+    flexDirection: "row", alignItems: "center", gap: spacing.md,
+    paddingHorizontal: spacing.lg, paddingVertical: spacing.md, minHeight: 64,
+  },
+  wayIcon: {
+    width: 38, height: 38, borderRadius: 12, backgroundColor: colors.surfaceSecondary,
+    alignItems: "center", justifyContent: "center",
+  },
+  wayTitle: { ...T.emph, color: colors.ink },
+  wayDesc: { ...T.caption, color: colors.inkTertiary, marginTop: 1 },
+  wayIban: { ...T.caption, color: colors.inkSecondary, marginTop: 1, letterSpacing: 0.3 },
+  wayEmpty: { paddingHorizontal: spacing.lg, gap: spacing.md, paddingBottom: spacing.sm },
+  wayEmptyTxt: { ...T.body, color: colors.inkSecondary, lineHeight: 20 },
   payCur: { ...T.screen, color: colors.inkSecondary },
 });

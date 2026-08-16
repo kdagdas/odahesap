@@ -14,6 +14,7 @@ import React from "react";
 import {
   View, Text, Pressable, StyleSheet, ViewStyle, StyleProp, Image, TextStyle,
   Keyboard, Platform, Modal, Alert, TextInput, Animated, PanResponder,
+  useWindowDimensions,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import Svg, { Circle } from "react-native-svg";
@@ -582,8 +583,18 @@ export function Donut({
  * Kurallar:
  *  - Yalnizca ASAGI suruklenir; yukari cekmek sayfayi buyutmez.
  *  - Yariyi gecen ya da hizli birakilan surukleme kapatir, digeri geri oturur.
- *  - Klavye acikken yukseklik `useKeyboardHeight()` ile itiliyor; jest bunu
- *    bozmasin diye kaydirma icerik degil KAP uzerinde.
+ *
+ * ### Klavye
+ *
+ * Uc sey birlikte olmali, ikisi tek basina yarim kaliyor:
+ *
+ *  1. Sayfa BLOK halinde yukari kalkar (`marginBottom`), yukari dogru
+ *     BUYUMEZ. Buyuseydi uzun bir formda baslik ekranin tepesine kacardi.
+ *  2. Klavye acikken ALT koseler de yuvarlanir. Yukari kalktigi an sayfa
+ *     ekrana yapisik degil, yuzen bir kart; koseli alt kenar ve altindan
+ *     gorunen zemin onu "kopuk" gosteriyordu.
+ *  3. Azami yukseklik klavyeye gore kisilir, boylece uzun form tasmak yerine
+ *     kendi icinde kayar.
  */
 export function BottomSheet({
   visible, onClose, children, maxHeight, testID,
@@ -596,6 +607,7 @@ export function BottomSheet({
 }) {
   const insets = useSafeAreaInsets();
   const kb = useKeyboardHeight();
+  const win = useWindowDimensions();
   const y = React.useRef(new Animated.Value(0)).current;
   const height = React.useRef(0);
 
@@ -631,6 +643,10 @@ export function BottomSheet({
     })
   ).current;
 
+  // Klavye acikken sayfa yuzuyor: dort kosesi de yuvarlak ve kenarlardan
+  // biraz iceride dursun ki "ekrana yapisik" degil "kart" okunsun.
+  const yuzuyor = kb > 0;
+
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={close}>
       {/* Perde AYRI bir katman, sayfanin ATASI degil.
@@ -644,9 +660,11 @@ export function BottomSheet({
         <Animated.View
           style={[
             styles.pickSheet,
+            yuzuyor && styles.pickSheetFloating,
             {
-              paddingBottom: spacing.lg + insets.bottom + kb,
-              maxHeight: maxHeight,
+              marginBottom: kb,
+              paddingBottom: spacing.lg + (yuzuyor ? 0 : insets.bottom),
+              maxHeight: maxHeight ?? (win.height - kb - insets.top - spacing.xxl),
               transform: [{ translateY: y }],
             },
           ]}
@@ -1200,6 +1218,11 @@ const styles = StyleSheet.create({
   pickSheet: {
     backgroundColor: colors.surface, borderTopLeftRadius: radius.xl,
     borderTopRightRadius: radius.xl, paddingTop: spacing.lg, paddingBottom: spacing.xxl,
+    width: "100%", maxWidth: CONTENT_MAX_WIDTH, alignSelf: "center",
+  },
+  pickSheetFloating: {
+    borderBottomLeftRadius: radius.xl, borderBottomRightRadius: radius.xl,
+    marginHorizontal: spacing.sm,
   },
   pickGrab: {
     width: 36, height: 4, borderRadius: 2, backgroundColor: colors.borderStrong,
