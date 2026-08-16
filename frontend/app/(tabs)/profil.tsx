@@ -19,7 +19,7 @@ import { useHousehold } from "@/src/household";
 import { apiPost, api } from "@/src/api";
 import { Avatar, Card, Divider, ScreenHeader, Sheet, IconPill } from "@/src/ui";
 import { pickPhotoFromLibrary, takePhotoWithCamera, removePhoto } from "@/src/photo";
-import { colors, spacing, radius, type as T, metrics, AVATARS, fontFamily } from "@/src/theme";
+import { colors, spacing, radius, type as T, metrics, AVATARS, fontFamily, overline } from "@/src/theme";
 
 export default function Profil() {
   const router = useRouter();
@@ -151,6 +151,36 @@ export default function Profil() {
                     </Pressable>
                   </>
                 )}
+
+                {/* Avatar izgarasi buraya tasindi. Onceden asagida ayri bir
+                    kartti ve resmini degistirmenin IKI yolu vardi: bastaki
+                    avatara dokunmak ve o kart. Kozmetik bir ayar ekranin en
+                    degerli yerini tutuyordu; simdi tek kapi. */}
+                <Divider inset={spacing.lg} />
+                <View style={styles.avatarBlock}>
+                  <Text style={styles.avatarLabel}>YA DA BİR AVATAR SEÇ</Text>
+                  <View style={styles.avatarGrid}>
+                    {AVATARS.map((a) => {
+                      const active = (user?.avatar_id ?? 0) === a.id;
+                      return (
+                        <Pressable key={a.id} onPress={() => setAvatar(a.id)}
+                                   style={[styles.avatarChoice, { backgroundColor: a.color },
+                                           active && styles.avatarChoiceActive]}
+                                   testID={`avatar-choice-${a.id}`} disabled={savingAvatar}>
+                          <Ionicons name={a.icon as any} size={24} color={colors.onDark} />
+                          {active && (
+                            <View style={styles.avatarCheck}>
+                              <Ionicons name="checkmark" size={12} color={colors.dark} />
+                            </View>
+                          )}
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                  {savingAvatar && (
+                    <ActivityIndicator color={colors.dark} size="small" style={{ marginTop: spacing.sm }} />
+                  )}
+                </View>
               </Card>
             )}
 
@@ -211,31 +241,6 @@ export default function Profil() {
                 </View>
                 <Ionicons name="chevron-forward" size={20} color={colors.inkTertiary} />
               </Pressable>
-            </Card>
-
-            <Card title="Avatarını Seç" padded>
-              <View style={styles.avatarGrid}>
-                {AVATARS.map((a) => {
-                  const active = (user?.avatar_id ?? 0) === a.id;
-                  return (
-                    <Pressable key={a.id} onPress={() => setAvatar(a.id)}
-                               style={[styles.avatarChoice, { backgroundColor: a.color }, active && styles.avatarChoiceActive]}
-                               testID={`avatar-choice-${a.id}`} disabled={savingAvatar}>
-                      <Ionicons name={a.icon as any} size={26} color={colors.onDark} />
-                      {active && (
-                        <View style={styles.avatarCheck}>
-                          <Ionicons name="checkmark" size={12} color={colors.dark} />
-                        </View>
-                      )}
-                    </Pressable>
-                  );
-                })}
-              </View>
-              {savingAvatar && (
-                <View style={{ alignItems: "center", marginTop: spacing.sm }}>
-                  <ActivityIndicator color={colors.dark} size="small" />
-                </View>
-              )}
             </Card>
 
             <Card title="Hesap">
@@ -372,9 +377,11 @@ const styles = StyleSheet.create({
   photoOpt: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.md, paddingHorizontal: spacing.lg },
   photoOptTxt: { ...T.bodySb, color: colors.ink },
 
-  avatarGrid: { flexDirection: "row", flexWrap: "wrap", gap: spacing.md, justifyContent: "space-between" },
+  avatarBlock: { paddingHorizontal: spacing.lg, paddingVertical: spacing.md },
+  avatarLabel: { ...overline, marginBottom: spacing.md },
+  avatarGrid: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   avatarChoice: {
-    width: 58, height: 58, borderRadius: 29,
+    width: 52, height: 52, borderRadius: 26,
     alignItems: "center", justifyContent: "center",
     borderWidth: 3, borderColor: "transparent",
   },
