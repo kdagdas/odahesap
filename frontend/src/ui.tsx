@@ -18,7 +18,7 @@ import {
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import Svg, { Circle } from "react-native-svg";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 
 import {
@@ -605,20 +605,43 @@ export function BottomSheet({
   maxHeight?: number;
   testID?: string;
 }) {
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      {/* Modal KENDI penceresi; koktekı SafeAreaProvider'in olctugu degerler
+          buraya gecmiyor. Kutuphanenin dokumani da bunu ayrica soyluyor:
+          Modal icine kendi saglayicisi konmali. Konmadigi icin `insets.bottom`
+          sifir okunuyor ve sayfa telefonun gezinme cubugunun altinda kaliyordu.
+          Kanca da saglayicinin ALTINDA cagrilmali -- disaridan cagirmak ayni
+          yanlis degeri okumak demek, o yuzden govde ayri bilesen. */}
+      <SafeAreaProvider>
+        <SheetBody onClose={onClose} maxHeight={maxHeight} testID={testID}>
+          {children}
+        </SheetBody>
+      </SafeAreaProvider>
+    </Modal>
+  );
+}
+
+function SheetBody({
+  onClose, children, maxHeight, testID,
+}: {
+  onClose: () => void;
+  children: React.ReactNode;
+  maxHeight?: number;
+  testID?: string;
+}) {
   const insets = useSafeAreaInsets();
   const kb = useKeyboardHeight();
   const win = useWindowDimensions();
   const y = React.useRef(new Animated.Value(0)).current;
   const height = React.useRef(0);
 
-  React.useEffect(() => { if (visible) y.setValue(0); }, [visible]);
-
-  const close = () => {
+  const kapat = React.useCallback(() => {
     Animated.timing(y, {
       toValue: Math.max(height.current, 400),
       duration: 180, useNativeDriver: true,
     }).start(() => { y.setValue(0); onClose(); });
-  };
+  }, [onClose]);
 
   const pan = React.useRef(
     PanResponder.create({
@@ -646,40 +669,34 @@ export function BottomSheet({
   // Klavye acikken sayfa yuzuyor: dort kosesi de yuvarlak ve kenarlardan
   // biraz iceride dursun ki "ekrana yapisik" degil "kart" okunsun.
   const yuzuyor = kb > 0;
+  // Gezinme cubugunun uzerinde her zaman en az bir parmak payi kalsin.
+  const altPay = Math.max(insets.bottom, spacing.md);
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={close}>
-      {/* Perde AYRI bir katman, sayfanin ATASI degil.
-          Onceki halde sayfa perdenin cocuguydu ve icerigi bir `Pressable`
-          sariyordu ("dokunma asagi gecmesin" diye). O Pressable dokunma
-          sorumlulugunu daha ilk temasta ustlendigi icin PanResponder'a hic
-          sira gelmiyordu -- tutamak tutuluyor ama cekilmiyordu. Kardes
-          duzende sayfaya dokunmak zaten perdeye ulasmiyor. */}
-      <View style={styles.sheetScrim}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={close} testID="sheet-scrim" />
-        <Animated.View
-          style={[
-            styles.pickSheet,
-            yuzuyor && styles.pickSheetFloating,
-            {
-              marginBottom: kb,
-              paddingBottom: spacing.lg + (yuzuyor ? 0 : insets.bottom),
-              maxHeight: maxHeight ?? (win.height - kb - insets.top - spacing.xxl),
-              transform: [{ translateY: y }],
-            },
-          ]}
-          onLayout={(e) => { height.current = e.nativeEvent.layout.height; }}
-          testID={testID}
-        >
-          {/* Surukleme yalnizca tutamak bolgesinden. Icerikten de surukleseydik
-              sayfanin icindeki listelerin kendi kaydirmasiyla kavga ederdi. */}
-          <View {...pan.panHandlers} style={styles.grabZone}>
-            <View style={styles.pickGrab} />
-          </View>
-          {children}
-        </Animated.View>
-      </View>
-    </Modal>
+    <View style={styles.sheetScrim}>
+      <Pressable style={StyleSheet.absoluteFill} onPress={kapat} testID="sheet-scrim" />
+      <Animated.View
+        style={[
+          styles.pickSheet,
+          yuzuyor && styles.pickSheetFloating,
+          {
+            marginBottom: kb,
+            paddingBottom: spacing.lg + (yuzuyor ? 0 : altPay),
+            maxHeight: maxHeight ?? (win.height - kb - insets.top - spacing.xxl),
+            transform: [{ translateY: y }],
+          },
+        ]}
+        onLayout={(e) => { height.current = e.nativeEvent.layout.height; }}
+        testID={testID}
+      >
+        {/* Surukleme yalnizca tutamak bolgesinden. Icerikten de surukleseydik
+            sayfanin icindeki listelerin kendi kaydirmasiyla kavga ederdi. */}
+        <View {...pan.panHandlers} style={styles.grabZone}>
+          <View style={styles.pickGrab} />
+        </View>
+        {children}
+      </Animated.View>
+    </View>
   );
 }
 
@@ -690,10 +707,6 @@ export function BottomSheet({
  * tarafta calisiyordu ama akici gorunmuyordu: sekmeye basmak ayni anda
  * sunucudan veri cekiyor ve butun liste yeniden ciziliyor, animasyon o yukle
  * yarisiyor. Kasan bir gecis, hic gecis olmamasindan kotudur.
- *
- * Sebep animasyon degil es zamanli is; ama belirtiyi kaldirmak dogru karar --
- * duzeltmek icin veri cekmeyi ertelemek gerekirdi ve o da sekmeyi yavas
- * hissettirirdi.
  */
 export function TabSwitch<T extends string>({
   value, options, onChange, onDark = false, testID,
@@ -701,7 +714,7 @@ export function TabSwitch<T extends string>({
   value: T;
   options: { value: T; label: string; icon?: string }[];
   onChange: (v: T) => void;
-  /** Koyu başlığın içinde kullanılıyorsa: renkler tersine döner. */
+  /** Koyu basligin icinde kullaniliyorsa: renkler tersine doner. */
   onDark?: boolean;
   testID?: string;
 }) {
@@ -944,11 +957,15 @@ export function SplitPicker({
               {[
                 { k: "all", label: "Tüm ev" },
                 { k: "me", label: "Sadece ben" },
-                { k: "none", label: "Temizle" },
+                { k: "none", label: "Hiçbiri" },
               ].map((q) => {
+                // Ucu de birer DURUM: "Temizle" gibi bir komut degil. Bu
+                // yuzden secili olan vurgulaniyor ve serit kendi icinde
+                // tutarli okunuyor.
                 const secili =
-                  (q.k === "all" && picked.length === members.length) ||
-                  (q.k === "me" && picked.length === 1 && picked[0] === meId);
+                  (q.k === "all" && picked.length === members.length && members.length > 0) ||
+                  (q.k === "me" && picked.length === 1 && picked[0] === meId) ||
+                  (q.k === "none" && picked.length === 0);
                 return (
                   <Pressable
                     key={q.k}

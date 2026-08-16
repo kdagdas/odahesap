@@ -640,11 +640,17 @@ const styles = StyleSheet.create({
   paidLabel: { ...T.caption, color: colors.inkTertiary },
   paidValue: { ...T.captionSb, color: colors.ink },
   msg: { ...T.bodySb, color: colors.accentDark, textAlign: "center" },
-  err: { ...T.bodySb, color: colors.negative, textAlign: "center" },
+  err: {
+    ...T.bodySb, color: colors.negative, textAlign: "center",
+    paddingHorizontal: spacing.lg, marginTop: spacing.sm,
+  },
   confirm: { backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1,
              borderColor: colors.border, padding: spacing.lg, gap: spacing.md },
   confirmTxt: { ...T.body, color: colors.inkSecondary, textAlign: "center" },
-  confirmRow: { flexDirection: "row", gap: spacing.md },
+  confirmRow: {
+    flexDirection: "row", gap: spacing.md,
+    paddingHorizontal: spacing.lg, marginTop: spacing.md,
+  },
   ghost: { flex: 1, minHeight: 50, alignItems: "center", justifyContent: "center",
            borderRadius: radius.pill, backgroundColor: colors.surfaceSecondary },
   ghostTxt: { ...T.bodySb, color: colors.inkSecondary },
@@ -659,9 +665,15 @@ const styles = StyleSheet.create({
              justifyContent: "flex-end" },
   paySheet: { backgroundColor: colors.surface, borderTopLeftRadius: radius.xl,
               borderTopRightRadius: radius.xl, padding: spacing.xl, gap: spacing.md },
-  payTitle: { ...T.title, color: colors.ink },
-  payHint: { ...T.caption, color: colors.inkTertiary },
-  payRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  payTitle: { ...T.title, color: colors.ink, paddingHorizontal: spacing.lg },
+  payHint: {
+    ...T.caption, color: colors.inkTertiary,
+    paddingHorizontal: spacing.lg, marginTop: 2,
+  },
+  payRow: {
+    flexDirection: "row", alignItems: "center", gap: spacing.sm,
+    paddingHorizontal: spacing.lg, marginTop: spacing.md,
+  },
   payInput: {
     flex: 1, backgroundColor: colors.surfaceSecondary, borderRadius: radius.md,
     paddingHorizontal: spacing.lg, paddingVertical: spacing.md, minHeight: 56,
