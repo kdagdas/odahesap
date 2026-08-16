@@ -21,6 +21,7 @@ export type PaymentInfo = {
 
 const BENIM = "odeme:benim";
 const BASKASI = (userId: string) => `odeme:kisi:${userId}`;
+const PAYLASILDI = "odeme:paylasildi";
 
 /** IBAN'ı karşılaştırma ve saklama için sadeleştirir; gösterimde bozulmaz. */
 export const normalizeIban = (v?: string) =>
@@ -53,6 +54,24 @@ export async function setMyPayment(info: PaymentInfo): Promise<void> {
     holder: (info.holder || "").trim() || undefined,
   };
   await AsyncStorage.setItem(BENIM, JSON.stringify(temiz));
+}
+
+/**
+ * Bilgimi bir kez paylaştım mı?
+ *
+ * **Bu bir kanıt değil, bir vurgu kararıdır.** Karşı tarafın kaydedip
+ * kaydetmediğini öğrenmemizin yolu yok — bilgi cihazda duruyor, Salih'in
+ * telefonunda ne olduğu bize hiç ulaşmıyor. Bu işaret yalnızca Kasa'daki
+ * "bilgimi gönder" düğmesinin büyük mü küçük mü duracağına karar veriyor.
+ * Düğme hiçbir zaman kaybolmuyor: IBAN değişir, eve yeni biri katılır.
+ */
+export async function hasSharedPayment(): Promise<boolean> {
+  try { return (await AsyncStorage.getItem(PAYLASILDI)) === "1"; }
+  catch { return false; }
+}
+
+export async function markPaymentShared(): Promise<void> {
+  try { await AsyncStorage.setItem(PAYLASILDI, "1"); } catch { /* onemsiz */ }
 }
 
 export async function getPaymentFor(userId: string): Promise<PaymentInfo | null> {

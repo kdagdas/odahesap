@@ -2,6 +2,7 @@ import { Tabs } from "expo-router";
 import { View, StyleSheet, Platform } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { tabBarHeight } from "@/src/ui";
 import { colors, fontFamily } from "@/src/theme";
 
 type IconArg = { color: string; focused: boolean };
@@ -13,7 +14,9 @@ type IconArg = { color: string; focused: boolean };
 // because other screens navigate to them by path; only the titles moved.
 export default function TabsLayout() {
   const insets = useSafeAreaInsets();
-  // Raise tab bar clearly above the phone's home indicator / gesture bar
+  // Raise tab bar clearly above the phone's home indicator / gesture bar.
+  // The total height comes from `tabBarHeight` in src/ui so the screens that
+  // must clear the bar cannot drift away from the bar that draws it.
   const bottomPadding = Math.max(insets.bottom, 12) + 12;
 
   return (
@@ -25,7 +28,7 @@ export default function TabsLayout() {
         tabBarStyle: {
           backgroundColor: colors.surface,
           borderTopColor: colors.border,
-          height: 60 + bottomPadding,
+          height: tabBarHeight(insets.bottom),
           paddingBottom: bottomPadding,
           paddingTop: 10,
           ...Platform.select({

@@ -10,6 +10,7 @@ import { useHousehold } from "@/src/household";
 import {
   ScreenHeader, HeaderSplit, Sheet, Card, Divider, Chip, Avatar, CategoryIcon,
   MerchantBadge, Tag, Money, splitBadge, formatEUR, formatDateTR, formatQty,
+  useScrollPad,
 } from "@/src/ui";
 import { colors, spacing, radius, type as T, overline, metrics } from "@/src/theme";
 
@@ -33,6 +34,8 @@ const periodLabel = (p: Period, idx: number, total: number) => {
 // Was a tab; the shopping list earns that slot because it is used daily while
 // this history is opened occasionally. Reached from "Tümü" on the home screen.
 export default function Harcamalar() {
+  // Gezinme cubugu payi -- ic dolgu zaten var, buraya yalnizca cihazin payi.
+  const altPay = useScrollPad({ extra: 0 });
   const { user } = useAuth();
   const router = useRouter();
   const { members, activePeriod } = useHousehold();
@@ -73,7 +76,7 @@ export default function Harcamalar() {
       {/* Başlık kaydırma alanının içinde: aşağı inerken beyaz yüzey koyu alanı
           örtüp yerini alıyor. Sabit kalan koyu bant listeden yer çalıyordu. */}
       <ScrollView
-        contentContainerStyle={styles.page}
+        contentContainerStyle={[styles.page, altPay]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={colors.dark} />

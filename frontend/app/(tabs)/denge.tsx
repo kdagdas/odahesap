@@ -4,23 +4,24 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import {
   View, Text, StyleSheet, ScrollView, ActivityIndicator, Pressable,
-  RefreshControl, TextInput, KeyboardAvoidingView, Platform, Alert, Share, Linking,
+  RefreshControl, TextInput, KeyboardAvoidingView, Platform, Share, Linking,
 } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import { Ionicons } from "@expo/vector-icons";
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 
 import { apiGet, apiPost, apiDelete } from "@/src/api";
 import { useAuth } from "@/src/auth";
 import { useHousehold } from "@/src/household";
 import {
   ScreenHeader, HeaderSplit, Sheet, Card, Row, Divider, Avatar, Money,
-  IconPill, Chip, PrimaryButton, BottomSheet, formatEUR, useKeyboardHeight,
+  IconPill, Chip, PrimaryButton, BottomSheet, PulseDot, formatEUR, currencySign,
+  useScrollPad,
 } from "@/src/ui";
 import {
-  getPaymentFor, paypalLink, formatIban, type PaymentInfo,
+  getPaymentFor, getMyPayment, hasSharedPayment, markPaymentShared,
+  shareText, paypalLink, formatIban, type PaymentInfo,
 } from "@/src/payment";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors, spacing, radius, type as T, overline, fontFamily, metrics } from "@/src/theme";
 
 type Transfer = { from: string; to: string; amount: number };
@@ -50,12 +51,14 @@ const relativeDay = (iso: string) => {
 
 
 export default function Denge() {
+  const router = useRouter();
   const { user } = useAuth();
   const { members, activePeriod, isAdmin, refresh: refreshHH } = useHousehold();
-  // Anasayfadaki değişim rozetinden gelindiğinde doğrudan istatistiklere in.
-  const kbHeight = useKeyboardHeight();
-  const insets = useSafeAreaInsets();
   const scrollRef = useRef<ScrollView>(null);
+  // Sekme cubugunun ve telefonun gezinme cubugunun kapladigi yer.
+  // Elle yazilan 120/130 sabitleri cubuk yuksekligiyle birlikte
+  // degismiyordu; olcu artik tek yerden geliyor.
+  const altPay = useScrollPad({ tabs: true });
 
   const [periods, setPeriods] = useState<Period[]>([]);
   const [selected, setSelected] = useState<string | undefined>(undefined);
@@ -90,7 +93,40 @@ export default function Denge() {
     finally { setLoading(false); setRefreshing(false); }
   }, [selected]);
 
-  useFocusEffect(useCallback(() => { load(); }, [load]));
+  /**
+   * Alacakli tarafin "bilgimi gonder" durumu.
+   *
+   * Odeme bilgisini paylasabilecek TEK kisi alacaklidir, ama bugune kadar o
+   * yol yalnizca Profil'in icindeydi: borclu "Iste" diyor, WhatsApp'tan mesaj
+   * gidiyor, alacaklinin mesaji okuyup Profil -> Odeme Bilgilerim -> Paylas
+   * yolunu bulmasi gerekiyordu. Dort adim, iki kisi, iki uygulama -- ustelik
+   * alacakli o ekrani hic kesfetmemis olabilir. Oysa "Salih sana 42 EUR
+   * borclu" yazan ekrana zaten bakiyor; hamleyi yapacagi an tam orasi.
+   */
+  // Ikisi TEK okumada geliyor: ayri ayri cozulselerdi ilk kare yanlis dugmeyi
+  // gosterip hemen otekine atlardi.
+  const [bilgim, setBilgim] = useState<{ info: PaymentInfo; paylasildi: boolean } | null>(null);
+  const bilgimVar = !!(bilgim?.info.iban || bilgim?.info.paypal);
+
+  useFocusEffect(useCallback(() => {
+    load();
+    // Odaklanmada yeniden okunuyor: kullanici formu doldurup DONDUGUNDE
+    // dugmenin "ekle"den "gonder"e gecmesi lazim.
+    Promise.all([getMyPayment(), hasSharedPayment()])
+      .then(([info, paylasildi]) => setBilgim({ info, paylasildi }));
+  }, [load]));
+
+  const paylasBilgim = async () => {
+    if (!bilgim) return;
+    if (!bilgimVar) { router.push("/odeme-bilgilerim"); return; }
+    try {
+      await Share.share({ message: shareText(user?.name || "Ev arkadaşın", me, bilgim.info) });
+      // Iptal edilse bile isaretleniyor: bu bir kanit degil, yalnizca dugmenin
+      // buyuk mu kucuk mu duracagi. Yanlis olmasi hicbir seye mal olmuyor.
+      await markPaymentShared();
+      setBilgim((b) => (b ? { ...b, paylasildi: true } : b));
+    } catch { /* iptal */ }
+  };
 
   const me = user?.user_id || "";
   const member = (id: string) => members.find((m) => m.user_id === id);
@@ -120,50 +156,42 @@ export default function Denge() {
 
   const myPaid = stats?.by_member.find((b) => b.user_id === me)?.total ?? 0;
 
-  const [payWays, setPayWays] = useState(false);
+  /**
+   * Odeme sayfasi TEK yuz.
+   *
+   * Onceden iki yuzdu (once tutar, sonra yollar) ve tutar yuzu bir gise
+   * gibiydi: tutar zaten dolu geliyordu, kullanici ona bakip yeniden "Ode"ye
+   * basiyordu. Ustelik karsi taraf bilgisini paylasmamissa akis orada
+   * cikmaza giriyordu -- nakit odeyen birinin bile yolu kapaliydi.
+   *
+   * Simdi hepsi tek sayfada ve tek koyu dugme var: tutar ustte (cipler
+   * kismi odemeyi ayri bir dugme olmaktan cikariyor), ortada yollar,
+   * en altta kayit. Yollar sessiz liste satiri, cunku parayi tasiyan biz
+   * degiliz; bizim sahip oldugumuz tek is en alttaki kayit.
+   */
   const [karsiBilgi, setKarsiBilgi] = useState<PaymentInfo | null>(null);
+  // Bir odeme yoluna gidilip donuldu mu? Donuste kayit satirinda isaret yanar.
+  const [yolaGidildi, setYolaGidildi] = useState(false);
+  const tutarRef = useRef<TextInput>(null);
 
-  const odeYollari = async () => {
-    if (!payFor) return;
-    setKarsiBilgi(await getPaymentFor(payFor.to));
-    setPayWays(true);
-  };
-
-  const yollariKapat = () => setPayWays(false);
-
+  const iPay = payFor?.from === me;
   const tutar = () => parseFloat(payAmount.replace(",", ".")) || 0;
+  const setTutar = (v: number) => {
+    setError(null);
+    setPayAmount(v.toFixed(2).replace(".", ","));
+  };
 
   const acPaypal = async () => {
     if (!karsiBilgi?.paypal) return;
     await Linking.openURL(paypalLink(karsiBilgi.paypal, tutar()));
-    setPayWays(false);
-    sorKaydet();
+    setYolaGidildi(true);
   };
 
   const kopyalaIban = async () => {
     if (!karsiBilgi?.iban) return;
     await Clipboard.setStringAsync(karsiBilgi.iban);
-    setPayWays(false);
     setMessage("IBAN kopyalandı");
-    sorKaydet();
-  };
-
-  /**
-   * Odeme yolundan donunce sorulur. Bunsuz insanlar odeyip isaretlemeyi
-   * unutuyor ve borc ekranda asili kaliyor -- uygulamanin en cok guven
-   * kaybettigi yer orasi olurdu.
-   */
-  const sorKaydet = () => {
-    setTimeout(() => {
-      Alert.alert(
-        "Ödemeyi kaydedelim mi?",
-        `${formatEUR(tutar())} ödediysen kaydedelim; ödemediysen borç olduğu gibi kalır.`,
-        [
-          { text: "Henüz ödemedim", style: "cancel" },
-          { text: "Ödedim, kaydet", onPress: () => confirmPay() },
-        ],
-      );
-    }, 600);
+    setYolaGidildi(true);
   };
 
   const isteBilgi = async () => {
@@ -175,13 +203,15 @@ export default function Denge() {
           + "Ödeme bilgini paylaşır mısın? (Profil → Ödeme Bilgilerim → Paylaş)",
       });
     } catch { /* iptal */ }
-    setPayWays(false);
   };
 
-  const openPay = (t: Transfer) => {
+  const openPay = async (t: Transfer) => {
     setPayFor(t);
     setPayAmount(t.amount.toFixed(2).replace(".", ","));
+    setYolaGidildi(false);
     setError(null); setMessage(null);
+    // Yollar sayfayla birlikte aciliyor; ayri bir adim beklemesin.
+    setKarsiBilgi(t.from === me ? await getPaymentFor(t.to) : null);
   };
 
   const confirmPay = async () => {
@@ -195,7 +225,6 @@ export default function Denge() {
         from_user_id: payFor.from, to_user_id: payFor.to, amount,
       });
       setPayFor(null);
-      setPayWays(false);
       await load();
       setMessage("Ödeme kaydedildi");
     } catch (e: any) { setError(e?.message || "Kaydedilemedi"); }
@@ -237,7 +266,7 @@ export default function Denge() {
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
         <ScrollView
           ref={scrollRef}
-          contentContainerStyle={styles.scroll}
+          contentContainerStyle={[styles.scroll, altPay]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
           refreshControl={
@@ -346,15 +375,46 @@ export default function Denge() {
                                 </View>
                               </View>
                               {!archived && (
-                                <Pressable
-                                  style={[styles.bridgeBtn, iPay ? styles.btnDark : styles.btnSoft]}
-                                  onPress={() => openPay(t)}
-                                  testID={iPay ? `mark-paid-to-${t.to}` : `mark-paid-${t.from}`}
-                                >
-                                  <Text style={iPay ? styles.btnDarkTxt : styles.btnSoftTxt}>
-                                    {iPay ? "Öde" : "Ödendi"}
-                                  </Text>
-                                </Pressable>
+                                <>
+                                <View style={styles.bridgeActions}>
+                                  <Pressable
+                                    style={[styles.bridgeBtn, iPay ? styles.btnDark : styles.btnSoft]}
+                                    onPress={() => openPay(t)}
+                                    testID={iPay ? `mark-paid-to-${t.to}` : `mark-paid-${t.from}`}
+                                  >
+                                    <Text style={iPay ? styles.btnDarkTxt : styles.btnSoftTxt}>
+                                      {iPay ? "Öde" : "Ödendi"}
+                                    </Text>
+                                  </Pressable>
+                                  {/* Alacakliya, ilk paylasima kadar. Hic bilgi
+                                      girmemisse dugme "Paylas" demiyor -- formu
+                                      aciyor; asil kesfedilmeyen sey o form. */}
+                                  {!iPay && bilgim && !bilgim.paylasildi && (
+                                    <Pressable
+                                      style={[styles.bridgeBtn, styles.btnOutline]}
+                                      onPress={paylasBilgim}
+                                      testID={`share-payment-${t.from}`}
+                                    >
+                                      <Text style={styles.btnOutlineTxt} numberOfLines={1}>
+                                        {bilgimVar ? "Bilgimi gönder" : "Ödeme bilgini ekle"}
+                                      </Text>
+                                    </Pressable>
+                                  )}
+                                </View>
+                                {/* Paylastiktan sonra KAYBOLMUYOR, kuculuyor:
+                                    IBAN degisir, eve yeni biri katilir. */}
+                                {!iPay && bilgim?.paylasildi && (
+                                  <Pressable onPress={paylasBilgim} hitSlop={10}
+                                             style={styles.shareAgain}
+                                             testID={`share-payment-${t.from}`}>
+                                    <Ionicons name="share-social-outline" size={13}
+                                              color={colors.inkTertiary} />
+                                    <Text style={styles.shareAgainTxt}>
+                                      Ödeme bilgimi gönder
+                                    </Text>
+                                  </Pressable>
+                                )}
+                                </>
                               )}
                             </View>
                           ) : (
@@ -470,119 +530,137 @@ export default function Denge() {
           </Sheet>
         </ScrollView>
 
-        {/* TEK sayfa: odeme yollari ayri bir Modal degil, ayni sayfanin
-            ikinci yuzu. Ust uste iki Modal alttakini ekranda birakiyor ve
-            ustteki telefon gezinme cubugunun altina tasiyordu. */}
-        {payFor && !payWays && (
-          <BottomSheet visible onClose={() => { setPayFor(null); setError(null); }}>
-            <Text style={styles.payTitle}>
-              {payFor.from === me
-                ? `${nameOf(payFor.to).split(" ")[0]} kişisine ödeme`
-                : `${nameOf(payFor.from).split(" ")[0]} kişisinden tahsilat`}
+        {/* TEK yuz. Ust bolge tutar, orta bolge yollar, alt bolge kayit --
+            aralarinda yalnizca sac teli cizgi var. Ekranda TEK koyu dugme
+            duruyor: kalabalik hissini yaratan sey oge sayisi degil, esit
+            bagiran ogelerdi. */}
+        {payFor && (
+          <BottomSheet
+            visible
+            onClose={() => { setPayFor(null); setError(null); }}
+            testID="pay-sheet"
+          >
+            <Text style={[overline, styles.payOver]}>
+              {iPay
+                ? `${first(payFor.to).toLocaleUpperCase("tr")} KİŞİSİNE ÖDEME`
+                : `${first(payFor.from).toLocaleUpperCase("tr")} KİŞİSİNDEN TAHSİLAT`}
             </Text>
-            <Text style={styles.payHint}>
-              Tutarı değiştirebilirsin — kısmi ödeme de kaydedilir.
-            </Text>
-            <View style={styles.payRow}>
+
+            {/* Tutar bir soru degil, ekranda duran bir alan: dolu geliyor ve
+                dokununca duzeltiliyor. Ayri bir "kismi ode" dugmesi yok --
+                cipler o isi goruyor ve nadir durum sik durumla ayni yeri
+                kaplamiyor. */}
+            <View style={styles.amountRow}>
               <TextInput
-                style={styles.payInput}
+                ref={tutarRef}
+                style={styles.amountInput}
                 value={payAmount}
-                onChangeText={(t) => setPayAmount(t.replace(/[^\d.,]/g, ""))}
+                onChangeText={(v) => { setError(null); setPayAmount(v.replace(/[^\d.,]/g, "")); }}
                 keyboardType="decimal-pad"
+                selectTextOnFocus
                 testID="settlement-amount"
               />
-              <Text style={styles.payCur}>€</Text>
+              <Text style={styles.amountCur}>{currencySign()}</Text>
             </View>
-            {error && <Text style={styles.err}>{error}</Text>}
 
-            {/* "Ode" ve "Odedim" AYNI tutar sayfasindan cikiyor: kismi odeme
-                tek yerde giriliyor. Ode kayit olusturmuyor -- banka yolunu
-                aciyor; asil transferi kullanici kendi bankasinda tamamliyor.
-                Donuste "kaydedelim mi?" diye soruluyor, yoksa insanlar odeyip
-                isaretlemeyi unutuyor. */}
-            {payFor.from === me && (
-              <View style={styles.confirmRow}>
-                <Pressable style={styles.solid} onPress={odeYollari} testID="pay-open">
-                  <Text style={styles.solidTxt}>Öde</Text>
-                </Pressable>
-                <Pressable style={styles.ghost} onPress={confirmPay} disabled={busy}
-                           testID="confirm-settlement">
-                  {busy ? <ActivityIndicator color={colors.dark} />
-                        : <Text style={styles.ghostTxt}>Ödedim</Text>}
-                </Pressable>
-              </View>
-            )}
-            {payFor.from !== me && (
-              <View style={styles.confirmRow}>
-                <Pressable style={styles.ghost} onPress={() => { setPayFor(null); setError(null); }}
-                           testID="cancel-settlement">
-                  <Text style={styles.ghostTxt}>Vazgeç</Text>
-                </Pressable>
-                <Pressable style={styles.solid} onPress={confirmPay} disabled={busy}
-                           testID="confirm-settlement">
-                  {busy ? <ActivityIndicator color={colors.onBrand} />
-                        : <Text style={styles.solidTxt}>Kaydet</Text>}
-                </Pressable>
-              </View>
-            )}
-            {payFor.from === me && (
-              <Text style={styles.payFoot}>
-                "Öde" kayıt oluşturmaz — banka ya da PayPal'ı açar.
-              </Text>
-            )}
-          </BottomSheet>
-        )}
-
-        {/* Odeme yollari. Karsi tarafin bilgisi CIHAZDA: sunucuda tutulmuyor,
-            bir kez paylasildiginda kaydediliyor. Yoksa istenebiliyor. */}
-        {payWays && payFor && (
-          <BottomSheet visible onClose={yollariKapat}>
-            <Pressable style={styles.waysBack} onPress={yollariKapat} testID="ways-back" hitSlop={8}>
-              <Ionicons name="chevron-back" size={18} color={colors.inkSecondary} />
-              <Text style={styles.waysBackTxt}>Tutar</Text>
-            </Pressable>
-            <Text style={[overline, styles.waysTitle]}>
-              {nameOf(payFor.to).split(" ")[0].toLocaleUpperCase("tr")} · {formatEUR(parseFloat(payAmount.replace(",", ".")) || 0)}
-            </Text>
-            {karsiBilgi?.paypal ? (
-              <Pressable style={styles.wayRow} onPress={() => acPaypal()} testID="way-paypal">
-                <View style={styles.wayIcon}>
-                  <Ionicons name="logo-paypal" size={18} color={colors.onInfo} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.wayTitle}>PayPal ile öde</Text>
-                  <Text style={styles.wayDesc}>Tutar dolu gelir, tek dokunuş</Text>
-                </View>
-                <Ionicons name="open-outline" size={18} color={colors.inkTertiary} />
+            <View style={styles.quick}>
+              {[
+                { k: "tam", label: "Tamamı", v: payFor.amount },
+                { k: "yari", label: "Yarısı", v: Math.round(payFor.amount * 50) / 100 },
+              ].map((q) => {
+                const on = Math.abs(tutar() - q.v) < 0.005;
+                return (
+                  <Pressable
+                    key={q.k}
+                    style={[styles.quickChip, on && styles.quickChipOn]}
+                    onPress={() => setTutar(q.v)}
+                    testID={`pay-quick-${q.k}`}
+                  >
+                    <Text style={[styles.quickTxt, on && styles.quickTxtOn]}>{q.label}</Text>
+                  </Pressable>
+                );
+              })}
+              <Pressable
+                style={styles.quickChip}
+                onPress={() => tutarRef.current?.focus()}
+                testID="pay-quick-other"
+              >
+                <Text style={styles.quickTxt}>Başka</Text>
               </Pressable>
-            ) : null}
-            {karsiBilgi?.iban ? (
+            </View>
+
+            {error && <Text style={styles.err} testID="pay-error">{error}</Text>}
+
+            {/* Yollar yalnizca ODEYEN tarafta. Karsi tarafin bilgisi CIHAZDA:
+                sunucuda tutulmuyor, bir kez paylasildiginda kaydediliyor. */}
+            {iPay && (
               <>
-                {karsiBilgi?.paypal ? <Divider inset={spacing.lg} /> : null}
-                <Pressable style={styles.wayRow} onPress={() => kopyalaIban()} testID="way-iban">
-                  <View style={styles.wayIcon}>
-                    <Ionicons name="copy-outline" size={18} color={colors.inkSecondary} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.wayTitle}>IBAN'ı kopyala</Text>
-                    <Text style={styles.wayIban}>{formatIban(karsiBilgi.iban)}</Text>
-                    {karsiBilgi.holder ? (
-                      <Text style={styles.wayDesc}>{karsiBilgi.holder}</Text>
-                    ) : null}
-                  </View>
-                </Pressable>
+                <View style={styles.hair} />
+                {karsiBilgi?.paypal ? (
+                  <Pressable style={styles.wayRow} onPress={acPaypal} testID="way-paypal">
+                    <View style={[styles.wayIcon, { backgroundColor: colors.infoSoft }]}>
+                      <Ionicons name="logo-paypal" size={17} color={colors.onInfo} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.wayTitle}>PayPal ile öde</Text>
+                      <Text style={styles.wayDesc}>Tutar dolu gider</Text>
+                    </View>
+                    <Ionicons name="open-outline" size={17} color={colors.inkTertiary} />
+                  </Pressable>
+                ) : null}
+                {karsiBilgi?.paypal && karsiBilgi?.iban ? <Divider inset={64} /> : null}
+                {karsiBilgi?.iban ? (
+                  <Pressable style={styles.wayRow} onPress={kopyalaIban} testID="way-iban">
+                    <View style={styles.wayIcon}>
+                      <Ionicons name="copy-outline" size={17} color={colors.inkSecondary} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.wayTitle}>IBAN{"’"}ı kopyala</Text>
+                      <Text style={styles.wayIban} numberOfLines={1}>{formatIban(karsiBilgi.iban)}</Text>
+                    </View>
+                  </Pressable>
+                ) : null}
+                {/* Bilgi yoksa artik CIKMAZ degil, sadece bir satir eksik:
+                    alttaki nakit kaydi her durumda duruyor. */}
+                {!karsiBilgi?.paypal && !karsiBilgi?.iban ? (
+                  <Pressable style={styles.wayRow} onPress={isteBilgi} testID="way-ask">
+                    <View style={styles.wayIcon}>
+                      <Ionicons name="help-circle-outline" size={17} color={colors.inkSecondary} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.wayTitle}>
+                        {first(payFor.to)} ödeme bilgisini paylaşmamış
+                      </Text>
+                      <Text style={styles.wayDesc}>Dokun, iste</Text>
+                    </View>
+                    <Ionicons name="share-outline" size={17} color={colors.inkTertiary} />
+                  </Pressable>
+                ) : null}
               </>
-            ) : null}
-            {!karsiBilgi?.iban && !karsiBilgi?.paypal && (
-              <View style={styles.wayEmpty}>
-                <Text style={styles.wayEmptyTxt}>
-                  {nameOf(payFor.to).split(" ")[0]} ödeme bilgisini henüz paylaşmamış.
-                </Text>
-                <Pressable style={styles.solid} onPress={() => isteBilgi()} testID="way-ask">
-                  <Text style={styles.solidTxt}>İste</Text>
-                </Pressable>
-              </View>
             )}
+
+            {/* Uygulamanin gercekten sahip oldugu tek is. Bir yola gidilip
+                donulduyse yaninda isaret yaniyor -- eskiden bunun yerine
+                ekranin ortasina Alert firliyordu. */}
+            <View style={styles.hair} />
+            <View style={styles.recordRow}>
+              <View style={{ flex: 1 }}>
+                <View style={styles.recordHead}>
+                  {yolaGidildi && <PulseDot size={7} trigger={1} />}
+                  <Text style={styles.wayTitle}>
+                    {iPay ? "Nakit / elden ödedim" : "Ödedi"}
+                  </Text>
+                </View>
+                <Text style={styles.wayDesc}>
+                  {yolaGidildi ? "Ödediysen kaydedelim" : "Yalnızca kayıt oluşturur"}
+                </Text>
+              </View>
+              <Pressable style={styles.recordBtn} onPress={confirmPay} disabled={busy}
+                         testID="confirm-settlement">
+                {busy ? <ActivityIndicator color={colors.onBrand} />
+                      : <Text style={styles.recordTxt}>Kaydet</Text>}
+              </Pressable>
+            </View>
           </BottomSheet>
         )}
       </KeyboardAvoidingView>
@@ -592,7 +670,7 @@ export default function Denge() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.dark },
-  scroll: { paddingBottom: 130, backgroundColor: colors.bg, flexGrow: 1 },
+  scroll: { backgroundColor: colors.bg, flexGrow: 1 },
   mx: { marginHorizontal: spacing.lg },
   heroLabel: { ...overline, color: colors.onDarkMuted },
   heroValue: { ...T.hero, marginTop: spacing.xs },
@@ -617,10 +695,26 @@ const styles = StyleSheet.create({
     alignSelf: "center", marginTop: spacing.md, minHeight: 38, justifyContent: "center",
     paddingHorizontal: spacing.xl, borderRadius: radius.pill,
   },
+  // Iki dugme yan yana durabilmeli; dar telefonda ikincisi kirilmadan kissin.
+  bridgeActions: {
+    flexDirection: "row", justifyContent: "center", alignItems: "center", gap: spacing.sm,
+  },
   btnDark: { backgroundColor: colors.brand },
   btnDarkTxt: { ...T.bodySb, color: colors.onBrand },
   btnSoft: { backgroundColor: colors.accentSoft },
   btnSoftTxt: { ...T.bodySb, color: colors.accentDark },
+  // Ikincil eylem: dolu degil kenarlikli. "Odendi" ile ayni agirlikta olsaydi
+  // hangisinin asil is oldugu okunmazdi.
+  btnOutline: {
+    borderWidth: 1, borderColor: colors.borderStrong, backgroundColor: colors.surface,
+    paddingHorizontal: spacing.lg, flexShrink: 1,
+  },
+  btnOutlineTxt: { ...T.captionSb, color: colors.inkSecondary },
+  shareAgain: {
+    flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5,
+    alignSelf: "center", marginTop: spacing.sm,
+  },
+  shareAgainTxt: { ...T.caption, color: colors.inkTertiary },
   // Başkalarının arasındaki borç: aynı kutuda ama sessiz ve tek satır.
   otherRow: {
     flexDirection: "row", alignItems: "center", gap: spacing.md,
@@ -661,46 +755,48 @@ const styles = StyleSheet.create({
              gap: 6, paddingVertical: spacing.md },
   undoBtnTxt: { ...T.captionSb, color: colors.inkSecondary },
   footNote: { ...T.caption, color: colors.inkTertiary, textAlign: "center", marginTop: spacing.xs },
-  payWrap: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(12,22,38,0.45)",
-             justifyContent: "flex-end" },
-  paySheet: { backgroundColor: colors.surface, borderTopLeftRadius: radius.xl,
-              borderTopRightRadius: radius.xl, padding: spacing.xl, gap: spacing.md },
-  payTitle: { ...T.title, color: colors.ink, paddingHorizontal: spacing.lg },
-  payHint: {
-    ...T.caption, color: colors.inkTertiary,
+  // --- odeme sayfasi (tek yuz) ---
+  payOver: { paddingHorizontal: spacing.lg },
+  amountRow: {
+    flexDirection: "row", alignItems: "baseline", gap: spacing.sm,
     paddingHorizontal: spacing.lg, marginTop: 2,
   },
-  payRow: {
-    flexDirection: "row", alignItems: "center", gap: spacing.sm,
-    paddingHorizontal: spacing.lg, marginTop: spacing.md,
+  // Kutusuz: tutar bir form alani gibi degil, sayfanin basligi gibi okunmali.
+  amountInput: {
+    fontSize: 32, lineHeight: 40, fontFamily: fontFamily.bold,
+    color: colors.ink, letterSpacing: -1, paddingVertical: 2, minWidth: 120,
   },
-  payInput: {
-    flex: 1, backgroundColor: colors.surfaceSecondary, borderRadius: radius.md,
-    paddingHorizontal: spacing.lg, paddingVertical: spacing.md, minHeight: 56,
-    fontSize: 26, lineHeight: 32, fontFamily: fontFamily.semibold, color: colors.ink,
+  amountCur: { fontSize: 22, lineHeight: 28, fontFamily: fontFamily.semibold, color: colors.inkTertiary },
+  quick: { flexDirection: "row", gap: spacing.sm, paddingHorizontal: spacing.lg, marginTop: spacing.md },
+  quickChip: {
+    flex: 1, alignItems: "center", justifyContent: "center", minHeight: 34,
+    borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border,
+    backgroundColor: colors.surface,
   },
-  payFoot: {
-    ...T.caption, color: colors.inkTertiary, textAlign: "center",
-    paddingHorizontal: spacing.lg, marginTop: spacing.sm, lineHeight: 17,
+  quickChipOn: { backgroundColor: colors.accentSoft, borderColor: colors.accent },
+  quickTxt: { ...T.captionSb, color: colors.inkSecondary },
+  quickTxtOn: { color: colors.accentDark },
+  hair: { height: StyleSheet.hairlineWidth, backgroundColor: colors.divider, marginTop: spacing.lg },
+  recordRow: {
+    flexDirection: "row", alignItems: "center", gap: spacing.md,
+    paddingHorizontal: spacing.lg, paddingTop: spacing.md, minHeight: 60,
   },
-  waysTitle: { paddingHorizontal: spacing.lg, marginBottom: spacing.sm },
-  waysBack: {
-    flexDirection: "row", alignItems: "center", gap: 2,
-    paddingHorizontal: spacing.md, paddingBottom: spacing.sm,
+  recordHead: { flexDirection: "row", alignItems: "center", gap: 6 },
+  // Sayfadaki TEK koyu dugme.
+  recordBtn: {
+    minHeight: 42, paddingHorizontal: spacing.xl, justifyContent: "center",
+    borderRadius: radius.pill, backgroundColor: colors.brand,
   },
-  waysBackTxt: { ...T.captionSb, color: colors.inkSecondary },
+  recordTxt: { ...T.bodySb, color: colors.onBrand },
   wayRow: {
     flexDirection: "row", alignItems: "center", gap: spacing.md,
-    paddingHorizontal: spacing.lg, paddingVertical: spacing.md, minHeight: 64,
+    paddingHorizontal: spacing.lg, paddingVertical: spacing.sm, minHeight: 58,
   },
   wayIcon: {
-    width: 38, height: 38, borderRadius: 12, backgroundColor: colors.surfaceSecondary,
+    width: 34, height: 34, borderRadius: 10, backgroundColor: colors.surfaceSecondary,
     alignItems: "center", justifyContent: "center",
   },
-  wayTitle: { ...T.emph, color: colors.ink },
+  wayTitle: { ...T.body, color: colors.ink },
   wayDesc: { ...T.caption, color: colors.inkTertiary, marginTop: 1 },
   wayIban: { ...T.caption, color: colors.inkSecondary, marginTop: 1, letterSpacing: 0.3 },
-  wayEmpty: { paddingHorizontal: spacing.lg, gap: spacing.md, paddingBottom: spacing.sm },
-  wayEmptyTxt: { ...T.body, color: colors.inkSecondary, lineHeight: 20 },
-  payCur: { ...T.screen, color: colors.inkSecondary },
 });

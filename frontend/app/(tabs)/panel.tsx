@@ -11,7 +11,7 @@ import { useHousehold } from "@/src/household";
 import {
   ScreenHeader, HeaderSplit, TrendBadge, Sheet, Card, Row, Divider, Avatar,
   Money, IconPill, CategoryIcon, categoryLabel, splitBadge, splitSummary, PulseDot,
-  Donut, formatEUR, formatEURShort,
+  Donut, formatEUR, formatEURShort, useScrollPad,
 } from "@/src/ui";
 import { ConfirmSheet } from "@/app/duzenli";
 import { colors, spacing, type as T, overline, fontFamily, metrics, CATEGORY_ICONS } from "@/src/theme";
@@ -35,6 +35,10 @@ type Stats = {
 type ShopItem = { item_id: string; text: string; added_by: string; done: boolean };
 
 export default function Panel() {
+  // Sekme cubugunun ve telefonun gezinme cubugunun kapladigi yer.
+  // Elle yazilan 120/130 sabitleri cubuk yuksekligiyle birlikte
+  // degismiyordu; olcu artik tek yerden geliyor.
+  const altPay = useScrollPad({ tabs: true });
   const { user } = useAuth();
   const { household, members, refresh: refreshHH } = useHousehold();
   const router = useRouter();
@@ -85,7 +89,7 @@ export default function Panel() {
   return (
     <View style={styles.root} testID="panel-screen">
       <ScrollView
-        contentContainerStyle={styles.scroll}
+        contentContainerStyle={[styles.scroll, altPay]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }}
@@ -286,7 +290,7 @@ export default function Panel() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.dark },
-  scroll: { paddingBottom: 120, backgroundColor: colors.bg, flexGrow: 1 },
+  scroll: { backgroundColor: colors.bg, flexGrow: 1 },
   mx: { marginHorizontal: spacing.lg },
   heroLabel: { ...overline, color: colors.onDarkMuted },
   heroValue: { ...T.hero, color: colors.onDark, marginTop: spacing.xs },

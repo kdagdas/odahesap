@@ -14,14 +14,16 @@ import {
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@/src/auth";
-import { ScreenHeader, Sheet, Card, Divider } from "@/src/ui";
+import { ScreenHeader, Sheet, Card, Divider, useScrollPad } from "@/src/ui";
 import {
-  getMyPayment, setMyPayment, shareText, formatIban, looksLikeIban, type PaymentInfo,
+  getMyPayment, setMyPayment, shareText, formatIban, looksLikeIban,
+  markPaymentShared, type PaymentInfo,
 } from "@/src/payment";
 import { colors, spacing, radius, type as T, overline, fontFamily } from "@/src/theme";
 
 export default function OdemeBilgilerim() {
   const router = useRouter();
+  const altPay = useScrollPad();
   const { user } = useAuth();
   const [iban, setIban] = useState("");
   const [paypal, setPaypal] = useState("");
@@ -56,12 +58,17 @@ export default function OdemeBilgilerim() {
     const metin = shareText(user?.name || "Ev arkadaşın", user?.user_id || "", {
       iban, paypal, holder,
     });
-    try { await Share.share({ message: metin }); } catch { /* iptal edildi */ }
+    try {
+      await Share.share({ message: metin });
+      // Kasa'daki "bilgimi gönder" düğmesi buradan da küçülmeli; iki yol
+      // aynı işi yapıyor, ikisinin ayrı durum tutması anlamsız olurdu.
+      await markPaymentShared();
+    } catch { /* iptal edildi */ }
   };
 
   return (
     <View style={styles.root} testID="odeme-bilgilerim-screen">
-      <ScrollView contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled"
+      <ScrollView contentContainerStyle={[styles.page, altPay]} keyboardShouldPersistTaps="handled"
                   showsVerticalScrollIndicator={false}>
         <ScreenHeader
           overline="PROFİL"
@@ -155,7 +162,8 @@ export default function OdemeBilgilerim() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.dark },
-  page: { backgroundColor: colors.bg, flexGrow: 1, paddingBottom: spacing.xxl },
+  // Alt boşluk `useScrollPad`'den: gezinme çubuğu payı cihaza göre değişiyor.
+  page: { backgroundColor: colors.bg, flexGrow: 1 },
   headBtn: {
     width: 36, height: 36, borderRadius: 18, backgroundColor: colors.darkSurface,
     alignItems: "center", justifyContent: "center",

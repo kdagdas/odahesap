@@ -273,18 +273,39 @@ Ekran, pencere, düğme, liste — **hiçbiri** telefonun gezinme çubuğunun ya
 `app.json` içinde `edgeToEdgeEnabled: true` — yani uygulama kenardan kenara
 çiziyor ve güvenli alanı **her ekran kendisi** halletmek zorunda.
 
-Bilinen tuzaklar:
+### Alt sayfalar: modalın içini ÖLÇMEYİN
 
-- **`Modal` ayrı bir penceredir.** Köktekı `SafeAreaProvider` oraya geçmez;
-  Modal'ın içine kendi sağlayıcısı konmalı ve `useSafeAreaInsets()` o
-  sağlayıcının **altında** çağrılmalı (dışarıdan çağırmak yanlış değeri okur).
-- **Sağlayıcı değerleri ölçerek öğrenir**, ilk karede sıfır döner. Bu yüzden
-  `initialMetrics={initialWindowMetrics}` verilmeli — yoksa üst üste açılan
-  ikinci bir sayfada ölçüm yetişmez.
-- **En sağlamı elle hesaplamamak:** `SafeAreaView edges={["bottom"]}` güvenli
-  alanı kendisi uygular ve ölçüm yarışına takılmaz.
-- Yeni bir tam ekran ya da alt sayfa yazarken bunu **cihazda** doğrulayın;
-  emülatörde gezinme çubuğu farklı davranabiliyor.
+Üç deneme (modal içine kendi `SafeAreaProvider`'ı, `initialMetrics`,
+`SafeAreaView edges={["bottom"]}`) sırayla denendi ve **üçü de aynı şeye
+dayandığı için** üst üste açılan ikinci sayfada başarısız oldu: modal
+penceresini ölçmek. Ölçüm bir yarıştır — ilk sayfa kapanırken ikincisi
+ölçülüyor, `insets.bottom` sıfır dönüyor ve düzelme şansı kalmıyor, çünkü
+arkadan yeni bir yerleşim olayı gelmiyor. `initialWindowMetrics` de kapatmıyor:
+Android'de `null` olabiliyor ve `?? undefined` sessizce sıfıra düşüyordu.
+
+Bugünkü çözüm (`src/ui.tsx` → `BottomSheet`) ölçümü tümden bırakıyor:
+
+1. Güvenli alan **kök sağlayıcıdan**, yani modalın dışından okunuyor ve içeri
+   sayı olarak veriliyor. Kök sağlayıcı açılışta bir kez ölçülmüş durumda.
+2. Bunun geçerli olması için modal penceresinin kök pencereyle aynı geometride
+   olması gerekiyor: `statusBarTranslucent` + `navigationBarTranslucent`.
+   İkisi birlikte verilmeli (RN, ikincisi için birincisini şart koşuyor).
+
+Ayrıca **iki alt sayfayı üst üste açmayın.** Kasa'daki "Öde → ödeme yolları"
+akışı bunu yapıyordu; artık tek `BottomSheet` içinde içerik değişiyor.
+
+### Alt boşluk elle yazılmaz
+
+`useScrollPad()` (`src/ui.tsx`) kaydırma alanının alt boşluğunu üretir;
+sekme çubuğu olan ekranlarda `useScrollPad({ tabs: true })`. Sekme çubuğunun
+yüksekliği de aynı dosyadaki `tabBarHeight()`'ten gelir, yani çubuğu çizen
+`(tabs)/_layout.tsx` ile ondan kaçınan ekranlar ayrışamaz. Önceden ekranlarda
+elle yazılmış `120`, `130`, `paddingBottom: spacing.xxl` vardı; gezinme çubuğu
+olmayan telefonda doğru, üç düğmeli telefonda yanlıştı — istatistik sayfasında
+son kart çubuğun altında kalıyordu.
+
+Yeni bir tam ekran ya da alt sayfa yazarken bunu **cihazda** doğrulayın;
+emülatörde gezinme çubuğu farklı davranabiliyor.
 
 ## Kolay gözden kaçan tasarım kararları
 

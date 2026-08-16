@@ -8,6 +8,7 @@ import { useHousehold } from "@/src/household";
 import {
   ScreenHeader, HeaderSplit, Sheet, Card, Divider, Avatar, CategoryIcon,
   MerchantBadge, Tag, Money, splitBadge, formatEUR, formatDateTR, formatQty,
+  useScrollPad,
 } from "@/src/ui";
 import { colors, spacing, type as T, metrics } from "@/src/theme";
 
@@ -20,6 +21,8 @@ type Expense = {
 };
 
 export default function MemberDetail() {
+  // Gezinme cubugu payi -- ic dolgu zaten var, buraya yalnizca cihazin payi.
+  const altPay = useScrollPad({ extra: 0 });
   const { memberId, periodId } = useLocalSearchParams<{ memberId: string; periodId?: string }>();
   const router = useRouter();
   const { members } = useHousehold();
@@ -47,7 +50,7 @@ export default function MemberDetail() {
   return (
     <View style={styles.root} testID="member-detail-screen">
       {/* Başlık kaydırma alanının içinde — aşağı inerken beyaz yüzey örtüyor. */}
-      <ScrollView contentContainerStyle={styles.page} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={[styles.page, altPay]} showsVerticalScrollIndicator={false}>
       <ScreenHeader
         overline="EV ARKADAŞI"
         title={member?.name || "—"}

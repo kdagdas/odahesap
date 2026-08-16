@@ -11,7 +11,7 @@ import {
 import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { apiGet, apiPost } from "@/src/api";
-import { Card, Divider, ScreenHeader, Sheet, IconPill } from "@/src/ui";
+import { Card, Divider, ScreenHeader, Sheet, IconPill, useScrollPad } from "@/src/ui";
 import { colors, spacing, type as T, metrics } from "@/src/theme";
 
 type Notification = {
@@ -43,6 +43,8 @@ const relative = (iso: string) => {
 };
 
 export default function Aktivite() {
+  // Gezinme cubugu payi -- ic dolgu zaten var, buraya yalnizca cihazin payi.
+  const altPay = useScrollPad({ extra: 0 });
   const router = useRouter();
   const [rows, setRows] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
@@ -63,7 +65,7 @@ export default function Aktivite() {
   return (
     <View style={styles.root} testID="aktivite-screen">
       <ScrollView
-        contentContainerStyle={styles.page}
+        contentContainerStyle={[styles.page, altPay]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl refreshing={refreshing}

@@ -7,7 +7,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@/src/auth";
 import { useHousehold } from "@/src/household";
 import { api, apiGet } from "@/src/api";
-import { Card, Divider, ScreenHeader, Sheet, Row, SelectRow, SelectOption } from "@/src/ui";
+import { Card, Divider, ScreenHeader, Sheet, Row, SelectRow, SelectOption, useScrollPad } from "@/src/ui";
 import { colors, spacing, type as T, metrics } from "@/src/theme";
 
 /**
@@ -48,6 +48,8 @@ const LOCK_REASON =
   "Farklı bir para birimi için yeni bir ev kurun.";
 
 export default function Ayarlar() {
+  // Gezinme cubugu payi -- ic dolgu zaten var, buraya yalnizca cihazin payi.
+  const altPay = useScrollPad({ extra: 0 });
   const router = useRouter();
   const { user } = useAuth();
   const { household, refresh } = useHousehold();
@@ -80,7 +82,7 @@ export default function Ayarlar() {
 
   return (
     <View style={styles.root} testID="ayarlar-screen">
-      <ScrollView contentContainerStyle={styles.page} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={[styles.page, altPay]} showsVerticalScrollIndicator={false}>
         <ScreenHeader
           overline="UYGULAMA"
           title="Ayarlar"

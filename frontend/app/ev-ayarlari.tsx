@@ -16,10 +16,12 @@ import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@/src/auth";
 import { useHousehold } from "@/src/household";
 import { apiPost, api } from "@/src/api";
-import { Avatar, Card, Divider, ScreenHeader, Sheet, Tag } from "@/src/ui";
+import { Avatar, Card, Divider, ScreenHeader, Sheet, Tag, useScrollPad } from "@/src/ui";
 import { colors, spacing, radius, type as T, overline, metrics, fontFamily } from "@/src/theme";
 
 export default function EvAyarlari() {
+  // Gezinme cubugu payi -- ic dolgu zaten var, buraya yalnizca cihazin payi.
+  const altPay = useScrollPad({ extra: 0 });
   const router = useRouter();
   const { user } = useAuth();
   const {
@@ -149,7 +151,7 @@ export default function EvAyarlari() {
 
   return (
     <View style={styles.root} testID="ev-ayarlari-screen">
-      <ScrollView contentContainerStyle={styles.page} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={[styles.page, altPay]} showsVerticalScrollIndicator={false}>
         <ScreenHeader
           overline="EV"
           title={household.name}

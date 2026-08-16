@@ -18,9 +18,7 @@ import {
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import Svg, { Circle } from "react-native-svg";
-import {
-  SafeAreaProvider, SafeAreaView, useSafeAreaInsets, initialWindowMetrics,
-} from "react-native-safe-area-context";
+import { useSafeAreaInsets, type EdgeInsets } from "react-native-safe-area-context";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 
 import {
@@ -179,6 +177,45 @@ export function useKeyboardHeight() {
  * ve `ScreenHeader` kullandığı için kural iki yerde duruyor.
  */
 export const CONTENT_MAX_WIDTH = 560;
+
+/**
+ * GECICI: alt sayfanin olculerini ekrana basar.
+ *
+ * Gezinme cubugu hatasi DORT kez tahminle cozulmeye calisildi ve dordu de
+ * tutmadi; sebebi hep ayni: cihaz olmadan hangi degerin yanlis oldugu
+ * bilinmiyor. Bu serit tek ekran goruntusuyle onu soyluyor.
+ *
+ * Hata kapandiginda bu sabit `false` yapilip serit ve `SheetDebug` silinir.
+ */
+export const SHEET_DEBUG = true;
+
+/**
+ * Alt sekme cubugunun kapladigi yukseklik.
+ *
+ * Tek yerde duruyor cunku iki taraf birden okuyor: cubugu CIZEN
+ * `(tabs)/_layout.tsx` ve altinda kalmamak icin pay birakan sekme ekranlari.
+ * Ayri ayri yazildiginda biri degisip oteki unutuluyordu -- ekranlarda 120 ve
+ * 130 gibi elle uydurulmus sayilar tam olarak bu yuzden vardi.
+ */
+export const tabBarHeight = (bottomInset: number) => 60 + Math.max(bottomInset, 12) + 12;
+
+/**
+ * Kaydirma alaninin alt bosluğu.
+ *
+ * KURAL: hicbir icerik gezinme cubugunun altinda kalmaz. `edgeToEdgeEnabled`
+ * acik oldugu icin uygulama kenardan kenara ciziyor ve bu payi her ekran
+ * kendisi birakmak zorunda. Sabit bir sayi yazmak (`paddingBottom: 32`)
+ * gezinme cubugu olmayan telefonda dogru, uc dugmeli telefonda yanlisti --
+ * son kartin yarisi cubugun altinda kaliyordu.
+ *
+ * `tabs: true` sekme cubugu olan ekranlar icin; digerlerinde yalnizca
+ * telefonun kendi cubugu kadar pay birakilir.
+ */
+export function useScrollPad(opts?: { tabs?: boolean; extra?: number }) {
+  const insets = useSafeAreaInsets();
+  const alt = opts?.tabs ? tabBarHeight(insets.bottom) : insets.bottom;
+  return { paddingBottom: alt + (opts?.extra ?? spacing.xxl) };
+}
 
 /** İçerik yüzeyi — koyu başlığın üzerine kavisle biner. */
 export function Sheet({ children, style }: { children: React.ReactNode; style?: StyleProp<ViewStyle> }) {
@@ -607,36 +644,48 @@ export function BottomSheet({
   maxHeight?: number;
   testID?: string;
 }) {
+  /* Guvenli alan modalin ICINDEN OLCULMUYOR -- disaridan, kok saglayicidan
+     okunup sayi olarak iceri veriliyor.
+
+     Onceki uc deneme (modal icine kendi `SafeAreaProvider`i, `initialMetrics`,
+     `SafeAreaView edges`) hep ayni seye dayaniyordu: modal penceresini olcmek.
+     Olcum bir YARIS ve ust uste acilan ikinci sayfada kaybediliyordu -- ilk
+     sayfa kapanirken ikincisi olculuyor, `insets.bottom` sifir donuyor,
+     bir daha da duzelme firsati olmuyor cunku yeni bir yerlesim olayi gelmiyor.
+     `initialWindowMetrics` de bu yarisi kapatmiyor: Android'de `null`
+     olabiliyor ve `?? undefined` sessizce sifira dusuyordu.
+
+     Kok saglayici ise uygulama acilirken bir kez olculmus ve dogru degeri
+     tutuyor. Buradan okumak icin tek sart modal penceresinin kok pencereyle
+     AYNI geometride olmasi -- `statusBarTranslucent` + `navigationBarTranslucent`
+     tam olarak bunu yapiyor: dialog da kenardan kenara ciziliyor. */
+  const insets = useSafeAreaInsets();
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      {/* Modal KENDI penceresi; koktekı SafeAreaProvider'in olctugu degerler
-          buraya gecmiyor. Kutuphanenin dokumani da bunu ayrica soyluyor:
-          Modal icine kendi saglayicisi konmali. Konmadigi icin `insets.bottom`
-          sifir okunuyor ve sayfa telefonun gezinme cubugunun altinda kaliyordu.
-          Kanca da saglayicinin ALTINDA cagrilmali -- disaridan cagirmak ayni
-          yanlis degeri okumak demek, o yuzden govde ayri bilesen. */}
-      <SafeAreaProvider initialMetrics={initialWindowMetrics ?? undefined}>
-        <SheetBody onClose={onClose} maxHeight={maxHeight} testID={testID}>
-          {children}
-        </SheetBody>
-      </SafeAreaProvider>
+    <Modal
+      visible={visible} transparent animationType="slide" onRequestClose={onClose}
+      statusBarTranslucent navigationBarTranslucent
+    >
+      <SheetBody onClose={onClose} maxHeight={maxHeight} insets={insets} testID={testID}>
+        {children}
+      </SheetBody>
     </Modal>
   );
 }
 
 function SheetBody({
-  onClose, children, maxHeight, testID,
+  onClose, children, maxHeight, insets, testID,
 }: {
   onClose: () => void;
   children: React.ReactNode;
   maxHeight?: number;
+  insets: EdgeInsets;
   testID?: string;
 }) {
-  const insets = useSafeAreaInsets();
   const kb = useKeyboardHeight();
   const win = useWindowDimensions();
   const y = React.useRef(new Animated.Value(0)).current;
   const height = React.useRef(0);
+  const [olcu, setOlcu] = React.useState({ h: 0, py: 0 });
 
   const kapat = React.useCallback(() => {
     Animated.timing(y, {
@@ -685,23 +734,37 @@ function SheetBody({
             transform: [{ translateY: y }],
           },
         ]}
-        onLayout={(e) => { height.current = e.nativeEvent.layout.height; }}
+        onLayout={(e) => {
+          height.current = e.nativeEvent.layout.height;
+          if (SHEET_DEBUG) {
+            const { height: h, y: py } = e.nativeEvent.layout;
+            setOlcu({ h: Math.round(h), py: Math.round(py) });
+          }
+        }}
         testID={testID}
       >
+        {SHEET_DEBUG && (
+          /* Sayfanin ust kenarinda, tutamagin ustunde: icerik neyse o kalsin.
+             ins = guvenli alan altligi · win = pencere · h = sayfa yuksekligi
+             · y = sayfanin pencere icindeki ust konumu · kb = klavye
+             Beklenen: y + h + ins == win. Tutmuyorsa hangi terim bozuk,
+             tek bakista gorunur. */
+          <Text style={styles.dbg}>
+            ins{Math.round(insets.bottom)} · top{Math.round(insets.top)} ·
+            win{Math.round(win.height)} · h{olcu.h} · y{olcu.py} · kb{Math.round(kb)} ·
+            top+h+ins={olcu.py + olcu.h + Math.round(insets.bottom)}
+          </Text>
+        )}
         {/* Surukleme yalnizca tutamak bolgesinden. Icerikten de surukleseydik
             sayfanin icindeki listelerin kendi kaydirmasiyla kavga ederdi. */}
         <View {...pan.panHandlers} style={styles.grabZone}>
           <View style={styles.pickGrab} />
         </View>
-        {/* Guvenli alani ELLE hesaplamak yerine kutuphanenin bileseni: inset
-            degerini okuyup dolgu vermek olcum yarisina takiliyordu (ust uste
-            acilan ikinci sayfada deger henuz gelmemis oluyordu). SafeAreaView
-            bunu kendisi uyguluyor. Klavye acikken alt kenar zaten klavyenin
-            uzerinde, o yuzden orada devre disi. */}
-        <SafeAreaView edges={yuzuyor ? [] : ["bottom"]}
-                      style={{ paddingBottom: spacing.lg }}>
+        {/* Gezinme cubugu payi. Klavye acikken alt kenar zaten klavyenin
+            uzerinde duruyor, orada pay eklemek bosluk birakirdi. */}
+        <View style={{ paddingBottom: (yuzuyor ? 0 : insets.bottom) + spacing.lg }}>
           {children}
-        </SafeAreaView>
+        </View>
       </Animated.View>
     </View>
   );
@@ -1148,6 +1211,9 @@ export const setCurrency = (code?: string | null) => {
   currencySymbol = code === "TRY" ? "\u20BA" : "\u20AC";
 };
 
+/** Yalnizca simge \u2014 tutar alanini elle dizen yerler icin (\u00F6r. \u00F6deme sayfas\u0131). */
+export const currencySign = () => currencySymbol;
+
 export function formatEUR(n: number | null | undefined, sign = false) {
   if (n === null || n === undefined || isNaN(n as number)) return `0,00${NBSP}${currencySymbol}`;
   const v = Number(n);
@@ -1294,6 +1360,11 @@ const styles = StyleSheet.create({
   // Tutamagin kendisi 4 piksel; parmakla yakalanabilmesi icin cevresindeki
   // bos alan da surukleme bolgesine dahil.
   grabZone: { paddingTop: spacing.sm, paddingBottom: spacing.xs },
+  // GECICI teshis seridi -- bkz. SHEET_DEBUG.
+  dbg: {
+    fontSize: 11, lineHeight: 14, color: colors.negative, textAlign: "center",
+    paddingHorizontal: spacing.sm, paddingTop: 2,
+  },
   tabs: {
     flexDirection: "row", backgroundColor: colors.surfaceSecondary,
     borderRadius: radius.pill, padding: 3,

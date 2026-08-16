@@ -27,6 +27,7 @@ import { useHousehold } from "@/src/household";
 import {
   ScreenHeader, Sheet, Card, Row, Divider, Avatar, Money, CategoryIcon,
   categoryLabel, MerchantBadge, Donut, TabSwitch, formatEUR, formatEURShort,
+  useScrollPad,
 } from "@/src/ui";
 import {
   colors, spacing, radius, type as T, overline, fontFamily, metrics, CATEGORY_ICONS,
@@ -126,6 +127,7 @@ const shiftMonth = (m: string, by: number) => {
 
 export default function Istatistik() {
   const router = useRouter();
+  const altPay = useScrollPad();
   const { user } = useAuth();
   const { members } = useHousehold();
   const [scope, setScope] = useState<"household" | "self">("household");
@@ -151,7 +153,7 @@ export default function Istatistik() {
 
   return (
     <View style={styles.root} testID="istatistik-screen">
-      <ScrollView contentContainerStyle={styles.page} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={[styles.page, altPay]} showsVerticalScrollIndicator={false}>
         <ScreenHeader
           overline="İSTATİSTİK"
           title={ayAdi(month)}
@@ -387,7 +389,10 @@ export default function Istatistik() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.dark },
-  page: { backgroundColor: colors.bg, flexGrow: 1, paddingBottom: spacing.xxl },
+  // Alt boşluk `useScrollPad`'den geliyor: gezinme çubuğu payı cihaza göre
+  // değişiyor, sabit bir sayı üç düğmeli telefonda son kartı çubuğun altında
+  // bırakıyordu.
+  page: { backgroundColor: colors.bg, flexGrow: 1 },
   headBtn: {
     width: 36, height: 36, borderRadius: 18, backgroundColor: colors.darkSurface,
     alignItems: "center", justifyContent: "center",

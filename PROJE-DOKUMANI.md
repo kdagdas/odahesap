@@ -743,15 +743,45 @@ değil rakibin oyununu oynamak olur.
 
 ### Kararlaştırılmış tasarım notları
 
-- **Ödeme:** "Öde" (banka/IBAN/QR yolunu açar, kayıt oluşturmaz) ve "Ödedim"
-  (nakit/uygulama dışı ödemeyi kaydeder) ayrı düğmeler. İkisi de **aynı tutar
-  sayfasından** çıkar, böylece kısmi ödeme tek yerde giriliyor. "Öde"den
-  dönünce "kaydedeyim mi?" diye sorulmalı, yoksa insanlar ödeyip işaretlemeyi
-  unutuyor.
+- **Ödeme sayfası TEK yüzdür** (v34'te yeniden kuruldu). Önce iki yüzdü —
+  tutar, sonra yollar — ve tutar yüzü bir **gişeydi**: tutar zaten dolu
+  geliyordu, kullanıcı ona bakıp yeniden "Öde"ye basıyordu. Karşı taraf
+  bilgisini paylaşmamışsa akış orada **çıkmaza** giriyordu; nakit ödeyecek
+  birinin bile yolu kapalıydı.
+
+  Bugünkü düzen üç bölge, aralarında yalnızca saç teli çizgi: **tutar**
+  (büyük, dolu, dokununca düzeltilir + Tamamı/Yarısı/Başka çipleri) →
+  **yollar** (PayPal, IBAN — sessiz liste satırları) → **kayıt** (Nakit/elden
+  ödedim → Kaydet). Sayfada **tek koyu düğme** vardır ve o kayıttır.
+
+  Gerekçe: **parayı biz taşımıyoruz.** Banka yönlendirmesinin sonucunu
+  göremiyoruz; uygulamanın gerçekten sahip olduğu tek iş defter kaydı. O
+  yüzden kayıt en altta ve her durumda erişilebilir, yollar ise yardımcı.
+  Ayrı bir "kısmi öde" düğmesi **konmadı** — nadir durum sık durumla aynı yeri
+  kaplamamalı; çipler o işi görüyor.
+
+  Dönüşteki **"kaydedelim mi?" Alert'i kaldırıldı.** Yerine kayıt satırında
+  `PulseDot` yanıyor: aynı hatırlatmayı yapıyor ama ekranın ortasına
+  sıçramıyor. Kaybolan bir şey yok, çünkü sayfa zaten açık kalıyor.
 - **IBAN cihazda saklanır**, sunucuda değil. Cihazdan sunucuya geçmek kolay,
   tersi zordur: sunucudan silmek duyuru ve güven kaybı demek.
 - **Ödeme yolunu paylaşma** uygulama bağlantısıyla yapılır (WhatsApp mesajının
   içinde), böylece bilgi bizim sunucumuza hiç uğramaz.
+- **Paylaşma düğmesi ALACAKLININ ekranında da durur.** İlk sürümde bu yol
+  yalnızca Profil'in içindeydi ve tek tetikleyicisi borçlunun "İste" demesiydi:
+  mesaj gidiyor, alacaklının onu okuyup Profil → Ödeme Bilgilerim → Paylaş
+  yolunu bulması gerekiyordu. Dört adım, iki kişi, iki uygulama — üstelik
+  alacaklı o ekranı hiç keşfetmemiş olabilir. Oysa bilgiyi paylaşabilecek tek
+  kişi odur ve zaten "X sana 42 € borçlu" yazan ekrana bakmaktadır.
+  Kasa'da kendi satırında ikinci bir düğme görüyor; hiç bilgi girmemişse düğme
+  "Paylaş" demiyor, doğrudan formu açıyor.
+  **Düğme paylaştıktan sonra kaybolmaz, küçülür.** Kaybolamaz çünkü IBAN
+  değişir ve eve yeni biri katılır; büyük de kalamaz çünkü "Kim Kime Borçlu"
+  ekranın en yoğun bloğu. Cihazdaki "paylaştım" işareti karşı tarafın
+  kaydettiğinin **kanıtı değildir** — bilgi cihazda durduğu için o bilgi bize
+  hiç ulaşmıyor. İşaret yalnızca *vurgu* kararını veriyor, yanlış olması
+  hiçbir şeye mal olmuyor. Borçludaki "İste" de duruyor: ikisi farklı
+  yerlerden başlıyor (borçlu ödemeye kalkışınca, alacaklı ekrana bakınca).
 - **Banka uygulamasına yönlendirme güvenilir değildir.** Ortak bir derin
   bağlantı standardı yok. Çalışan yollar: IBAN'ı panoya kopyalayıp bankayı
   açmak, WhatsApp'tan paylaşmak, aynı odadayken EPC/Girocode karekodu,

@@ -12,6 +12,7 @@ import { useAuth } from "@/src/auth";
 import { useHousehold } from "@/src/household";
 import {
   ScreenHeader, Sheet, Card, Row, Divider, Avatar, IconPill, Overline, TabSwitch,
+  useScrollPad,
 } from "@/src/ui";
 import { colors, spacing, radius, type as T, metrics } from "@/src/theme";
 
@@ -22,6 +23,10 @@ type Item = {
 };
 
 export default function Liste() {
+  // Sekme cubugunun ve telefonun gezinme cubugunun kapladigi yer.
+  // Elle yazilan 120/130 sabitleri cubuk yuksekligiyle birlikte
+  // degismiyordu; olcu artik tek yerden geliyor.
+  const altPay = useScrollPad({ tabs: true });
   const { user } = useAuth();
   const { members } = useHousehold();
   const [scope, setScope] = useState<Scope>("household");
@@ -104,7 +109,7 @@ export default function Liste() {
     <View style={styles.root} testID="liste-screen">
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
         <ScrollView
-          contentContainerStyle={styles.scroll}
+          contentContainerStyle={[styles.scroll, altPay]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
           refreshControl={
@@ -235,7 +240,7 @@ export default function Liste() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.dark },
-  scroll: { paddingBottom: 130, backgroundColor: colors.bg, flexGrow: 1 },
+  scroll: { backgroundColor: colors.bg, flexGrow: 1 },
   mx: { marginHorizontal: spacing.lg },
   addRow: { flexDirection: "row", gap: spacing.sm },
   addInput: {

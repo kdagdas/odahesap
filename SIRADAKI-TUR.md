@@ -2,8 +2,13 @@
 
 > Bu dosya yeni bir sohbet penceresine geçerken bağlamı taşımak için yazıldı.
 >
-> Son durum: **APK v32**, 521 kontrol geçiyor, `main` çalışır durumda.
+> Son durum: **APK v33**, 521 kontrol geçiyor, `main` çalışır durumda.
 > Ayrıntı ve gerekçeler için [PROJE-DOKUMANI.md](PROJE-DOKUMANI.md) §12.
+>
+> **v33'te ne geldi (Tur 9'un arayüz kısmı):** gezinme çubuğu hatası
+> (aşağıda 4. madde), her ekranın alt boşluğu, ve alacaklının kendi
+> ekranından ödeme bilgisi paylaşması. **Üçü de cihazda doğrulanmalı.**
+> OCR maddeleri (1-3) hâlâ açık ve faturalandırma bekliyor.
 
 ## Ev sahibinin yapacakları (koddan bağımsız)
 
@@ -52,22 +57,59 @@ Fişler şu an **sırayla** gönderiliyor. Ücretli katmanda iki üç tanesi ayn
 anda gidebilir — tek fişi hızlandırmaz, üç fişin toplam süresini kısaltır.
 Ücretsiz katmanda imkânsızdı (ilk istekten sonra 429).
 
-### 4. AÇIK HATA: alt sayfa gezinme çubuğunun altında kalıyor
+### 4. Alt sayfa gezinme çubuğunun altında kalıyor — YAZILDI, cihazda doğrulanacak
 
-**Üç düzeltme denendi, ikinci sayfada hâlâ sürüyor.** Cihaz olmadan
-ayıklanamıyor; bir sonraki turda **cihazda** doğrulanmalı.
+Dördüncü düzeltme, önceki üçünün **ortak** hatasını kaldırıyor: üçü de modal
+penceresini ölçüyordu, ölçüm ise üst üste açılan ikinci sayfada kaybediliyor.
 
-Denenenler (hepsi kodda duruyor, geri alınmadı):
-1. Modal içine kendi `SafeAreaProvider`'ı — ilk sayfayı düzeltti
-2. `initialMetrics={initialWindowMetrics}` — ölçüm yarışı için
-3. `SafeAreaView edges={["bottom"]}` — elle hesap yerine kütüphanenin ilkeli
+Yapılan (bkz. DEVAM.md → "Alt sayfalar: modalın içini ÖLÇMEYİN"):
+1. Modal içindeki `SafeAreaProvider` / `SafeAreaView` **kaldırıldı**; güvenli
+   alan kök sağlayıcıdan okunup `BottomSheet`'e sayı olarak veriliyor
+2. `statusBarTranslucent` + `navigationBarTranslucent` — modal penceresi kök
+   pencereyle aynı geometride olsun diye (daha önce denenmemişti)
+3. Kasa'daki "Öde → ödeme yolları" tek `BottomSheet`'e indi; önceden iki ayrı
+   `Modal` idi ve ikincisi birincisinin kapanma animasyonunun üstüne açılıyordu
 
-Denenmemiş olanlar: RN `Modal`'ın `navigationBarTranslucent` /
-`statusBarTranslucent` özellikleri, ve iki sayfa arası geçişte tek Modal
-kullanıp içeriği değiştirmek (şu an ilki kapanıp ikincisi açılıyor).
+Aynı turda **her kaydırma ekranının alt boşluğu** da `useScrollPad()`'e
+bağlandı — elle yazılmış `120` / `130` / `spacing.xxl` sabitleri gezinme çubuğu
+olan telefonda içeriğin son kısmını çubuğun altında bırakıyordu (istatistik
+sayfasında bildirildi).
 
 **Kural DEVAM.md'ye yazıldı:** hiçbir ekran, pencere veya düğme gezinme
 çubuğunun altında kalmayacak.
+
+### 6. Ödeme akışı tek yüze indi (v34) — YAZILDI
+
+Gerekçe ve yeni düzen: PROJE-DOKUMANI §12 "Kararlaştırılmış tasarım notları".
+Özet: tutar + çipler → yollar → kayıt, tek sayfada, tek koyu düğme. İkinci yüz
+ve dönüşteki Alert kalktı; "kısmi öde" ayrı düğme olarak **konmadı**.
+
+**v34'te `SHEET_DEBUG` AÇIK** (`src/ui.tsx`): alt sayfanın tepesinde kırmızı
+bir ölçü şeridi var. Gezinme çubuğu hatası dört kez tahminle çözülmeye
+çalışıldı, dördü de tutmadı — bu şerit `ins / win / h / y / kb` değerlerini
+basıyor ki hangi terimin bozuk olduğu tek ekran görüntüsünde görünsün.
+**Hata kapanınca `SHEET_DEBUG = false` yapılıp şerit ve stili silinecek.**
+
+### 7. Yatay şeritler seçiciye çevrilecek — SIRADA
+
+Aynı sorunun üç görünümü: yatay şerit büyüyen listeyi taşımıyor.
+- Harcamalar'da kişi süzgeci (çok kişili ev + uzun isim)
+- Harcamalar ve Kasa'da dönem çipleri (2 yıl ≈ 24 dönem)
+- İstatistik'te ay gezinmesi (ok tuşuyla teker teker; geçen yılın Ocak'ı 19 dokunuş)
+
+Kural: **oklar komşu için, seçici sıçramak için.** Üçü de `SelectRow` +
+`BottomSheet` ile çözülecek — yani **`BottomSheet` düzelmeden yapılmamalı**,
+yoksa hata üç ekrana daha yayılır.
+
+Ayrıca tartışıldı: kapalı dönem zaten dokunulmaz, Kasa'nın tepesindeki çip
+şeridi "Geçmiş dönemler" diye tek satıra inebilir.
+
+### 5. Ödeme bilgisini alacaklı kendi ekranından paylaşıyor — YAZILDI
+
+Kasa'da alacaklının satırında ikinci bir düğme: bilgi girilmemişse formu
+açıyor, girilmişse paylaşıyor. İlk paylaşımdan sonra küçük bir metin
+bağlantısına iniyor — kaybolmuyor. Gerekçesi PROJE-DOKUMANI §12
+"Kararlaştırılmış tasarım notları" altında. Borçludaki "İste" duruyor.
 
 ## Biten turlar
 

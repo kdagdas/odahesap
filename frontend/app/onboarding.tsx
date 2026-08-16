@@ -8,12 +8,14 @@ import { Ionicons } from "@expo/vector-icons";
 import { apiPost } from "@/src/api";
 import { useHousehold } from "@/src/household";
 import { useAuth } from "@/src/auth";
-import { ScreenHeader, Sheet, Card, Divider, IconPill } from "@/src/ui";
+import { ScreenHeader, Sheet, Card, Divider, IconPill, useScrollPad } from "@/src/ui";
 import { colors, spacing, radius, type as T, overline, fontFamily } from "@/src/theme";
 
 type Mode = "menu" | "create" | "join";
 
 export default function Onboarding() {
+  // Gezinme cubugu payi -- ic dolgu zaten var, buraya yalnizca cihazin payi.
+  const altPay = useScrollPad({ extra: 0 });
   const { user, logout } = useAuth();
   const { refresh, pendingHousehold } = useHousehold();
   const router = useRouter();
@@ -94,7 +96,7 @@ export default function Onboarding() {
     <View style={styles.root} testID="onboarding-screen">
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
         {/* Başlık kaydırma alanının içinde — aşağı inerken beyaz yüzey örtüyor. */}
-        <ScrollView contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled"
+        <ScrollView contentContainerStyle={[styles.page, altPay]} keyboardShouldPersistTaps="handled"
                     showsVerticalScrollIndicator={false}>
         <ScreenHeader overline={`MERHABA, ${(user?.name?.split(" ")[0] || "").toLocaleUpperCase("tr-TR")}`} title="Ev Seç veya Oluştur">
           <Text style={styles.heroSub}>

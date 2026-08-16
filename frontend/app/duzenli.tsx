@@ -22,7 +22,7 @@ import { useAuth } from "@/src/auth";
 import { useHousehold } from "@/src/household";
 import {
   ScreenHeader, Sheet, Card, Divider, Chip, SplitPicker, splitAll, splitSummary,
-  BottomSheet, TabSwitch, formatEUR, todayISO, type Split,
+  BottomSheet, TabSwitch, formatEUR, todayISO, useScrollPad, type Split,
 } from "@/src/ui";
 import {
   colors, spacing, radius, type as T, overline, fontFamily,
@@ -46,6 +46,8 @@ const fromDDMMYYYY = (s: string): string | null => {
 };
 
 export default function Duzenli() {
+  // Gezinme cubugu payi -- ic dolgu zaten var, buraya yalnizca cihazin payi.
+  const altPay = useScrollPad({ extra: 0 });
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { scope: initialScope } = useLocalSearchParams<{ scope?: string }>();
@@ -73,7 +75,7 @@ export default function Duzenli() {
 
   return (
     <View style={styles.root} testID="duzenli-screen">
-      <ScrollView contentContainerStyle={styles.page} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={[styles.page, altPay]} showsVerticalScrollIndicator={false}>
         <ScreenHeader
           overline="HER AY TEKRARLAYAN"
           title="Düzenli Ödemeler"

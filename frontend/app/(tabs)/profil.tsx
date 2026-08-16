@@ -17,11 +17,15 @@ import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@/src/auth";
 import { useHousehold } from "@/src/household";
 import { apiPost, api } from "@/src/api";
-import { Avatar, Card, Divider, ScreenHeader, Sheet, IconPill } from "@/src/ui";
+import { Avatar, Card, Divider, ScreenHeader, Sheet, IconPill, useScrollPad } from "@/src/ui";
 import { pickPhotoFromLibrary, takePhotoWithCamera, removePhoto } from "@/src/photo";
 import { colors, spacing, radius, type as T, metrics, AVATARS, fontFamily, overline } from "@/src/theme";
 
 export default function Profil() {
+  // Sekme cubugunun ve telefonun gezinme cubugunun kapladigi yer.
+  // Elle yazilan 120/130 sabitleri cubuk yuksekligiyle birlikte
+  // degismiyordu; olcu artik tek yerden geliyor.
+  const altPay = useScrollPad({ tabs: true });
   const router = useRouter();
   const { user, logout, refresh: refreshAuth } = useAuth();
   const { household, pendingMembers, isAdmin, refresh } = useHousehold();
@@ -104,7 +108,7 @@ export default function Profil() {
 
   return (
     <View style={styles.root} testID="profil-screen">
-      <ScrollView contentContainerStyle={styles.page} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={[styles.page, altPay]} showsVerticalScrollIndicator={false}>
         <ScreenHeader overline="PROFİL" title={user?.name || "—"}>
           <View style={styles.heroRow}>
             <Pressable onPress={() => setPhotoMenu((v) => !v)} testID="profile-photo-btn">
@@ -360,7 +364,7 @@ const styles = StyleSheet.create({
   heroRow: { flexDirection: "row", alignItems: "center", gap: spacing.lg, marginTop: spacing.xs },
   heroEmail: { ...T.body, color: colors.onDarkMuted },
   heroHome: { ...T.captionSb, color: colors.accentOnDark, marginTop: 2 },
-  scroll: { padding: spacing.lg, paddingTop: spacing.sm, gap: metrics.cardGap, paddingBottom: 120 },
+  scroll: { padding: spacing.lg, paddingTop: spacing.sm, gap: metrics.cardGap },
 
   navRow: {
     flexDirection: "row", alignItems: "center", gap: spacing.md,
