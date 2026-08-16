@@ -62,10 +62,12 @@ export function Money({
  * kıran asıl hamle bu.
  */
 export function ScreenHeader({
-  overline: over, title, right, children, testID,
+  overline: over, title, right, children, testID, onTitlePress,
 }: {
   overline?: string; title?: string; right?: React.ReactNode;
   children?: React.ReactNode; testID?: string;
+  /** Başlık bir seçici açıyorsa (ör. İstatistik'te ay): yanına ok gelir. */
+  onTitlePress?: () => void;
 }) {
   const insets = useSafeAreaInsets();
   return (
@@ -80,7 +82,15 @@ export function ScreenHeader({
         <View style={styles.headerTop}>
           <View style={{ flex: 1 }}>
             {over ? <Text style={styles.headerOverline}>{over}</Text> : null}
-            {title ? <Text style={styles.headerTitle}>{title}</Text> : null}
+            {title ? (
+              onTitlePress ? (
+                <Pressable onPress={onTitlePress} style={styles.headerTitleRow}
+                           hitSlop={8} testID="header-title">
+                  <Text style={styles.headerTitle}>{title}</Text>
+                  <Ionicons name="chevron-down" size={17} color={colors.onDarkMuted} />
+                </Pressable>
+              ) : <Text style={styles.headerTitle}>{title}</Text>
+            ) : null}
           </View>
           {right}
         </View>
@@ -435,9 +445,83 @@ export type SelectOption<T extends string> = {
   /** Solda duran kısa işaret: bayrak ya da para birimi simgesi. */
   mark?: string;
   hint?: string;
+  /** Ionicons adı — `mark` yerine simge istendiğinde (ör. aktif dönem ⚡). */
+  icon?: string;
+  /** Simgeyi vurgulu renkte çizer. */
+  iconAccent?: boolean;
   /** Henüz gelmedi — listede görünür ama seçilemez. */
   soon?: boolean;
 };
+
+/**
+ * Koyu başlığın altında, beyaz yüzeyin kavisinin hemen üstünde duran seçici hap.
+ *
+ * Süzgeç *içerik* değil **bağlam**: "neye bakıyorum" sorusunun parçası, tıpkı
+ * başlık ve toplamlar gibi. Beyaz yüzeye kart olarak konunca içerikle aynı
+ * ağırlığa giriyor ve ekran dikdörtgen kart yığınına dönüyordu. Yatay çip
+ * şeridi de çalışmıyordu: altı kişilik bir evde isimler, iki yıllık kullanımda
+ * ~24 dönem şeridin dışına taşıyor.
+ *
+ * Renk `darkSurface` — başlıktaki yuvarlak düğmelerle aynı, yani yeni bir
+ * görsel dil eklenmiyor.
+ */
+export function HeaderPills({ children }: { children: React.ReactNode }) {
+  return <View style={styles.pillRow}>{children}</View>;
+}
+
+export function HeaderPill<T extends string>({
+  value, options, onSelect, testID,
+}: {
+  value: T;
+  options: SelectOption<T>[];
+  onSelect: (v: T) => void;
+  testID?: string;
+}) {
+  const [open, setOpen] = React.useState(false);
+  const current = options.find((o) => o.value === value);
+  return (
+    <>
+      <Pressable style={styles.pill} onPress={() => setOpen(true)} testID={testID}>
+        {current?.icon ? (
+          <Ionicons
+            name={current.icon as any} size={13}
+            color={current.iconAccent ? colors.accentOnDark : colors.onDarkMuted}
+          />
+        ) : null}
+        <Text style={styles.pillTxt} numberOfLines={1}>{current?.label ?? value}</Text>
+        <Ionicons name="chevron-down" size={12} color={colors.onDarkMuted} />
+      </Pressable>
+
+      <BottomSheet visible={open} onClose={() => setOpen(false)}>
+        {options.map((o, i) => (
+          <React.Fragment key={o.value}>
+            {i > 0 && <View style={[styles.divider, { marginLeft: spacing.lg }]} />}
+            <Pressable
+              style={styles.pickRow}
+              onPress={() => { setOpen(false); if (o.value !== value) onSelect(o.value); }}
+              testID={testID ? `${testID}-${o.value}` : undefined}
+            >
+              {o.icon ? (
+                <Ionicons
+                  name={o.icon as any} size={17}
+                  color={o.iconAccent ? colors.accent : colors.inkTertiary}
+                  style={{ width: 22, textAlign: "center" }}
+                />
+              ) : null}
+              <View style={{ flex: 1 }}>
+                <Text style={styles.pickLabel}>{o.label}</Text>
+                {o.hint ? <Text style={styles.pickHint}>{o.hint}</Text> : null}
+              </View>
+              {o.value === value ? (
+                <Ionicons name="checkmark" size={20} color={colors.accent} />
+              ) : null}
+            </Pressable>
+          </React.Fragment>
+        ))}
+      </BottomSheet>
+    </>
+  );
+}
 
 export function SelectRow<T extends string>({
   label, value, options, onSelect, locked, lockReason, testID,
@@ -1278,6 +1362,7 @@ const styles = StyleSheet.create({
   headerTop: { flexDirection: "row", alignItems: "center", gap: spacing.md, marginBottom: spacing.lg },
   headerOverline: { ...overline, color: colors.onDarkMuted },
   headerTitle: { ...T.screen, color: colors.onDark },
+  headerTitleRow: { flexDirection: "row", alignItems: "center", gap: 5, alignSelf: "flex-start" },
   split: { flexDirection: "row", alignItems: "center", marginTop: spacing.lg },
   splitLine: { width: 1, height: 34, backgroundColor: "rgba(255,255,255,0.14)", marginRight: spacing.lg },
   splitLabel: { ...T.caption, color: colors.onDarkMuted },
@@ -1349,6 +1434,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg, paddingVertical: spacing.md, minHeight: metrics.rowHeight,
   },
   selectMark: { fontSize: 22, lineHeight: 28, width: 30, textAlign: "center" },
+  // Koyu basligin altinda, kavisin hemen ustunde duran secici seridi.
+  pillRow: { flexDirection: "row", gap: spacing.sm, marginTop: spacing.lg, flexWrap: "wrap" },
+  pill: {
+    flexDirection: "row", alignItems: "center", gap: 5, flexShrink: 1,
+    backgroundColor: colors.darkSurface, borderRadius: radius.pill,
+    paddingHorizontal: spacing.md, paddingVertical: 6,
+  },
+  pillTxt: { ...T.captionSb, color: colors.onDark, flexShrink: 1 },
   selectLabel: { ...T.caption, color: colors.inkTertiary },
   selectValue: { ...T.bodySb, color: colors.ink, marginTop: 1 },
   sheetScrim: {

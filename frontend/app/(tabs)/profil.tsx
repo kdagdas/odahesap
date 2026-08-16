@@ -333,7 +333,14 @@ export default function Profil() {
                 { key: "new_expense", label: "Yeni harcama", desc: "Ev arkadaşın harcama eklediğinde" },
                 { key: "expense_edit", label: "Düzenleme ve silme", desc: "Tutarı ya da kimin bölüştüğü değiştiğinde" },
                 { key: "settlement", label: "Ödeme kaydı", desc: "Ödeme işaretlendiğinde veya geri alındığında" },
-                { key: "join_request", label: "Katılma istekleri", desc: "İstek geldiğinde veya onaylandığında" },
+                // Yalnizca YONETICIDE. Yonetici olmayan biri icin bu anahtar
+                // tek bir seyi kontrol ediyordu: "istegin onaylandi" -- hayatta
+                // bir kez olan ve uygulamayi kullanmaya baslamadan once biten
+                // bir olay. Kapatilabilir olmasi anlamsizdi.
+                ...(isAdmin ? [{
+                  key: "join_request", label: "Katılma istekleri",
+                  desc: "Biri eve katılmak istediğinde",
+                }] : []),
                 { key: "period_closed", label: "Dönem kapatma", desc: "Dönem kapatılıp sıfırlandığında" },
               ].map((row, i) => (
                 <View key={row.key}>

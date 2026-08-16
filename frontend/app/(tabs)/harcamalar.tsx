@@ -10,7 +10,7 @@ import { useHousehold } from "@/src/household";
 import {
   ScreenHeader, HeaderSplit, Sheet, Card, Divider, Avatar, CategoryIcon,
   MerchantBadge, Tag, Money, splitBadge, formatEUR, formatDateTR, formatQty,
-  SelectRow, useScrollPad,
+  HeaderPills, HeaderPill, useScrollPad,
 } from "@/src/ui";
 import { colors, spacing, radius, type as T, overline, metrics } from "@/src/theme";
 
@@ -24,12 +24,19 @@ type Expense = {
 };
 type Period = { period_id: string; started_at: string; closed_at: string | null; status: string };
 
-const periodLabel = (p: Period, idx: number, total: number) => {
-  const d = new Date(p.started_at);
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const y = d.getFullYear();
-  return `${p.status === "active" ? "Aktif · " : ""}Dönem #${total - idx} (${m}.${y})`;
-};
+/**
+ * Dönem etiketi — bir ARALIK. Kasa'daki ile aynı biçim; yalnızca başlangıç
+ * ayını yazmak, aynı ay içinde açılıp kapanan iki dönemi ayırt edilemez
+ * yapıyordu.
+ */
+const gunAy = (iso: string) =>
+  new Date(iso).toLocaleDateString("tr-TR", { day: "numeric", month: "short" });
+
+const periodLabel = (p: Period) =>
+  `${gunAy(p.started_at)} – ${p.closed_at ? gunAy(p.closed_at) : "bugün"}`;
+
+const periodHint = (p: Period, idx: number, total: number) =>
+  `Dönem #${total - idx}${p.status === "active" ? " · sürüyor" : ""}`;
 
 // Was a tab; the shopping list earns that slot because it is used daily while
 // this history is opened occasionally. Reached from "Tümü" on the home screen.
@@ -97,39 +104,37 @@ export default function Harcamalar() {
               { label: "Kayıt", value: `${expenses.length} harcama` },
             ]}
           />
-        </ScreenHeader>
-
-        <Sheet>
-          <View style={styles.scroll}>
-          {/* Yatay serit yerine SECICI. Serit uc kisilik evde ve iki donemde
-              calisiyordu; alti kisilik bir evde uzun isimler ekrandan tasiyor,
-              iki yillik kullanimda ~24 donem seridin sonuna ulasilmaz yapiyor.
-              Kural: oklar komsu icin, secici sicramak icin. Bileseni yeni
-              yazmadik -- ulke ve para birimi secerken kullanilan `SelectRow`. */}
-          <Card>
-            <SelectRow
-              label="KİM"
+          {/* Süzgeç bağlamdır: başlık ve toplamlarla aynı yerde durur. */}
+          <HeaderPills>
+            <HeaderPill
               value={memberFilter ?? ""}
               options={[
-                { value: "", label: "Herkes", hint: `${members.length} kişi` },
-                ...members.map((m) => ({ value: m.user_id, label: m.name })),
+                { value: "", label: "Herkes", icon: "people", hint: `${members.length} kişi` },
+                ...members.map((m) => ({
+                  value: m.user_id, label: m.name.split(" ")[0],
+                  icon: "person", hint: m.name,
+                })),
               ]}
               onSelect={(v) => setMemberFilter(v || undefined)}
               testID="filter-member"
             />
-            <Divider inset={spacing.lg} />
-            <SelectRow
-              label="DÖNEM"
+            <HeaderPill
               value={selectedPeriod || activePeriodId || ""}
               options={periods.map((p, i) => ({
                 value: p.period_id,
-                label: periodLabel(p, i, periods.length),
-                hint: p.status === "active" ? "sürüyor" : undefined,
+                label: periodLabel(p),
+                hint: periodHint(p, i, periods.length),
+                icon: p.status === "active" ? "flash" : "archive-outline",
+                iconAccent: p.status === "active",
               }))}
               onSelect={(v) => setSelectedPeriod(v === activePeriodId ? undefined : v)}
               testID="filter-period"
             />
-          </Card>
+          </HeaderPills>
+        </ScreenHeader>
+
+        <Sheet>
+          <View style={styles.scroll}>
 
           {currentPeriodId !== activePeriodId && (
             <View style={styles.archivedBanner} testID="archived-banner">

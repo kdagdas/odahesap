@@ -15,7 +15,8 @@ import { useAuth } from "@/src/auth";
 import { useHousehold } from "@/src/household";
 import {
   ScreenHeader, HeaderSplit, Sheet, Card, Row, Divider, Avatar, Money,
-  IconPill, PrimaryButton, BottomSheet, PulseDot, SelectRow, formatEUR, currencySign,
+  IconPill, PrimaryButton, BottomSheet, PulseDot, HeaderPills, HeaderPill,
+  formatEUR, currencySign,
   useScrollPad,
 } from "@/src/ui";
 import {
@@ -38,11 +39,21 @@ type Stats = {
   merchants: { name: string; total: number }[];
 };
 
-const periodLabel = (p: Period, i: number, total: number) => {
-  const d = new Date(p.started_at);
-  return `${p.status === "active" ? "Aktif · " : ""}Dönem #${total - i}` +
-    ` (${String(d.getMonth() + 1).padStart(2, "0")}.${d.getFullYear()})`;
-};
+/**
+ * Dönem etiketi — bir ARALIK, tek tarih değil.
+ *
+ * Önce yalnızca başlangıç ayı yazılıyordu; aynı ay içinde açılıp kapanan iki
+ * dönem ekranda birebir aynı görünüyordu ("Dönem #1 (08.2026)" ve
+ * "Dönem #2 (08.2026)") ve hangisine baktığın anlaşılmıyordu.
+ */
+const gunAy = (iso: string) =>
+  new Date(iso).toLocaleDateString("tr-TR", { day: "numeric", month: "short" });
+
+const periodLabel = (p: Period) =>
+  `${gunAy(p.started_at)} – ${p.closed_at ? gunAy(p.closed_at) : "bugün"}`;
+
+const periodHint = (p: Period, i: number, total: number) =>
+  `Dönem #${total - i}${p.status === "active" ? " · sürüyor" : ""}`;
 
 const relativeDay = (iso: string) => {
   const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
@@ -302,27 +313,28 @@ export default function Denge() {
               { label: "Sana borçlu", value: formatEUR(owedToMe), accent: owedToMe > 0.01 },
               { label: "Senin borcun", value: formatEUR(iOwe) },
             ]} />
-          </ScreenHeader>
-
-          <Sheet>
-            {/* Yatay serit yerine secici: iki yillik kullanimda ~24 donem
-                birikiyor ve seridin sonundakine ulasmak imkansizlasiyor. */}
+            {/* Süzgeç *içerik* değil BAĞLAM: "neye bakıyorum" sorusunun
+                parçası, başlık ve toplamlarla aynı yerde durmalı. Beyaz
+                yüzeyde kart olarak içerikle aynı ağırlığa giriyordu. */}
             {periods.length > 1 && (
-              <Card style={[styles.mx, { marginBottom: metrics.cardGap }]}>
-                <SelectRow
-                  label="DÖNEM"
+              <HeaderPills>
+                <HeaderPill
                   value={currentId || ""}
                   options={periods.map((p, i) => ({
                     value: p.period_id,
-                    label: periodLabel(p, i, periods.length),
-                    hint: p.status === "active" ? "sürüyor" : undefined,
+                    label: periodLabel(p),
+                    hint: periodHint(p, i, periods.length),
+                    icon: p.status === "active" ? "flash" : "archive-outline",
+                    iconAccent: p.status === "active",
                   }))}
                   onSelect={(v) => setSelected(v === activeId ? undefined : v)}
                   testID="denge-period"
                 />
-              </Card>
+              </HeaderPills>
             )}
+          </ScreenHeader>
 
+          <Sheet>
             {loading ? (
               <ActivityIndicator color={colors.dark} style={{ marginTop: spacing.xxl }} />
             ) : (

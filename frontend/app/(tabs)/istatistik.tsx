@@ -163,6 +163,7 @@ export default function Istatistik() {
         <ScreenHeader
           overline="İSTATİSTİK"
           title={ayAdi(month)}
+          onTitlePress={() => setAySecici(true)}
           right={
             <Pressable onPress={() => router.back()} hitSlop={12} testID="stat-back" style={styles.headBtn}>
               <Ionicons name="close" size={20} color={colors.onDark} />
@@ -178,16 +179,15 @@ export default function Istatistik() {
                        style={styles.navBtn} testID="stat-prev" hitSlop={8}>
               <Ionicons name="chevron-back" size={18} color={colors.onDark} />
             </Pressable>
-            <Pressable style={{ flex: 1, alignItems: "center" }} onPress={() => setAySecici(true)}
-                       testID="stat-month-open">
-              <View style={styles.heroLabelRow}>
-                <Text style={styles.heroLabel}>
-                  {scope === "household" ? "EV HARCAMASI" : "KİŞİSEL HARCAMAN"}
-                </Text>
-                <Ionicons name="chevron-down" size={12} color={colors.onDarkMuted} />
-              </View>
+            {/* Ay secici artik BASLIGA bagli, bu bloga degil: baslikta zaten
+                "Agustos 2026" yaziyor ve tarihe bakan tarihe dokunuyor.
+                Burasi tutarin yeri, tarihin degil. */}
+            <View style={{ flex: 1, alignItems: "center" }}>
+              <Text style={styles.heroLabel}>
+                {scope === "household" ? "EV HARCAMASI" : "KİŞİSEL HARCAMAN"}
+              </Text>
               <Text style={styles.heroValue}>{formatEUR(data?.total ?? 0)}</Text>
-            </Pressable>
+            </View>
             <Pressable onPress={() => canForward && setMonth((m) => shiftMonth(m, 1))}
                        style={[styles.navBtn, !canForward && { opacity: 0.25 }]}
                        disabled={!canForward} testID="stat-next" hitSlop={8}>
@@ -453,7 +453,6 @@ const styles = StyleSheet.create({
     alignItems: "center", justifyContent: "center",
   },
   heroLabel: { ...T.caption, color: colors.onDarkMuted, letterSpacing: 0.6 },
-  heroLabelRow: { flexDirection: "row", alignItems: "center", gap: 4 },
   // Ay secici: yil basligi + 12 hucrelik izgara. Liste yerine izgara, cunku
   // "gecen subat" aranirken goz aylari konumundan buluyor, sirasindan degil.
   yilBaslik: {
