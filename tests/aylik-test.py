@@ -112,8 +112,15 @@ check("iki kisi arasindaki borc ev harcamasi degil",
       near(stat(alice)["total"], 100.0), stat(alice)["total"])
 
 
-print("\n-- 4. secili kisiler (custom) ev toplamina GIRIYOR --")
-# Fisteki yumurtayi iki kisi bolusuyorsa bu yine evin harcadigi paradir.
+print("\n-- 4. secili kisiler ev toplamina giriyor (BU EVDE ikisi = tum ev) --")
+# DIKKAT: bu ev IKI kisilik, yani {alice, bob} listesi "tum ev" demek --
+# harcama bu yuzden ev toplamina giriyor, "custom" etiketi tasidigi icin degil.
+#
+# Kural v35'te degisti: ev bolusmuyorsa ev harcamasi degildir. Once burada
+# "iki kisi bolusuyorsa bu yine evin harcadigi paradir" yaziyordu ve UC kisilik
+# bir evde bu yanlisti -- evin almadigi sey ev toplamini sisiriyordu. Iki
+# kisilik bir evde iki kural ayni sonucu verdigi icin fark yillarca gorunmedi.
+# Ayrimi UC kisilik evde `aylik-kapsam-test.py` koruyor.
 harca(alice, "2026-05-12", 20.0, split_mode="equal",
       split_with={alice_id: 1, bob_id: 1})
 s = stat(alice)
