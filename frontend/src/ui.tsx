@@ -19,7 +19,7 @@ import {
 import { LinearGradient } from "expo-linear-gradient";
 import Svg, { Circle } from "react-native-svg";
 import {
-  SafeAreaProvider, useSafeAreaInsets, initialWindowMetrics,
+  SafeAreaProvider, SafeAreaView, useSafeAreaInsets, initialWindowMetrics,
 } from "react-native-safe-area-context";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 
@@ -671,8 +671,6 @@ function SheetBody({
   // Klavye acikken sayfa yuzuyor: dort kosesi de yuvarlak ve kenarlardan
   // biraz iceride dursun ki "ekrana yapisik" degil "kart" okunsun.
   const yuzuyor = kb > 0;
-  // Gezinme cubugunun uzerinde her zaman en az bir parmak payi kalsin.
-  const altPay = Math.max(insets.bottom, initialWindowMetrics?.insets.bottom ?? 0, spacing.md);
 
   return (
     <View style={styles.sheetScrim}>
@@ -683,7 +681,6 @@ function SheetBody({
           yuzuyor && styles.pickSheetFloating,
           {
             marginBottom: kb,
-            paddingBottom: spacing.lg + (yuzuyor ? 0 : altPay),
             maxHeight: maxHeight ?? (win.height - kb - insets.top - spacing.xxl),
             transform: [{ translateY: y }],
           },
@@ -696,7 +693,15 @@ function SheetBody({
         <View {...pan.panHandlers} style={styles.grabZone}>
           <View style={styles.pickGrab} />
         </View>
-        {children}
+        {/* Guvenli alani ELLE hesaplamak yerine kutuphanenin bileseni: inset
+            degerini okuyup dolgu vermek olcum yarisina takiliyordu (ust uste
+            acilan ikinci sayfada deger henuz gelmemis oluyordu). SafeAreaView
+            bunu kendisi uyguluyor. Klavye acikken alt kenar zaten klavyenin
+            uzerinde, o yuzden orada devre disi. */}
+        <SafeAreaView edges={yuzuyor ? [] : ["bottom"]}
+                      style={{ paddingBottom: spacing.lg }}>
+          {children}
+        </SafeAreaView>
       </Animated.View>
     </View>
   );
@@ -1275,7 +1280,7 @@ const styles = StyleSheet.create({
   },
   pickSheet: {
     backgroundColor: colors.surface, borderTopLeftRadius: radius.xl,
-    borderTopRightRadius: radius.xl, paddingTop: spacing.lg, paddingBottom: spacing.xxl,
+    borderTopRightRadius: radius.xl, paddingTop: spacing.lg,
     width: "100%", maxWidth: CONTENT_MAX_WIDTH, alignSelf: "center",
   },
   pickSheetFloating: {

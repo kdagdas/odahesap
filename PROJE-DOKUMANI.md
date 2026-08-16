@@ -5,7 +5,7 @@
 > ihtiyaç duymaz. Günlük operasyon için [DEVAM.md](DEVAM.md), kurulum için
 > [README.md](README.md).
 >
-> Son güncelleme: 16 Ağustos 2026 · Uygulama sürümü 1.0.0 (versionCode 27)
+> Son güncelleme: 16 Ağustos 2026 · Uygulama sürümü 1.0.0 (versionCode 32)
 
 ---
 
@@ -64,7 +64,12 @@ tek kartta, ay-ay değişim, kümülatif eğri), **Faturalar** kartı geldi, Kas
 `BottomSheet` çıkarıldı, fiş tarama animasyonu eklendi ve tablet düzeni
 düzeltildi.
 
-**Test sayısı:** 189 → 281 → 336 → 497 → **516**. Yeni dosyalar: `donem-dondurma-test.py`,
+**Tur 8 (v28–v32).** **Ödeme yolları** — IBAN ve PayPal, **cihazda saklanan**
+bilgiyle; karekod bilerek yapılmadı (ödeyen kendi ekranını tarayamaz). Fiş
+kalemlerine **genel ürün adı** (`Gelbwurzel 1kg` → havuç), bölüşme seçicisine
+hızlı seçim çipleri, avatar tek kapıya indi.
+
+**Test sayısı:** 189 → 281 → 336 → 497 → 516 → **521**. Yeni dosyalar: `donem-dondurma-test.py`,
 `duzenleme-gecmisi-test.py`, `market-tekrar-test.py`, `para-birimi-test.py`,
 `aktivite-test.py`, `bolusme-test.py`, `fiyat-test.py`, `duzenli-test.py`,
 `aylik-test.py`.
@@ -567,6 +572,16 @@ dokunmaz. Yardımcılar: `fcm-verify.py` (Firebase kimlik bilgisi gerçekten
   genele açılırsa: davet kodu 6 hanedir (bir milyon ihtimal) ve `/households/join`
   sınırsız denenebilir; `/ocr/receipt` de döngüye sokularak Gemini kotası
   tüketilebilir.
+- **Gemini Pro aboneliği API kotasını ÇÖZMEZ.** O tüketici ürünü (uygulama,
+  Gmail/Docs entegrasyonu); API kotası anahtarın bağlı olduğu Google Cloud
+  projesine ait ve ayrı faturalandırılır. Kotayı açan tek şey o projede
+  faturalandırmayı açmak — kodda hiçbir şey değişmez.
+- **Faturalandırma açılınca hız sınırlaması öncelik olur.** Ücretsiz katmanda
+  `/ocr/receipt` istismarının bedeli "kota doldu"ydu; ücretlide bir fatura.
+- **Fiş fotoğrafı tam çözünürlükte gönderiliyor** (yalnızca JPEG kalitesi
+  düşürülüyor). Küçültmek yükleme, sunucu ve model tarafında birden kazandırır;
+  `src/photo.ts` avatarlar için bunu zaten yapıyor. Eşik **ölçülerek**
+  bulunmalı: çok küçültmek fişi okunmaz yapar.
 - **Gemini ücretsiz katmanı arka arkaya iki fiş taramayı kaldırmıyor.**
   Ölçüldü: üretime karşı iki ardışık `/ocr/receipt` isteğinde birincisi 200
   (13 sn), ikincisi **429 — kota**. Sunucu 429'da bir kez 20 sn bekleyip

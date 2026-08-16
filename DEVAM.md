@@ -265,6 +265,27 @@ Kalıcı çözüm faturalandırma.
 **Canlıya karşı OCR testi çalıştırmayın** — kota tüketiyor ve o kota günlük
 kullanımdan çalınıyor.
 
+## KURAL: hiçbir şey gezinme çubuğunun altında kalmaz
+
+Ekran, pencere, düğme, liste — **hiçbiri** telefonun gezinme çubuğunun ya da
+çentiğin altında kalmayacak. Bu bir tercih değil, uygulamanın kuralı.
+
+`app.json` içinde `edgeToEdgeEnabled: true` — yani uygulama kenardan kenara
+çiziyor ve güvenli alanı **her ekran kendisi** halletmek zorunda.
+
+Bilinen tuzaklar:
+
+- **`Modal` ayrı bir penceredir.** Köktekı `SafeAreaProvider` oraya geçmez;
+  Modal'ın içine kendi sağlayıcısı konmalı ve `useSafeAreaInsets()` o
+  sağlayıcının **altında** çağrılmalı (dışarıdan çağırmak yanlış değeri okur).
+- **Sağlayıcı değerleri ölçerek öğrenir**, ilk karede sıfır döner. Bu yüzden
+  `initialMetrics={initialWindowMetrics}` verilmeli — yoksa üst üste açılan
+  ikinci bir sayfada ölçüm yetişmez.
+- **En sağlamı elle hesaplamamak:** `SafeAreaView edges={["bottom"]}` güvenli
+  alanı kendisi uygular ve ölçüm yarışına takılmaz.
+- Yeni bir tam ekran ya da alt sayfa yazarken bunu **cihazda** doğrulayın;
+  emülatörde gezinme çubuğu farklı davranabiliyor.
+
 ## Kolay gözden kaçan tasarım kararları
 
 **Bildirim hataları yutulur.** `notify()` hiçbir zaman istisna fırlatmaz —
