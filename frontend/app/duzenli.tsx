@@ -14,7 +14,6 @@ import {
   View, Text, StyleSheet, ScrollView, Pressable, TextInput,
   ActivityIndicator, Alert, Platform,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { api, apiGet, apiPost } from "@/src/api";
@@ -49,7 +48,6 @@ export default function Duzenli() {
   // Gezinme cubugu payi -- ic dolgu zaten var, buraya yalnizca cihazin payi.
   const altPay = useScrollPad({ extra: 0 });
   const router = useRouter();
-  const insets = useSafeAreaInsets();
   const { scope: initialScope } = useLocalSearchParams<{ scope?: string }>();
   const { user } = useAuth();
   const { members } = useHousehold();

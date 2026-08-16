@@ -179,17 +179,6 @@ export function useKeyboardHeight() {
 export const CONTENT_MAX_WIDTH = 560;
 
 /**
- * GECICI: alt sayfanin olculerini ekrana basar.
- *
- * Gezinme cubugu hatasi DORT kez tahminle cozulmeye calisildi ve dordu de
- * tutmadi; sebebi hep ayni: cihaz olmadan hangi degerin yanlis oldugu
- * bilinmiyor. Bu serit tek ekran goruntusuyle onu soyluyor.
- *
- * Hata kapandiginda bu sabit `false` yapilip serit ve `SheetDebug` silinir.
- */
-export const SHEET_DEBUG = true;
-
-/**
  * Alt sekme cubugunun kapladigi yukseklik.
  *
  * Tek yerde duruyor cunku iki taraf birden okuyor: cubugu CIZEN
@@ -257,7 +246,9 @@ export function Card({
           ) : null}
         </View>
       ) : null}
-      <View style={padded ? styles.cardBody : undefined}>{children}</View>
+      <View style={padded ? [styles.cardBody, !title && styles.cardBodyTopless] : undefined}>
+        {children}
+      </View>
     </View>
   );
 }
@@ -685,7 +676,6 @@ function SheetBody({
   const win = useWindowDimensions();
   const y = React.useRef(new Animated.Value(0)).current;
   const height = React.useRef(0);
-  const [olcu, setOlcu] = React.useState({ h: 0, py: 0 });
 
   const kapat = React.useCallback(() => {
     Animated.timing(y, {
@@ -734,27 +724,9 @@ function SheetBody({
             transform: [{ translateY: y }],
           },
         ]}
-        onLayout={(e) => {
-          height.current = e.nativeEvent.layout.height;
-          if (SHEET_DEBUG) {
-            const { height: h, y: py } = e.nativeEvent.layout;
-            setOlcu({ h: Math.round(h), py: Math.round(py) });
-          }
-        }}
+        onLayout={(e) => { height.current = e.nativeEvent.layout.height; }}
         testID={testID}
       >
-        {SHEET_DEBUG && (
-          /* Sayfanin ust kenarinda, tutamagin ustunde: icerik neyse o kalsin.
-             ins = guvenli alan altligi · win = pencere · h = sayfa yuksekligi
-             · y = sayfanin pencere icindeki ust konumu · kb = klavye
-             Beklenen: y + h + ins == win. Tutmuyorsa hangi terim bozuk,
-             tek bakista gorunur. */
-          <Text style={styles.dbg}>
-            ins{Math.round(insets.bottom)} · top{Math.round(insets.top)} ·
-            win{Math.round(win.height)} · h{olcu.h} · y{olcu.py} · kb{Math.round(kb)} ·
-            top+h+ins={olcu.py + olcu.h + Math.round(insets.bottom)}
-          </Text>
-        )}
         {/* Surukleme yalnizca tutamak bolgesinden. Icerikten de surukleseydik
             sayfanin icindeki listelerin kendi kaydirmasiyla kavga ederdi. */}
         <View {...pan.panHandlers} style={styles.grabZone}>
@@ -989,6 +961,27 @@ export function SplitPicker({
   const entered = picked.reduce((s, id) => s + parseAmount(amounts[id]), 0);
   const remaining = Math.round((total - entered) * 100) / 100;
 
+  const hepsiSecili = picked.length === members.length && members.length > 0;
+  const benSecili = picked.length === 1 && picked[0] === meId;
+
+  /**
+   * Varis noktasi secimi. `allowExact` kapaliysa (fis kalemi) sayfa kapanir --
+   * orada baska bir secenek yok, onay istemek bos bir dokunus olurdu.
+   */
+  const hedefSec = (ids: string[]) => {
+    setErr(null);
+    setPicked(ids);
+    if (mode === "equal" && ids.length) {
+      setAmounts(Object.fromEntries(members.map((m) => [
+        m.user_id, ids.includes(m.user_id) ? showAmount(total / ids.length) : "",
+      ])));
+    }
+    if (!allowExact && ids.length) {
+      onChange({ mode: "equal", with: Object.fromEntries(ids.map((id) => [id, 1])) });
+      setOpen(false);
+    }
+  };
+
   const confirm = () => {
     if (!picked.length) { setErr("En az bir kişi seçin"); return; }
     if (mode === "exact") {
@@ -1019,47 +1012,62 @@ export function SplitPicker({
               <Text style={styles.splitTotal}>{formatEUR(total)}</Text>
             </View>
 
-            {/* Hizli secim. Dort kisilik bir evde "sadece ben" demek icin uc
-                kutu kaldirmak gerekiyordu -- ustelik fisteki HER kalem icin.
-                Iki asamali bir akisa bolmek yerine ucluk cip: en sik iki
-                durum tek dokunusa, "sadece Salih" iki dokunusa iniyor. */}
-            <View style={styles.quickRow}>
-              {[
-                { k: "all", label: "Tüm ev" },
-                { k: "me", label: "Sadece ben" },
-                { k: "none", label: "Hiçbiri" },
-              ].map((q) => {
-                // Ucu de birer DURUM: "Temizle" gibi bir komut degil. Bu
-                // yuzden secili olan vurgulaniyor ve serit kendi icinde
-                // tutarli okunuyor.
-                const secili =
-                  (q.k === "all" && picked.length === members.length && members.length > 0) ||
-                  (q.k === "me" && picked.length === 1 && picked[0] === meId) ||
-                  (q.k === "none" && picked.length === 0);
-                return (
-                  <Pressable
-                    key={q.k}
-                    style={[styles.quickChip, secili && styles.quickChipOn]}
-                    onPress={() => {
-                      setErr(null);
-                      const next =
-                        q.k === "all" ? members.map((m) => m.user_id)
-                        : q.k === "me" ? (meId ? [meId] : [])
-                        : [];
-                      setPicked(next);
-                      if (mode === "equal" && next.length) {
-                        setAmounts(Object.fromEntries(members.map((m) => [
-                          m.user_id,
-                          next.includes(m.user_id) ? showAmount(total / next.length) : "",
-                        ])));
-                      }
-                    }}
-                    testID={testID ? `${testID}-quick-${q.k}` : undefined}
-                  >
-                    <Text style={[styles.quickTxt, secili && styles.quickTxtOn]}>{q.label}</Text>
-                  </Pressable>
-                );
-              })}
+            {/* En sik iki durum artik birer VARIS NOKTASI, listeyi degistiren
+                cip degil. Onceden "sadece ben" demek uc dokunustu (ac - cip -
+                Tamam) ve fiste 15 kalem varsa bu 45 dokunus ediyordu.
+
+                Fis inceleme ekraninda (`allowExact=false`) dokunmak sayfayi
+                KAPATIYOR: orada verilecek karar tek. Elle giriste kapanmiyor,
+                cunku 1200 EUR kirayi 350/400/450 diye bolmek icin once "Tum
+                ev" secilip sonra "Tutar gir"e gecmek gerekiyor -- kapansa o
+                yol kalmazdi. Kural keyfi degil: SECENEK VARSA ONAY VAR. */}
+            <Pressable
+              style={[styles.destRow, hepsiSecili && styles.destRowOn]}
+              onPress={() => hedefSec(members.map((m) => m.user_id))}
+              testID={testID ? `${testID}-quick-all` : undefined}
+            >
+              <View style={[styles.destIcon, hepsiSecili && styles.destIconOn]}>
+                <Ionicons name="home" size={17} color={hepsiSecili ? colors.onBrand : colors.inkSecondary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.destTitle}>Tüm ev</Text>
+                <Text style={[styles.destSub, hepsiSecili && { color: colors.accentDark }]}>
+                  {members.length} kişi · {formatEUR(total / Math.max(members.length, 1))} kişi başı
+                </Text>
+              </View>
+              {hepsiSecili && <Ionicons name="checkmark" size={20} color={colors.accentDark} />}
+            </Pressable>
+
+            <View style={[styles.divider, { marginLeft: spacing.lg }]} />
+
+            <Pressable
+              style={[styles.destRow, benSecili && styles.destRowOn]}
+              onPress={() => hedefSec(meId ? [meId] : [])}
+              testID={testID ? `${testID}-quick-me` : undefined}
+            >
+              <View style={[styles.destIcon, benSecili && styles.destIconOn]}>
+                <Ionicons name="person" size={17} color={benSecili ? colors.onBrand : colors.inkSecondary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.destTitle}>Sadece ben</Text>
+                <Text style={[styles.destSub, benSecili && { color: colors.accentDark }]}>
+                  Kimse görmez
+                </Text>
+              </View>
+              {benSecili && <Ionicons name="checkmark" size={20} color={colors.accentDark} />}
+            </Pressable>
+
+            {/* "Hicbiri" bir DURUM degil bir ARAC -- ev sahibi de onu zaten
+                "temizle" diye kullaniyordu. Digerleriyle ayni boyda durmasi
+                yaniltiyordu; basligin yanina kucuk bir yaziya indi. */}
+            <View style={styles.kisilerHead}>
+              <Text style={overline}>KİŞİLER</Text>
+              {picked.length > 0 && (
+                <Pressable onPress={() => { setErr(null); setPicked([]); }} hitSlop={10}
+                           testID={testID ? `${testID}-quick-none` : undefined}>
+                  <Text style={styles.temizle}>Temizle</Text>
+                </Pressable>
+              )}
             </View>
 
             {allowExact && (
@@ -1293,7 +1301,10 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface, borderRadius: radius.lg,
     borderWidth: 1, borderColor: colors.border, overflow: "hidden",
   },
+  // `paddingTop: 0` cunku normalde ustunde `cardHead` durur. Baslik yoksa
+  // o dolgu hic gelmiyordu ve ilk satir kartin kenarina yapisiyordu.
   cardBody: { padding: spacing.lg, paddingTop: 0 },
+  cardBodyTopless: { paddingTop: spacing.lg },
   cardHeadLeft: { flexDirection: "row", alignItems: "center", flexShrink: 1 },
   cardHead: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
@@ -1360,11 +1371,6 @@ const styles = StyleSheet.create({
   // Tutamagin kendisi 4 piksel; parmakla yakalanabilmesi icin cevresindeki
   // bos alan da surukleme bolgesine dahil.
   grabZone: { paddingTop: spacing.sm, paddingBottom: spacing.xs },
-  // GECICI teshis seridi -- bkz. SHEET_DEBUG.
-  dbg: {
-    fontSize: 11, lineHeight: 14, color: colors.negative, textAlign: "center",
-    paddingHorizontal: spacing.sm, paddingTop: 2,
-  },
   tabs: {
     flexDirection: "row", backgroundColor: colors.surfaceSecondary,
     borderRadius: radius.pill, padding: 3,
@@ -1391,18 +1397,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg, marginBottom: spacing.md,
   },
   splitTotal: { ...T.bodySb, color: colors.ink },
-  quickRow: {
-    flexDirection: "row", gap: spacing.sm, paddingHorizontal: spacing.lg,
-    marginBottom: spacing.sm,
+  // En sik iki durum: cip degil, kendi ikonu ve alt satiri olan birer SATIR.
+  destRow: {
+    flexDirection: "row", alignItems: "center", gap: spacing.md,
+    paddingHorizontal: spacing.lg, paddingVertical: spacing.md, minHeight: 58,
   },
-  quickChip: {
-    flex: 1, alignItems: "center", justifyContent: "center", minHeight: 34,
-    borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border,
-    backgroundColor: colors.surface,
+  destRowOn: { backgroundColor: colors.accentSoft },
+  destIcon: {
+    width: 32, height: 32, borderRadius: 10, backgroundColor: colors.surfaceSecondary,
+    alignItems: "center", justifyContent: "center",
   },
-  quickChipOn: { backgroundColor: colors.accentSoft, borderColor: colors.accent },
-  quickTxt: { ...T.captionSb, color: colors.inkSecondary },
-  quickTxtOn: { color: colors.accentDark },
+  destIconOn: { backgroundColor: colors.accent },
+  destTitle: { ...T.body, color: colors.ink },
+  destSub: { ...T.caption, color: colors.inkTertiary, marginTop: 1 },
+  kisilerHead: {
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    paddingHorizontal: spacing.lg, marginTop: spacing.lg, marginBottom: spacing.xs,
+  },
+  temizle: { ...T.caption, color: colors.inkTertiary },
   segment: {
     flexDirection: "row", gap: spacing.xs, marginHorizontal: spacing.lg,
     marginBottom: spacing.sm, backgroundColor: colors.surfaceSecondary,

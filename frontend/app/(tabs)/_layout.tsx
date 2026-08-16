@@ -95,6 +95,17 @@ export default function TabsLayout() {
           ),
         }}
       />
+
+      {/* Sekme çubuğunda GÖRÜNMEYEN ama çubuğu KORUYAN ekranlar (`href: null`).
+          Ayrım "gezinme mi, iş mi": bunlar gezilen ekranlar — istatistiğe bakıp
+          Kasa'ya geçmek istersin, çubuk gitmişse önce geri çıkman gerekiyor.
+          İş ekranları (ayarlar, düzenli ödeme, elle giriş, fiş inceleme) tam
+          ekran kalıyor: yarım kalmış bir formun üstünde sekmeye basmak
+          girdiğini kaybettirir. */}
+      <Tabs.Screen name="istatistik" options={{ href: null }} />
+      <Tabs.Screen name="harcamalar" options={{ href: null }} />
+      <Tabs.Screen name="aktivite" options={{ href: null }} />
+      <Tabs.Screen name="member-detail" options={{ href: null }} />
     </Tabs>
   );
 }

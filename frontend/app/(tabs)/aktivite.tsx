@@ -44,7 +44,7 @@ const relative = (iso: string) => {
 
 export default function Aktivite() {
   // Gezinme cubugu payi -- ic dolgu zaten var, buraya yalnizca cihazin payi.
-  const altPay = useScrollPad({ extra: 0 });
+  const altPay = useScrollPad({ tabs: true, extra: 0 });
   const router = useRouter();
   const [rows, setRows] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);

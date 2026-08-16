@@ -8,9 +8,9 @@ import { apiGet, apiDelete } from "@/src/api";
 import { useAuth } from "@/src/auth";
 import { useHousehold } from "@/src/household";
 import {
-  ScreenHeader, HeaderSplit, Sheet, Card, Divider, Chip, Avatar, CategoryIcon,
+  ScreenHeader, HeaderSplit, Sheet, Card, Divider, Avatar, CategoryIcon,
   MerchantBadge, Tag, Money, splitBadge, formatEUR, formatDateTR, formatQty,
-  useScrollPad,
+  SelectRow, useScrollPad,
 } from "@/src/ui";
 import { colors, spacing, radius, type as T, overline, metrics } from "@/src/theme";
 
@@ -35,7 +35,7 @@ const periodLabel = (p: Period, idx: number, total: number) => {
 // this history is opened occasionally. Reached from "Tümü" on the home screen.
 export default function Harcamalar() {
   // Gezinme cubugu payi -- ic dolgu zaten var, buraya yalnizca cihazin payi.
-  const altPay = useScrollPad({ extra: 0 });
+  const altPay = useScrollPad({ tabs: true, extra: 0 });
   const { user } = useAuth();
   const router = useRouter();
   const { members, activePeriod } = useHousehold();
@@ -101,33 +101,35 @@ export default function Harcamalar() {
 
         <Sheet>
           <View style={styles.scroll}>
-          <Text style={styles.groupLabel}>KİM</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-            <Chip label="Herkes" active={!memberFilter} onPress={() => setMemberFilter(undefined)} icon="people" testID="filter-all-members" />
-            {members.map((m) => (
-              <Chip
-                key={m.user_id}
-                label={m.name.split(" ")[0]}
-                active={memberFilter === m.user_id}
-                onPress={() => setMemberFilter(memberFilter === m.user_id ? undefined : m.user_id)}
-                testID={`filter-member-${m.user_id}`}
-              />
-            ))}
-          </ScrollView>
-
-          <Text style={styles.groupLabel}>DÖNEM</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-            {periods.map((p, i) => (
-              <Chip
-                key={p.period_id}
-                label={periodLabel(p, i, periods.length)}
-                active={(selectedPeriod || activePeriodId) === p.period_id}
-                onPress={() => setSelectedPeriod(p.period_id === activePeriodId ? undefined : p.period_id)}
-                icon={p.status === "active" ? "flash" : "archive"}
-                testID={`filter-period-${p.period_id}`}
-              />
-            ))}
-          </ScrollView>
+          {/* Yatay serit yerine SECICI. Serit uc kisilik evde ve iki donemde
+              calisiyordu; alti kisilik bir evde uzun isimler ekrandan tasiyor,
+              iki yillik kullanimda ~24 donem seridin sonuna ulasilmaz yapiyor.
+              Kural: oklar komsu icin, secici sicramak icin. Bileseni yeni
+              yazmadik -- ulke ve para birimi secerken kullanilan `SelectRow`. */}
+          <Card>
+            <SelectRow
+              label="KİM"
+              value={memberFilter ?? ""}
+              options={[
+                { value: "", label: "Herkes", hint: `${members.length} kişi` },
+                ...members.map((m) => ({ value: m.user_id, label: m.name })),
+              ]}
+              onSelect={(v) => setMemberFilter(v || undefined)}
+              testID="filter-member"
+            />
+            <Divider inset={spacing.lg} />
+            <SelectRow
+              label="DÖNEM"
+              value={selectedPeriod || activePeriodId || ""}
+              options={periods.map((p, i) => ({
+                value: p.period_id,
+                label: periodLabel(p, i, periods.length),
+                hint: p.status === "active" ? "sürüyor" : undefined,
+              }))}
+              onSelect={(v) => setSelectedPeriod(v === activePeriodId ? undefined : v)}
+              testID="filter-period"
+            />
+          </Card>
 
           {currentPeriodId !== activePeriodId && (
             <View style={styles.archivedBanner} testID="archived-banner">

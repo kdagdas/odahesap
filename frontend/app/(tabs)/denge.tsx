@@ -1,7 +1,7 @@
 /** Kasa — kişisel hesap. Ev toplamları Anasayfa'ya taşındı; burada senin
  *  net durumun, kimin kime borçlu olduğu tek blok halinde, dönem istatistikleri
  *  ve dönem yönetimi var. */
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   View, Text, StyleSheet, ScrollView, ActivityIndicator, Pressable,
   RefreshControl, TextInput, KeyboardAvoidingView, Platform, Share, Linking,
@@ -15,7 +15,7 @@ import { useAuth } from "@/src/auth";
 import { useHousehold } from "@/src/household";
 import {
   ScreenHeader, HeaderSplit, Sheet, Card, Row, Divider, Avatar, Money,
-  IconPill, Chip, PrimaryButton, BottomSheet, PulseDot, formatEUR, currencySign,
+  IconPill, PrimaryButton, BottomSheet, PulseDot, SelectRow, formatEUR, currencySign,
   useScrollPad,
 } from "@/src/ui";
 import {
@@ -72,8 +72,23 @@ export default function Denge() {
   const [mode, setMode] = useState<"none" | "close" | "reopen">("none");
   const [payFor, setPayFor] = useState<Transfer | null>(null);
   const [payAmount, setPayAmount] = useState("");
-  const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  /**
+   * Gecici bildirim satiri -- kendiliginden kayboluyor.
+   *
+   * Onceden `setMessage` bir daha temizlenmiyordu: "Odeme kaydi kaldirildi"
+   * ekranda asili kaliyor ve bir sonraki acilista hala orada duruyordu, yani
+   * olmus bitmis bir isi guncel bir durum gibi gosteriyordu.
+   */
+  const [message, setMessage] = useState<string | null>(null);
+  const msgTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const duyur = useCallback((txt: string | null) => {
+    setMessage(txt);
+    if (msgTimer.current) clearTimeout(msgTimer.current);
+    if (txt) msgTimer.current = setTimeout(() => setMessage(null), 4500);
+  }, []);
+  useEffect(() => () => { if (msgTimer.current) clearTimeout(msgTimer.current); }, []);
 
   const load = useCallback(async () => {
     try {
@@ -190,7 +205,7 @@ export default function Denge() {
   const kopyalaIban = async () => {
     if (!karsiBilgi?.iban) return;
     await Clipboard.setStringAsync(karsiBilgi.iban);
-    setMessage("IBAN kopyalandı");
+    duyur("IBAN kopyalandı");
     setYolaGidildi(true);
   };
 
@@ -209,7 +224,7 @@ export default function Denge() {
     setPayFor(t);
     setPayAmount(t.amount.toFixed(2).replace(".", ","));
     setYolaGidildi(false);
-    setError(null); setMessage(null);
+    setError(null); duyur(null);
     // Yollar sayfayla birlikte aciliyor; ayri bir adim beklemesin.
     setKarsiBilgi(t.from === me ? await getPaymentFor(t.to) : null);
   };
@@ -226,34 +241,34 @@ export default function Denge() {
       });
       setPayFor(null);
       await load();
-      setMessage("Ödeme kaydedildi");
+      duyur("Ödeme kaydedildi");
     } catch (e: any) { setError(e?.message || "Kaydedilemedi"); }
     finally { setBusy(false); }
   };
 
   const undoSettlement = async (id: string) => {
     setBusy(true); setError(null);
-    try { await apiDelete(`/settlements/${id}`); await load(); setMessage("Ödeme kaydı kaldırıldı"); }
+    try { await apiDelete(`/settlements/${id}`); await load(); duyur("Ödeme kaydı kaldırıldı"); }
     catch (e: any) { setError(e?.message || "Kaldırılamadı"); }
     finally { setBusy(false); }
   };
 
   const closePeriod = async () => {
-    setBusy(true); setError(null); setMessage(null);
+    setBusy(true); setError(null); duyur(null);
     try {
       await apiPost("/periods/close", {});
       await refreshHH(); setSelected(undefined); await load();
-      setMode("none"); setMessage("Dönem kapatıldı, yeni dönem başladı");
+      setMode("none"); duyur("Dönem kapatıldı, yeni dönem başladı");
     } catch (e: any) { setError(e?.message || "İşlem başarısız"); }
     finally { setBusy(false); }
   };
 
   const reopenPeriod = async () => {
-    setBusy(true); setError(null); setMessage(null);
+    setBusy(true); setError(null); duyur(null);
     try {
       await apiPost("/periods/reopen", {});
       await refreshHH(); setSelected(undefined); await load();
-      setMode("none"); setMessage("Dönem yeniden açıldı");
+      setMode("none"); duyur("Dönem yeniden açıldı");
     } catch (e: any) { setError(e?.message || "Geri alınamadı"); }
     finally { setBusy(false); }
   };
@@ -290,17 +305,22 @@ export default function Denge() {
           </ScreenHeader>
 
           <Sheet>
+            {/* Yatay serit yerine secici: iki yillik kullanimda ~24 donem
+                birikiyor ve seridin sonundakine ulasmak imkansizlasiyor. */}
             {periods.length > 1 && (
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}
-                          contentContainerStyle={styles.chips}>
-                {periods.map((p, i) => (
-                  <Chip key={p.period_id} label={periodLabel(p, i, periods.length)}
-                        active={currentId === p.period_id}
-                        icon={p.status === "active" ? "flash" : "archive"}
-                        onPress={() => setSelected(p.period_id === activeId ? undefined : p.period_id)}
-                        testID={`denge-period-${p.period_id}`} />
-                ))}
-              </ScrollView>
+              <Card style={[styles.mx, { marginBottom: metrics.cardGap }]}>
+                <SelectRow
+                  label="DÖNEM"
+                  value={currentId || ""}
+                  options={periods.map((p, i) => ({
+                    value: p.period_id,
+                    label: periodLabel(p, i, periods.length),
+                    hint: p.status === "active" ? "sürüyor" : undefined,
+                  }))}
+                  onSelect={(v) => setSelected(v === activeId ? undefined : v)}
+                  testID="denge-period"
+                />
+              </Card>
             )}
 
             {loading ? (
@@ -378,12 +398,12 @@ export default function Denge() {
                                 <>
                                 <View style={styles.bridgeActions}>
                                   <Pressable
-                                    style={[styles.bridgeBtn, iPay ? styles.btnDark : styles.btnSoft]}
+                                    style={[styles.bridgeBtn, iPay ? styles.btnDark : styles.btnQuiet]}
                                     onPress={() => openPay(t)}
                                     testID={iPay ? `mark-paid-to-${t.to}` : `mark-paid-${t.from}`}
                                   >
-                                    <Text style={iPay ? styles.btnDarkTxt : styles.btnSoftTxt}>
-                                      {iPay ? "Öde" : "Ödendi"}
+                                    <Text style={iPay ? styles.btnDarkTxt : styles.btnQuietTxt}>
+                                      {iPay ? "Öde" : "Ödedi"}
                                     </Text>
                                   </Pressable>
                                   {/* Alacakliya, ilk paylasima kadar. Hic bilgi
@@ -645,15 +665,22 @@ export default function Denge() {
             <View style={styles.hair} />
             <View style={styles.recordRow}>
               <View style={{ flex: 1 }}>
-                <View style={styles.recordHead}>
-                  {yolaGidildi && <PulseDot size={7} trigger={1} />}
-                  <Text style={styles.wayTitle}>
-                    {iPay ? "Nakit / elden ödedim" : "Ödedi"}
-                  </Text>
-                </View>
-                <Text style={styles.wayDesc}>
-                  {yolaGidildi ? "Ödediysen kaydedelim" : "Yalnızca kayıt oluşturur"}
-                </Text>
+                {/* Aciklama yalnizca ODEYEN tarafta anlamli: orada yollar da
+                    var, "bu kayit olusturur" ayrimi gerekiyor. Alacaklida
+                    yapilacak tek is zaten kayit. */}
+                {iPay ? (
+                  <>
+                    <View style={styles.recordHead}>
+                      {yolaGidildi && <PulseDot size={7} trigger={1} />}
+                      <Text style={styles.wayTitle}>Nakit / elden ödedim</Text>
+                    </View>
+                    <Text style={styles.wayDesc}>
+                      {yolaGidildi ? "Ödediysen kaydedelim" : "Yalnızca kayıt oluşturur"}
+                    </Text>
+                  </>
+                ) : (
+                  <Text style={styles.wayTitle}>Ödedi</Text>
+                )}
               </View>
               <Pressable style={styles.recordBtn} onPress={confirmPay} disabled={busy}
                          testID="confirm-settlement">
@@ -701,8 +728,13 @@ const styles = StyleSheet.create({
   },
   btnDark: { backgroundColor: colors.brand },
   btnDarkTxt: { ...T.bodySb, color: colors.onBrand },
-  btnSoft: { backgroundColor: colors.accentSoft },
-  btnSoftTxt: { ...T.bodySb, color: colors.accentDark },
+  // Yesil DOLGU "bu odenmis" diye okunuyordu -- rengi de sozu de durum
+  // bildiriyordu, oysa bir eylem. Kenarlikli notr, ve "Odendi" degil "Odedi":
+  // karsisindaki "Ode" ile ayni fiil, satir tek dil konusuyor.
+  btnQuiet: {
+    borderWidth: 1, borderColor: colors.borderStrong, backgroundColor: colors.surface,
+  },
+  btnQuietTxt: { ...T.bodySb, color: colors.inkSecondary },
   // Ikincil eylem: dolu degil kenarlikli. "Odendi" ile ayni agirlikta olsaydi
   // hangisinin asil is oldugu okunmazdi.
   btnOutline: {

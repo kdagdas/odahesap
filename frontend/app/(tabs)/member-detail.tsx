@@ -22,7 +22,7 @@ type Expense = {
 
 export default function MemberDetail() {
   // Gezinme cubugu payi -- ic dolgu zaten var, buraya yalnizca cihazin payi.
-  const altPay = useScrollPad({ extra: 0 });
+  const altPay = useScrollPad({ tabs: true, extra: 0 });
   const { memberId, periodId } = useLocalSearchParams<{ memberId: string; periodId?: string }>();
   const router = useRouter();
   const { members } = useHousehold();

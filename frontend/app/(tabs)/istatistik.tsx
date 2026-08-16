@@ -26,8 +26,8 @@ import { useAuth } from "@/src/auth";
 import { useHousehold } from "@/src/household";
 import {
   ScreenHeader, Sheet, Card, Row, Divider, Avatar, Money, CategoryIcon,
-  categoryLabel, MerchantBadge, Donut, TabSwitch, formatEUR, formatEURShort,
-  useScrollPad,
+  categoryLabel, MerchantBadge, Donut, TabSwitch, BottomSheet,
+  formatEUR, formatEURShort, useScrollPad,
 } from "@/src/ui";
 import {
   colors, spacing, radius, type as T, overline, fontFamily, metrics, CATEGORY_ICONS,
@@ -127,13 +127,14 @@ const shiftMonth = (m: string, by: number) => {
 
 export default function Istatistik() {
   const router = useRouter();
-  const altPay = useScrollPad();
+  const altPay = useScrollPad({ tabs: true });
   const { user } = useAuth();
   const { members } = useHousehold();
   const [scope, setScope] = useState<"household" | "self">("household");
   const [month, setMonth] = useState(thisMonth());
   const [data, setData] = useState<Monthly | null>(null);
   const [loading, setLoading] = useState(true);
+  const [aySecici, setAySecici] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -150,6 +151,11 @@ export default function Istatistik() {
   }));
   // İleri gitmek bugünün ayını aşmamalı: boş bir geleceğe dolaşmanın anlamı yok.
   const canForward = month < thisMonth();
+  const yillar = Array.from(new Set([
+    ...(data?.months || []).map((m) => m.slice(0, 4)),
+    thisMonth().slice(0, 4),
+    month.slice(0, 4),
+  ])).sort().reverse();
 
   return (
     <View style={styles.root} testID="istatistik-screen">
@@ -163,17 +169,25 @@ export default function Istatistik() {
             </Pressable>
           }
         >
+          {/* Oklar KOMSU ay icin, secici SICRAMAK icin. Yalnizca oklar varken
+              gecen yilin Ocak'ina gitmek 19 dokunustu ve uygulama iki yil da
+              kullanilacak. Ikisi birden duruyor cunku iki farkli soru: "gecen
+              ay ne olmus" ile "gecen subat ne olmustu" ayni hareket degil. */}
           <View style={styles.monthNav}>
             <Pressable onPress={() => setMonth((m) => shiftMonth(m, -1))}
                        style={styles.navBtn} testID="stat-prev" hitSlop={8}>
               <Ionicons name="chevron-back" size={18} color={colors.onDark} />
             </Pressable>
-            <View style={{ flex: 1, alignItems: "center" }}>
-              <Text style={styles.heroLabel}>
-                {scope === "household" ? "EV HARCAMASI" : "KİŞİSEL HARCAMAN"}
-              </Text>
+            <Pressable style={{ flex: 1, alignItems: "center" }} onPress={() => setAySecici(true)}
+                       testID="stat-month-open">
+              <View style={styles.heroLabelRow}>
+                <Text style={styles.heroLabel}>
+                  {scope === "household" ? "EV HARCAMASI" : "KİŞİSEL HARCAMAN"}
+                </Text>
+                <Ionicons name="chevron-down" size={12} color={colors.onDarkMuted} />
+              </View>
               <Text style={styles.heroValue}>{formatEUR(data?.total ?? 0)}</Text>
-            </View>
+            </Pressable>
             <Pressable onPress={() => canForward && setMonth((m) => shiftMonth(m, 1))}
                        style={[styles.navBtn, !canForward && { opacity: 0.25 }]}
                        disabled={!canForward} testID="stat-next" hitSlop={8}>
@@ -242,9 +256,12 @@ export default function Istatistik() {
                       <View key={cat.key}>
                         <Divider inset={i === 0 ? 0 : spacing.lg} />
                         <View style={styles.catRow}>
-                          <View style={[styles.catDot, {
-                            backgroundColor: (CATEGORY_ICONS[cat.key] || CATEGORY_ICONS.diger).color,
-                          }]} />
+                          {/* Once duz renkli bir noktaydi. Anasayfa ayni
+                              kategorileri IKONLA gosteriyordu, yani uygulama
+                              ayni sey icin iki dil konusuyordu. Ikon rengi
+                              zaten kategorininki, dolayisiyla halkanin
+                              dilimiyle eslesme de kaybolmuyor. */}
+                          <CategoryIcon category={cat.key} size={30} />
                           <Text style={styles.catName} numberOfLines={1}>
                             {categoryLabel(cat.key)}
                           </Text>
@@ -383,6 +400,39 @@ export default function Istatistik() {
           </View>
         </Sheet>
       </ScrollView>
+
+      {/* Veri OLAN aylar belirgin, olmayanlar soluk ama yine secilebilir:
+          "o ay hic harcama yok" da bir cevaptir, tiklanamaz bir hucre ise
+          kullaniciya neden secemedigini soylemez. */}
+      <BottomSheet visible={aySecici} onClose={() => setAySecici(false)} testID="stat-month-sheet">
+        {yillar.map((yil) => (
+          <View key={yil}>
+            <Text style={styles.yilBaslik}>{yil}</Text>
+            <View style={styles.ayIzgara}>
+              {AYLAR.slice(1).map((ad, i) => {
+                const anahtar = `${yil}-${String(i + 1).padStart(2, "0")}`;
+                const secili = anahtar === month;
+                const ileride = anahtar > thisMonth();
+                const veriVar = (data?.months || []).includes(anahtar);
+                if (ileride) return <View key={ad} style={styles.ayHucre} />;
+                return (
+                  <Pressable
+                    key={ad}
+                    style={[styles.ayHucre, secili && styles.ayHucreOn,
+                            !veriVar && !secili && styles.ayHucreBos]}
+                    onPress={() => { setMonth(anahtar); setAySecici(false); }}
+                    testID={`stat-month-${anahtar}`}
+                  >
+                    <Text style={[styles.ayTxt, secili && styles.ayTxtOn]}>
+                      {ad.slice(0, 3)}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+        ))}
+      </BottomSheet>
     </View>
   );
 }
@@ -403,6 +453,26 @@ const styles = StyleSheet.create({
     alignItems: "center", justifyContent: "center",
   },
   heroLabel: { ...T.caption, color: colors.onDarkMuted, letterSpacing: 0.6 },
+  heroLabelRow: { flexDirection: "row", alignItems: "center", gap: 4 },
+  // Ay secici: yil basligi + 12 hucrelik izgara. Liste yerine izgara, cunku
+  // "gecen subat" aranirken goz aylari konumundan buluyor, sirasindan degil.
+  yilBaslik: {
+    ...overline, paddingHorizontal: spacing.lg,
+    marginTop: spacing.md, marginBottom: spacing.xs,
+  },
+  ayIzgara: {
+    flexDirection: "row", flexWrap: "wrap", gap: spacing.sm,
+    paddingHorizontal: spacing.lg,
+  },
+  ayHucre: {
+    width: "22%", minHeight: 40, alignItems: "center", justifyContent: "center",
+    borderRadius: radius.md, borderWidth: 1, borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  ayHucreOn: { backgroundColor: colors.dark, borderColor: colors.dark },
+  ayHucreBos: { opacity: 0.35 },
+  ayTxt: { ...T.captionSb, color: colors.inkSecondary },
+  ayTxtOn: { color: colors.onDark },
   heroValue: {
     fontSize: 34, lineHeight: 42, fontFamily: fontFamily.bold,
     color: colors.onDark, letterSpacing: -1,
@@ -420,7 +490,6 @@ const styles = StyleSheet.create({
   donutWrap: { alignItems: "center", paddingVertical: spacing.lg },
   donutTotal: { ...T.emph, fontSize: 20, color: colors.ink },
   donutSub: { ...T.caption, color: colors.inkTertiary },
-  catDot: { width: 9, height: 9, borderRadius: 5 },
   catValue: { minWidth: 74, textAlign: "right" },
   deltaTag: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: radius.sm },
   deltaTxt: { fontSize: 11, lineHeight: 15, fontFamily: fontFamily.medium },
