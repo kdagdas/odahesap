@@ -11,7 +11,7 @@
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  View, Text, StyleSheet, ScrollView, Pressable, TextInput, Modal,
+  View, Text, StyleSheet, ScrollView, Pressable, TextInput,
   ActivityIndicator, Alert, Platform,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -22,7 +22,7 @@ import { useAuth } from "@/src/auth";
 import { useHousehold } from "@/src/household";
 import {
   ScreenHeader, Sheet, Card, Divider, Chip, SplitPicker, splitAll, splitSummary,
-  useKeyboardHeight, formatEUR, todayISO, type Split,
+  BottomSheet, formatEUR, todayISO, type Split,
 } from "@/src/ui";
 import {
   colors, spacing, radius, type as T, overline, fontFamily,
@@ -196,8 +196,6 @@ function EditSheet({
   onSaved: () => void;
   onConfirmNow: (r: Recurring) => void;
 }) {
-  const insets = useSafeAreaInsets();
-  const kb = useKeyboardHeight();
   const [name, setName] = useState(value?.name || "");
   const [amount, setAmount] = useState(value ? money(value.amount) : "");
   const [day, setDay] = useState(String(value?.day_of_month || 1));
@@ -268,16 +266,7 @@ function EditSheet({
   };
 
   return (
-    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
-        <Pressable style={styles.scrim} onPress={onClose}>
-          {/* KeyboardAvoidingView burada işe yaramıyor: alt sayfa mutlak
-              konumlu ve o bileşen böylelerini itmiyor (bkz. ui.tsx
-              useKeyboardHeight). Yüksekliği ölçüp elle itiyoruz. */}
-          <Pressable
-            style={[styles.sheet, { paddingBottom: spacing.lg + insets.bottom + kb }]}
-            onPress={() => {}}
-          >
-            <View style={styles.grab} />
+    <BottomSheet visible onClose={onClose}>
             <ScrollView keyboardShouldPersistTaps="handled" style={{ maxHeight: 520 }}>
               <Text style={[overline, styles.sheetTitle]}>
                 {value ? "DÜZENLİ ÖDEMEYİ DÜZENLE" : "YENİ DÜZENLİ ÖDEME"}
@@ -371,9 +360,7 @@ function EditSheet({
                 </Pressable>
               </View>
             )}
-          </Pressable>
-        </Pressable>
-    </Modal>
+    </BottomSheet>
   );
 }
 
@@ -395,8 +382,6 @@ export function ConfirmSheet({
   onClose: () => void;
   onDone: () => void;
 }) {
-  const insets = useSafeAreaInsets();
-  const kb = useKeyboardHeight();
   const [amount, setAmount] = useState(money(tpl.amount));
   // Onaylamak izin vermek değil, "bu ödendi" demek: oluşan harcamanın ödeyeni
   // bakiyede alacaklı çıkıyor. Uygulamayı açan ile parayı veren çoğu zaman
@@ -452,13 +437,7 @@ export function ConfirmSheet({
                  "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"];
 
   return (
-    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
-        <Pressable style={styles.scrim} onPress={onClose}>
-          <Pressable
-            style={[styles.sheet, { paddingBottom: spacing.lg + insets.bottom + kb }]}
-            onPress={() => {}}
-          >
-            <View style={styles.grab} />
+    <BottomSheet visible onClose={onClose}>
             <Text style={[overline, styles.sheetTitle]}>
               {tpl.name.toLocaleUpperCase("tr")} · {AYLAR[parseInt(monthName || "0", 10)] || ""}
             </Text>
@@ -541,12 +520,7 @@ export function ConfirmSheet({
                     : <Text style={styles.primaryTxt}>Onayla ve ekle</Text>}
             </Pressable>
 
-            <Modal visible={payerOpen} transparent animationType="fade"
-                   onRequestClose={() => setPayerOpen(false)}>
-              <Pressable style={styles.scrim} onPress={() => setPayerOpen(false)}>
-                <Pressable style={[styles.sheet, { paddingBottom: spacing.lg + insets.bottom }]}
-                           onPress={() => {}}>
-                  <View style={styles.grab} />
+            <BottomSheet visible={payerOpen} onClose={() => setPayerOpen(false)}>
                   <Text style={[overline, styles.sheetTitle]}>PARAYI KİM ÖDEDİ?</Text>
                   {members.map((m, i) => (
                     <View key={m.user_id}>
@@ -565,9 +539,7 @@ export function ConfirmSheet({
                       </Pressable>
                     </View>
                   ))}
-                </Pressable>
-              </Pressable>
-            </Modal>
+            </BottomSheet>
 
             <View style={styles.secondaryRow}>
               {/* "Sonra" sunucuya gitmiyor: kart bir dahaki açılışta yine çıkar.
@@ -579,9 +551,7 @@ export function ConfirmSheet({
                 <Text style={styles.secondaryTxt}>Bu ay atla</Text>
               </Pressable>
             </View>
-          </Pressable>
-        </Pressable>
-    </Modal>
+    </BottomSheet>
   );
 }
 
@@ -620,15 +590,6 @@ const styles = StyleSheet.create({
   addBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: spacing.md },
   addTxt: { ...T.bodySb, color: colors.accent },
 
-  scrim: { flex: 1, backgroundColor: "rgba(12,22,38,0.45)", justifyContent: "flex-end" },
-  sheet: {
-    backgroundColor: colors.surface, borderTopLeftRadius: radius.xl,
-    borderTopRightRadius: radius.xl, paddingTop: spacing.lg,
-  },
-  grab: {
-    width: 36, height: 4, borderRadius: 2, backgroundColor: colors.border,
-    alignSelf: "center", marginBottom: spacing.md,
-  },
   sheetTitle: { paddingHorizontal: spacing.lg, marginBottom: spacing.sm },
   field: { paddingHorizontal: spacing.lg, marginTop: spacing.sm },
   row2: { flexDirection: "row", gap: spacing.md },

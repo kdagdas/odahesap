@@ -195,6 +195,37 @@ check("gecen ay olmayan kategoride degisim None",
       kat.get("sut_urunleri", {}).get("change_pct") is None, str(kat.get("sut_urunleri")))
 
 
+print("\n-- 8d. duzenli giderlerin ay ay seyri --")
+# Asil merak edilen kesit: elektrik gecen ay 60 iken bu ay 90 olduysa insan
+# sebebini sorar. Kira zaten degismiyor ve listede yer kaplamamali.
+r = c.post(f"{API}/recurring", headers=hdr(alice), json={
+    "name": "Elektrik", "amount": 60.0, "day_of_month": 5, "amount_fixed": False})
+elk = r.json()["recurring"]
+bugun2 = date.today()
+c.post(f"{API}/recurring/{elk['recurring_id']}/confirm", headers=hdr(alice), json={
+    "period_key": f"{bugun2.year:04d}-{bugun2.month:02d}",
+    "expense_date": "2026-04-05", "amount": 60.0})
+s = stat(alice)
+check("tek ayda kayit varsa fatura listesinde yok (kiyas yok)",
+      all(b["name"] != "Elektrik" for b in s["bills"]), str(s["bills"]))
+
+# Ayni sablonu bir sonraki ay farkli tutarla: artik kiyaslanabilir.
+await_ = c.post(f"{API}/recurring/{elk['recurring_id']}/confirm", headers=hdr(alice), json={
+    "period_key": "2026-05", "expense_date": "2026-05-05", "amount": 90.0})
+check("ikinci ay onaylandi", await_.status_code == 200, await_.text[:160])
+s = stat(alice)
+elektrik = next((b for b in s["bills"] if b["name"] == "Elektrik"), None)
+check("fatura listesinde gorunuyor", elektrik is not None, str(s["bills"]))
+check("bu ay 90", elektrik and near(elektrik["total"], 90.0), str(elektrik))
+check("gecen ay 60", elektrik and near(elektrik["prev_total"], 60.0), str(elektrik))
+check("degisim %50", elektrik and elektrik["change_pct"] == 50, str(elektrik))
+check("degisken oldugu isaretli", elektrik and elektrik["amount_fixed"] is False, str(elektrik))
+# Kira iki ayda da 900 olsaydi listede olmamali; degismeyen satir her ay ayni
+# seyi soyler ve asil degiseni gizler.
+check("degismeyen sablon listede yok",
+      all(b["change_pct"] != 0 for b in s["bills"]), str(s["bills"]))
+
+
 print("\n-- 8c. senin toplam cikisin --")
 # Ev payin + kisiselin. Oran degil toplam: "kisiselin evin %35'i" garip bir
 # sayi, "bu ay toplam su kadar harcadin" gercek bir soruya cevap.

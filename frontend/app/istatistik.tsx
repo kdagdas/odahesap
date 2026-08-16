@@ -40,6 +40,8 @@ type Monthly = {
   categories: { key: string; total: number; prev_total: number; change_pct: number | null }[];
   merchants: { name: string; total: number }[];
   by_member: { user_id: string; total: number }[];
+  bills: { recurring_id: string; name: string; amount_fixed: boolean;
+           total: number; prev_total: number; change_pct: number | null }[];
   cumulative: { day: string; total: number }[];
   prev_cumulative: { day: string; total: number }[];
   months: string[];
@@ -283,6 +285,41 @@ export default function Istatistik() {
                   </View>
                 </Card>
 
+                {/* Duzenli giderlerin ay ay seyri. Kira aydan aya degismiyor
+                    ve zaten listede yok; asil merak edilen elektrik, su,
+                    dogalgaz gibi tutari degisen faturalar. Degismeyen satir
+                    her ay ayni seyi soyler ve asil degiseni gizler. */}
+                {data.bills.length > 0 && (
+                  <Card title="Faturalar" style={styles.mx}>
+                    {data.bills.map((b, i) => (
+                      <View key={b.recurring_id}>
+                        {i > 0 && <Divider inset={spacing.lg} />}
+                        <View style={styles.catRow}>
+                          <Ionicons name="repeat" size={16} color={colors.inkTertiary} />
+                          <Text style={styles.catName} numberOfLines={1}>{b.name}</Text>
+                          {b.change_pct !== null && (
+                            <View style={[styles.deltaTag, {
+                              backgroundColor: b.change_pct > 0 ? colors.negativeSoft : colors.accentSoft,
+                            }]}>
+                              <Text style={[styles.deltaTxt, {
+                                color: b.change_pct > 0 ? colors.negative : colors.accentDark,
+                              }]}>
+                                {b.change_pct > 0 ? "↑" : "↓"} %{Math.abs(b.change_pct)}
+                              </Text>
+                            </View>
+                          )}
+                          <View style={{ alignItems: "flex-end", minWidth: 84 }}>
+                            <Money value={b.total} />
+                            <Text style={styles.billPrev}>
+                              geçen ay {formatEURShort(b.prev_total)}
+                            </Text>
+                          </View>
+                        </View>
+                      </View>
+                    ))}
+                  </Card>
+                )}
+
                 {/* Senin toplam cikisin: ev payin + kisiselin. Oran degil
                     toplam -- "kisiselin evin yuzde 35'i" garip bir sayi,
                     "bu ay toplam su kadar harcadin" gercek bir soruya cevap. */}
@@ -394,6 +431,7 @@ const styles = StyleSheet.create({
   legendLine: { width: 14, height: 2, borderRadius: 1 },
   legendDashed: { backgroundColor: colors.inkTertiary, opacity: 0.7 },
   legendLabel: { ...T.caption, color: colors.inkTertiary },
+  billPrev: { ...T.caption, fontSize: 11, color: colors.inkTertiary },
   outRow: { flexDirection: "row", gap: spacing.md },
   outValue: { ...T.bodySb, fontSize: 16, color: colors.ink, marginTop: 2 },
   foot: { ...T.caption, color: colors.inkTertiary, marginTop: spacing.md,

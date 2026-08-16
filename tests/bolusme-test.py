@@ -261,6 +261,22 @@ check("eski roommate hedefe yazildi", near(n[f2_id], -50 - 20), n)
 check("eski self dengeye girmedi", near(sum(n.values()), 0.0), n)
 
 
+print("\n-- 9. coklu ev altyapisi --")
+# `get_user_household()` artik `active_household_id` alanini okuyor. Bugun
+# davranis ayni cikmali: alan bos oldugu icin uyesi olunan tek ev bulunuyor.
+# Bu altyapi erken kuruldu cunku maliyeti zamanla artiyordu -- cagri sayisi
+# v18'de 24, bugun 31; her tur birkac tane daha ekliyor.
+r = c.get(f"{API}/households/me", headers=hdr(alice)).json()
+check("ev bulunuyor (alan bosken eski davranis)",
+      r.get("household", {}).get("name", "").startswith("Bolusme Ev"), str(r)[:120])
+check("uyeler eksiksiz", len(r.get("members", [])) == 4, str(len(r.get("members", []))))
+# Evden ayrilanin evi gorunmemeli
+tmp, tmp_id = reg("gecici")
+check("evsiz kullanicida ev yok",
+      c.get(f"{API}/households/me", headers=hdr(tmp)).json().get("household") is None)
+c.post(f"{API}/auth/logout", headers=hdr(tmp))
+
+
 print("\n-- temizlik --")
 for tok in (alice, bob, carol, dave, e2, f2, e3, g3, h3):
     c.post(f"{API}/households/leave", headers=hdr(tok))

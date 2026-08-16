@@ -321,7 +321,37 @@ PUBLIC_USER_PROJECTION = {
 
 
 async def get_user_household(user_id: str) -> Optional[dict]:
+    """Bu isteğin hangi eve ait olduğu.
+
+    31 çağrı noktasının hepsi buradan geçiyor; "bir kullanıcı = bir ev"
+    varsayımı koda dağılmış değil, TEK YERDE. Bu fonksiyon `active_household_id`
+    alanını okuyarak çoklu üyeliği taşıyabilir hale geldi ve çağrı yerlerinin
+    hiçbirine dokunulmadı.
+
+    Bugün davranış aynı: alan boşsa (bütün mevcut kullanıcılarda öyle) üyesi
+    olduğu tek ev bulunuyor. Alan doluysa ve kişi hâlâ o evin üyesiyse o ev
+    dönüyor — üyelikten çıkarılmışsa alan yok sayılıyor, yoksa çıkarılan biri
+    evi görmeye devam ederdi.
+
+    Erken yapıldı çünkü maliyeti zamanla artıyordu: çağrı sayısı v18'de 24,
+    bugün 31. Her tur birkaç tane daha ekliyor.
+    """
+    user = await db.users.find_one(
+        {"user_id": user_id}, {"_id": 0, "active_household_id": 1}
+    )
+    active = (user or {}).get("active_household_id")
+    if active:
+        hh = await db.households.find_one(
+            {"household_id": active, "member_ids": user_id}, {"_id": 0}
+        )
+        if hh:
+            return hh
     return await db.households.find_one({"member_ids": user_id}, {"_id": 0})
+
+
+async def user_households(user_id: str) -> List[dict]:
+    """Kişinin üyesi olduğu bütün evler. Bugün en fazla bir tane."""
+    return await db.households.find({"member_ids": user_id}, {"_id": 0}).to_list(20)
 
 
 def admin_id(hh: dict) -> str:
@@ -3144,7 +3174,7 @@ async def monthly_stats(
         "month": month, "scope": scope, "total": 0, "expense_count": 0,
         "prev_total": 0, "change_pct": None, "fixed": 0, "variable": 0,
         "categories": [], "merchants": [], "by_member": [],
-        "cumulative": [], "prev_cumulative": [],
+        "cumulative": [], "prev_cumulative": [], "bills": [],
         "months": [], "member_count": 0, "per_person": 0,
         "my_share": 0, "my_personal": 0,
     }
@@ -3204,6 +3234,45 @@ async def monthly_stats(
         })
     cat_rows.sort(key=lambda x: -x["total"])
 
+    # Düzenli giderlerin ay ay seyri. Asıl merak edilen kesit bu: kira zaten
+    # değişmiyor, ama elektrik geçen ay 60 iken bu ay 90 olduysa insan sebebini
+    # sorar. Kategori değişimiyle aynı dil, farklı kaynak.
+    #
+    # Tutarı değişmeyen şablonlar listeden düşüyor: "kira 1200, geçen ay da
+    # 1200" satırı her ay aynı şeyi söyler ve listeyi doldurup asıl değişeni
+    # gizler. Zam gelirse kendiliğinden görünür hale geliyor.
+    bills = []
+    if scope == "household":
+        tpl_names = {
+            t["recurring_id"]: t
+            for t in await db.recurring.find(
+                {"household_id": hh["household_id"]},
+                {"_id": 0, "recurring_id": 1, "name": 1, "amount_fixed": 1},
+            ).to_list(200)
+        }
+        cur_by: Dict[str, float] = {}
+        prev_by: Dict[str, float] = {}
+        for e in exps:
+            if e.get("recurring_id"):
+                cur_by[e["recurring_id"]] = cur_by.get(e["recurring_id"], 0) + float(e["total"])
+        for e in prev:
+            if e.get("recurring_id"):
+                prev_by[e["recurring_id"]] = prev_by.get(e["recurring_id"], 0) + float(e["total"])
+        for rid, v in cur_by.items():
+            pv = prev_by.get(rid, 0.0)
+            change = round((v - pv) / pv * 100) if pv > 0.005 else None
+            if change == 0:
+                continue
+            tpl = tpl_names.get(rid) or {}
+            bills.append({
+                "recurring_id": rid,
+                "name": tpl.get("name") or "Düzenli gider",
+                "amount_fixed": bool(tpl.get("amount_fixed", True)),
+                "total": round(v, 2), "prev_total": round(pv, 2),
+                "change_pct": change,
+            })
+        bills.sort(key=lambda b: -abs(b["change_pct"] or 0))
+
     # Ev harcamalarında bu kişinin payı
     my_share = 0.0
     if scope == "household":
@@ -3240,6 +3309,7 @@ async def monthly_stats(
         # Senin toplam çıkışın: ev harcamalarındaki payın + kişisel harcaman.
         # Oran değil toplam: "kişiselin evin %35'i" garip bir sayı, "bu ay
         # toplam 720 € harcadın" gerçek bir soruya cevap.
+        "bills": bills,
         "my_share": round(my_share, 2),
         "my_personal": my_personal,
     }

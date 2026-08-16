@@ -13,7 +13,7 @@
 import React from "react";
 import {
   View, Text, Pressable, StyleSheet, ViewStyle, StyleProp, Image, TextStyle,
-  Keyboard, Platform, Modal, Alert, TextInput, Animated,
+  Keyboard, Platform, Modal, Alert, TextInput, Animated, PanResponder,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import Svg, { Circle } from "react-native-svg";
@@ -421,8 +421,6 @@ export function SelectRow<T extends string>({
   testID?: string;
 }) {
   const [open, setOpen] = React.useState(false);
-  // Listenin son satırı telefonun gezinme çubuğunun altında kalıyordu.
-  const insets = useSafeAreaInsets();
   const current = options.find((o) => o.value === value);
   return (
     <>
@@ -450,12 +448,7 @@ export function SelectRow<T extends string>({
       {/* Modal şart: alt sayfa kartın içinde `position: absolute` ile
           konumlanınca ekranı değil KARTI kaplıyor ve metinlerin üstüne
           yarı saydam biçimde biniyordu. React Native'de portal yok. */}
-      <Modal visible={open} transparent animationType="slide"
-             onRequestClose={() => setOpen(false)}>
-        <Pressable style={styles.sheetScrim} onPress={() => setOpen(false)}>
-          <Pressable style={[styles.pickSheet, { paddingBottom: spacing.lg + insets.bottom }]}
-                     onPress={() => {}}>
-            <View style={styles.pickGrab} />
+      <BottomSheet visible={open} onClose={() => setOpen(false)}>
             <Text style={styles.pickTitle}>{label}</Text>
             {options.map((o, i) => (
               <React.Fragment key={o.value}>
@@ -479,9 +472,7 @@ export function SelectRow<T extends string>({
                 </Pressable>
               </React.Fragment>
             ))}
-          </Pressable>
-        </Pressable>
-      </Modal>
+      </BottomSheet>
     </>
   );
 }
@@ -575,6 +566,98 @@ export function Donut({
       </Svg>
       {children}
     </View>
+  );
+}
+
+/**
+ * Alttan acilan sayfa -- elle asagi cekilerek kapatilir.
+ *
+ * Tepesindeki 36x4'luk tutamak once yalnizca bir SUSTU: tutulup cekilmiyordu.
+ * Cekilmeyen bir tutamak, hic tutamak olmamasindan kotudur -- kullanici
+ * deniyor, tepki gelmiyor, uygulama bozuk hissettiriyor.
+ *
+ * Butun paneller (kategori, birim, ulke, dil, bolusme, duzenli odeme, onay)
+ * buradan geciyor; jest tek yerde durdugu icin hepsi ayni anda duzeldi.
+ *
+ * Kurallar:
+ *  - Yalnizca ASAGI suruklenir; yukari cekmek sayfayi buyutmez.
+ *  - Yariyi gecen ya da hizli birakilan surukleme kapatir, digeri geri oturur.
+ *  - Klavye acikken yukseklik `useKeyboardHeight()` ile itiliyor; jest bunu
+ *    bozmasin diye kaydirma icerik degil KAP uzerinde.
+ */
+export function BottomSheet({
+  visible, onClose, children, maxHeight, testID,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  children: React.ReactNode;
+  maxHeight?: number;
+  testID?: string;
+}) {
+  const insets = useSafeAreaInsets();
+  const kb = useKeyboardHeight();
+  const y = React.useRef(new Animated.Value(0)).current;
+  const height = React.useRef(0);
+
+  React.useEffect(() => { if (visible) y.setValue(0); }, [visible]);
+
+  const close = () => {
+    Animated.timing(y, {
+      toValue: Math.max(height.current, 400),
+      duration: 180, useNativeDriver: true,
+    }).start(() => { y.setValue(0); onClose(); });
+  };
+
+  const pan = React.useRef(
+    PanResponder.create({
+      // Dikey ve asagi yonlu hareketi biz aliyoruz; yatay kaydirma ve
+      // icerideki listelerin kendi kaydirmasi dokunulmadan geciyor.
+      onMoveShouldSetPanResponder: (_, g) =>
+        g.dy > 6 && Math.abs(g.dy) > Math.abs(g.dx) * 1.5,
+      onPanResponderMove: (_, g) => { if (g.dy > 0) y.setValue(g.dy); },
+      onPanResponderRelease: (_, g) => {
+        const yeter = g.dy > Math.max(height.current * 0.35, 90) || g.vy > 0.8;
+        if (yeter) {
+          Animated.timing(y, {
+            toValue: Math.max(height.current, 400),
+            duration: 160, useNativeDriver: true,
+          }).start(() => { y.setValue(0); onClose(); });
+        } else {
+          Animated.spring(y, {
+            toValue: 0, useNativeDriver: true, bounciness: 0, speed: 18,
+          }).start();
+        }
+      },
+    })
+  ).current;
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={close}>
+      <Pressable style={styles.sheetScrim} onPress={close}>
+        <Animated.View
+          style={[
+            styles.pickSheet,
+            {
+              paddingBottom: spacing.lg + insets.bottom + kb,
+              maxHeight: maxHeight,
+              transform: [{ translateY: y }],
+            },
+          ]}
+          onLayout={(e) => { height.current = e.nativeEvent.layout.height; }}
+          testID={testID}
+        >
+          {/* Basma olayi asagi gecmesin: sayfanin icine dokunmak kapatmamali. */}
+          <Pressable onPress={() => {}}>
+            <View {...pan.panHandlers}>
+              <View style={styles.grabZone}>
+                <View style={styles.pickGrab} />
+              </View>
+            </View>
+            {children}
+          </Pressable>
+        </Animated.View>
+      </Pressable>
+    </Modal>
   );
 }
 
@@ -692,7 +775,6 @@ export function SplitPicker({
   const [picked, setPicked] = React.useState<string[]>(Object.keys(value.with || {}));
   const [amounts, setAmounts] = React.useState<Record<string, string>>({});
   const [err, setErr] = React.useState<string | null>(null);
-  const insets = useSafeAreaInsets();
 
   const start = () => {
     const ids = Object.keys(value.with || {});
@@ -773,10 +855,7 @@ export function SplitPicker({
         <Ionicons name="chevron-down" size={18} color={colors.inkTertiary} />
       </Pressable>
 
-      <Modal visible={open} transparent animationType="slide" onRequestClose={() => setOpen(false)}>
-        <Pressable style={styles.sheetScrim} onPress={() => setOpen(false)}>
-          <Pressable style={[styles.pickSheet, { paddingBottom: spacing.lg + insets.bottom }]} onPress={() => {}}>
-            <View style={styles.pickGrab} />
+      <BottomSheet visible={open} onClose={() => setOpen(false)}>
             <View style={styles.splitHead}>
               <Text style={overline}>KİMLER BÖLÜŞÜYOR?</Text>
               <Text style={styles.splitTotal}>{formatEUR(total)}</Text>
@@ -854,9 +933,7 @@ export function SplitPicker({
             <Pressable style={styles.splitOk} onPress={confirm} testID={testID ? `${testID}-ok` : undefined}>
               <Text style={styles.splitOkTxt}>Tamam</Text>
             </Pressable>
-          </Pressable>
-        </Pressable>
-      </Modal>
+      </BottomSheet>
     </>
   );
 }
@@ -1068,9 +1145,12 @@ const styles = StyleSheet.create({
     borderTopRightRadius: radius.xl, paddingTop: spacing.lg, paddingBottom: spacing.xxl,
   },
   pickGrab: {
-    width: 36, height: 4, borderRadius: 2, backgroundColor: colors.border,
+    width: 36, height: 4, borderRadius: 2, backgroundColor: colors.borderStrong,
     alignSelf: "center", marginBottom: spacing.md,
   },
+  // Tutamagin kendisi 4 piksel; parmakla yakalanabilmesi icin cevresindeki
+  // bos alan da surukleme bolgesine dahil.
+  grabZone: { paddingTop: spacing.xs, paddingBottom: 2 },
   pickTitle: { ...overline, paddingHorizontal: spacing.lg, marginBottom: spacing.sm },
   pickMark: { fontSize: 24, lineHeight: 30, width: 34, textAlign: "center" },
   pickSoon: { ...T.caption, color: colors.inkTertiary },
