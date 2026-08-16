@@ -6,7 +6,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import * as Linking from "expo-linking";
 import { Alert } from "react-native";
-import { savePaymentFor } from "@/src/payment";
+import { savePaymentFor, parseShareUrl } from "@/src/payment";
 
 import { useIconFonts } from "@/src/hooks/use-icon-fonts";
 import { AuthProvider, useAuth } from "@/src/auth";
@@ -65,14 +65,15 @@ export default function RootLayout() {
     const isle = (url?: string | null) => {
       if (!url) return;
       try {
-        const { hostname, path, queryParams } = Linking.parse(url);
-        if (hostname !== "odeme" && path !== "odeme") return;
-        const q = (queryParams || {}) as Record<string, string>;
-        if (!q.u) return;
-        savePaymentFor(q.u, { iban: q.iban, paypal: q.pp, holder: q.h });
+        // Ayristirma `payment.ts` icinde: bagimlilik tek yonlu olsun ve
+        // biciminin iki surumu (yeni `https://…/o#…`, eski `odahesap://odeme?…`)
+        // tek yerde bilinsin.
+        const gelen = parseShareUrl(url);
+        if (!gelen) return;
+        savePaymentFor(gelen.userId, gelen.info);
         Alert.alert(
           "Ödeme bilgisi kaydedildi",
-          `${q.n || "Ev arkadaşın"} kişisine ödeme yaparken kullanılacak. ` +
+          `${gelen.name || "Ev arkadaşın"} kişisine ödeme yaparken kullanılacak. ` +
           "Bu bilgi yalnızca bu telefonda saklanıyor.",
         );
       } catch { /* bozuk baglanti sessizce yok sayilir */ }

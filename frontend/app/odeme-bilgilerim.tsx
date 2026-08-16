@@ -9,14 +9,14 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import {
-  View, Text, StyleSheet, ScrollView, TextInput, Pressable, Share, Platform,
+  View, Text, StyleSheet, ScrollView, TextInput, Pressable, Share,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@/src/auth";
-import { ScreenHeader, Sheet, Card, Divider, useScrollPad } from "@/src/ui";
+import { ScreenHeader, Sheet, Card, useScrollPad } from "@/src/ui";
 import {
-  getMyPayment, setMyPayment, shareText, formatIban, looksLikeIban,
+  getMyPayment, setMyPayment, shareText, formatIban, ibanError,
   markPaymentShared, type PaymentInfo,
 } from "@/src/payment";
 import { colors, spacing, radius, type as T, overline, fontFamily } from "@/src/theme";
@@ -41,10 +41,10 @@ export default function OdemeBilgilerim() {
 
   const kaydet = useCallback(async () => {
     setErr(null);
-    if (iban.trim() && !looksLikeIban(iban)) {
-      setErr("IBAN eksik ya da hatalı görünüyor");
-      return;
-    }
+    // Hata mesaji artik NEYIN yanlis oldugunu soyluyor: "hatali gorunuyor"
+    // kullaniciya duzeltecek bir sey vermiyordu.
+    const ibanHata = ibanError(iban);
+    if (ibanHata) { setErr(ibanHata); return; }
     const bilgi: PaymentInfo = { iban, paypal, holder };
     await setMyPayment(bilgi);
     setKayitli(true);
@@ -53,7 +53,7 @@ export default function OdemeBilgilerim() {
 
   const paylas = async () => {
     await kaydet();
-    if (iban.trim() && !looksLikeIban(iban)) return;
+    if (ibanError(iban)) return;
     if (!iban.trim() && !paypal.trim()) { setErr("Önce en az bir bilgi girin"); return; }
     const metin = shareText(user?.name || "Ev arkadaşın", user?.user_id || "", {
       iban, paypal, holder,
@@ -97,7 +97,8 @@ export default function OdemeBilgilerim() {
               {/* SEPA transferinde IBAN tek başına yetmiyor, ad da isteniyor. */}
               <Text style={styles.hint}>Banka transferinde IBAN'la birlikte isteniyor.</Text>
 
-              <Text style={[styles.label, { marginTop: spacing.lg }]}>IBAN</Text>
+              <View style={styles.ayirici} />
+              <Text style={styles.label}>IBAN</Text>
               <TextInput
                 style={[styles.input, styles.mono]}
                 value={iban}
@@ -108,8 +109,12 @@ export default function OdemeBilgilerim() {
                 testID="odeme-iban"
               />
 
-              <Text style={[styles.label, { marginTop: spacing.lg }]}>PAYPAL</Text>
+              <View style={styles.ayirici} />
+              <Text style={styles.label}>PAYPAL</Text>
               <View style={styles.ppRow}>
+                <View style={styles.ppLogo}>
+                  <Ionicons name="logo-paypal" size={16} color={colors.onInfo} />
+                </View>
                 <Text style={styles.ppPrefix}>paypal.me/</Text>
                 <TextInput
                   style={[styles.input, { flex: 1 }]} value={paypal}
@@ -178,9 +183,19 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
   },
   mono: { fontVariant: ["tabular-nums"], letterSpacing: 0.3 },
-  ppRow: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
+  ppRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   ppPrefix: { ...T.caption, color: colors.inkTertiary, marginTop: spacing.xs },
   hint: { ...T.caption, color: colors.inkTertiary, marginTop: spacing.xs, lineHeight: 17 },
+  // Alanlar arasinda sac teli + nefes: etiketler bir onceki alanin ipucu
+  // yazisina yapisik duruyordu ve ucu tek blok gibi okunuyordu.
+  ayirici: {
+    height: StyleSheet.hairlineWidth, backgroundColor: colors.divider,
+    marginTop: spacing.lg, marginBottom: spacing.lg,
+  },
+  ppLogo: {
+    width: 30, height: 30, borderRadius: 9, backgroundColor: colors.infoSoft,
+    alignItems: "center", justifyContent: "center", marginTop: spacing.xs,
+  },
   err: { ...T.captionSb, color: colors.negative, marginTop: spacing.md },
   primary: {
     flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6,

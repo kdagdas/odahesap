@@ -24,7 +24,21 @@
       "edgeToEdgeEnabled": true,
       "googleServicesFile": "./google-services.json",
       "package": "com.odahesap.app",
-      "versionCode": 34,
+      "versionCode": 35,
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "odahesap-api.onrender.com",
+              "pathPrefix": "/o"
+            }
+          ],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
+      ],
       "permissions": ["CAMERA", "READ_EXTERNAL_STORAGE", "READ_MEDIA_IMAGES"],
       "blockedPermissions": [
         "android.permission.RECORD_AUDIO",
