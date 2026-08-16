@@ -5,7 +5,7 @@
 > ihtiyaç duymaz. Günlük operasyon için [DEVAM.md](DEVAM.md), kurulum için
 > [README.md](README.md).
 >
-> Son güncelleme: 16 Ağustos 2026 · Uygulama sürümü 1.0.0 (versionCode 24)
+> Son güncelleme: 16 Ağustos 2026 · Uygulama sürümü 1.0.0 (versionCode 27)
 
 ---
 
@@ -58,12 +58,20 @@ ile parayı veren çoğu zaman farklı.
 kendi sayfasında. Turun asıl kazancı **sabit / değişken ayrımı**: Tur 5
 olmadan kurulamazdı.
 
-**Test sayısı:** 189 → 281 → 336 → **497**. Yeni dosyalar: `donem-dondurma-test.py`,
+**Tur 7 (v25–v27).** İstatistik sayfası yeniden düzenlendi (halka + 9 kategori
+tek kartta, ay-ay değişim, kümülatif eğri), **Faturalar** kartı geldi, Kasa'daki
+çakışan istatistik bloğu silindi, **çoklu ev altyapısı** kuruldu, ortak
+`BottomSheet` çıkarıldı, fiş tarama animasyonu eklendi ve tablet düzeni
+düzeltildi.
+
+**Test sayısı:** 189 → 281 → 336 → 497 → **516**. Yeni dosyalar: `donem-dondurma-test.py`,
 `duzenleme-gecmisi-test.py`, `market-tekrar-test.py`, `para-birimi-test.py`,
 `aktivite-test.py`, `bolusme-test.py`, `fiyat-test.py`, `duzenli-test.py`,
 `aylik-test.py`.
 
-**Sıradaki işler ve gerekçeleri** için §12'ye bakın.
+**Sıradaki işler ve gerekçeleri** için §12'ye bakın. **Denenip bilerek geri
+alınanlar** [SIRADAKI-TUR.md](SIRADAKI-TUR.md) içinde — bir sonraki oturum
+onları "eksik" sanıp geri getirmesin.
 
 ---
 
@@ -559,6 +567,17 @@ dokunmaz. Yardımcılar: `fcm-verify.py` (Firebase kimlik bilgisi gerçekten
   genele açılırsa: davet kodu 6 hanedir (bir milyon ihtimal) ve `/households/join`
   sınırsız denenebilir; `/ocr/receipt` de döngüye sokularak Gemini kotası
   tüketilebilir.
+- **Gemini ücretsiz katmanı arka arkaya iki fiş taramayı kaldırmıyor.**
+  Ölçüldü: üretime karşı iki ardışık `/ocr/receipt` isteğinde birincisi 200
+  (13 sn), ikincisi **429 — kota**. Sunucu 429'da bir kez 20 sn bekleyip
+  tekrar deniyor (kota dakikalık), istemci de hangi fişin neden okunamadığını
+  yazıyor. Kalıcı çözüm Google Cloud'da faturalandırmayı açmak: fiş başına
+  maliyet kuruşun binde birkaçı, ama limitler bambaşka. **Genele açmadan önce
+  şart.**
+- **Fiş okuma her zaman 10–20 saniye sürer.** Bu yüzden `api.ts` içindeki
+  uyanma şeridi OCR çağrılarında bilerek susturuldu: 3 saniyelik eşik yüzünden
+  her taramada "sunucu uyanıyor" diyordu ve bu yanlıştı — sunucu uyanmıyor,
+  model çalışıyor.
 - **Atlas M0'da otomatik yedek yok.** `tests/yedekle.py` elle çalıştırılmalıdır.
 - **Render ücretsiz katmanı uyur.** GitHub Actions 10 dakikada bir ping atar.
   Aylık 750 saatlik kota tek servisi 7/24 ayakta tutmaya ancak yeter —
@@ -588,8 +607,8 @@ Aşağıdaki sıra ev sahibiyle konuşulup kabul edildi. İki bağımlılık **k
 3. ~~**İstatistikler sayfası**~~ — **Tur 6'da yapıldı** (v24). Sıra doğru
    işledi: sabit/değişken ayrımı Tur 5'in `recurring_id`'sine dayanıyor ve
    ondan önce kurulsaydı bu kesit hiç olmayacaktı.
-4. Arama (market + ürün + kişi), CSV ve logolu PDF dışa aktarma, dönem
-   hatırlatması, ödeme yolları, avatarlar
+4. **Arama** (market + ürün + kişi) — sıradaki tur. Sonra CSV ve logolu PDF
+   dışa aktarma, dönem hatırlatması, ödeme yolları, avatarlar
 5. Çoklu yönetici + **kurucu** kavramı — yöneticiler işletme işlerini yapar,
    üye çıkarma ve yönetici atama yalnızca kurucuda. Böylece iki yöneticinin
    birbirini çıkarıp evi kilitlemesi mümkün olmuyor.
@@ -643,6 +662,69 @@ taşımadıkları için hangi kaydın testten geldiği sonradan anlaşılamıyor
 çare koleksiyonu sıfırlayıp kaynak fişlerden yeniden üretmek
 (`tests/fiyat-doldur.py --sifirla --yaz`). Bu yüzden testler ayrı
 veritabanında çalıştırılmalı: `DB_NAME=odahesap_test`. Ayrıntı: DEVAM.md.
+
+### Çoklu ev — dokümandaki tahmin YANLIŞTI
+
+Bu bölüm önceden "`get_user_household()` 20 yerde çağrılıyor, tek ev varsayımı
+derine işlemiş, ~8-12 sa" diyordu. Ölçüldü, doğru değil:
+
+```
+v18: 24 çağrı · v22: 24 · v23: 24 · v25: 31
+```
+
+Çağrı sayısı her turla artıyor (endişe haklı), **ama hepsi tek bir iki
+satırlık fonksiyondan geçiyor.** "Bir kullanıcı = bir ev" varsayımı yalnızca
+iki yerde: o fonksiyon ve `/households/join` içindeki "Zaten bir evdesiniz"
+kontrolü. Diğer ev sorguları elindeki kimlikle arama yapıyor.
+
+**Tur 7'de altyapı kuruldu:** `get_user_household()` artık kullanıcının
+`active_household_id` alanını okuyor, boşsa eski davranışa düşüyor. Çağrı
+yerlerinin hiçbirine dokunulmadı ve bugün hiçbir şey farklı çalışmıyor.
+Geriye kalan iş (~4-5 sa): çoklu üyelik, ev seçici, katılma kısıtının
+kaldırılması.
+
+**Grup ≠ ev.** Grup, adı farklı bir ev değil — sadeleştirilmiş bir ev:
+dönem yok (grubun kendisi bir dönem), düzenli ödeme yok, alınacaklar genelde
+gereksiz, bitince arşivleniyor.
+
+### Karanlık tema — maliyeti koşula bağlı
+
+Doküman "~4-5 sa, ~600 satır stilin bileşen içine taşınması" diyordu; bugün
+o rakam **22 dosyada 1.234 satır** ve her yeni ekran ~40 satır ekliyor.
+
+Ama bu yalnızca tema **canlı** değişecekse geçerli. Tema **sistem ayarını
+takip edip yalnızca açılışta okunursa**, `StyleSheet.create` zaten açılışta
+çalıştığı için hiçbir stilin taşınmasına gerek yok: **~1-2 sa.** Bedeli,
+kullanıcının sistem temasını değiştirmesinin bir sonraki açılışta yakalanması.
+
+**Renk kararı: ters çevirme YOK.** Bugün lacivert zemin, beyaz yüzey onun
+üstünde; kavisle binen o katman uygulamanın imzası ve "bu yüzey yukarıda"
+diyor. Ters çevrilirse beyaz başlık ekranın en açık öğesi olur ve ilişki
+bozulur. Doğrusu ilişkiyi korumak:
+
+| | Aydınlık | Karanlık |
+|---|---|---|
+| Başlık (zemin) | `#0F1B33` | **daha koyu** lacivert `#0A1120` |
+| Yüzey (üstte) | beyaz | koyu gri `#161B22` |
+| İlişki | yüzey daha açık | **yüzey yine daha açık** |
+
+Yeşil vurgu ve amber (`attention`) her iki temada da çalışıyor.
+
+### Konumlandırma — tek kitle seç
+
+Uygulama üç kitleye bakıyor: WG/öğrenci evi, grup (tatil, yemek), tek kişilik
+ev. Kod tarafında üçü aynı çekirdeğin kırpılmış hâli, **karmaşıklaşan ürün
+değil anlatı**. "Ev arkadaşları ve gruplar ve tek yaşayanlar için" diyen bir
+cümle hiçbir şey söylemiyor.
+
+Afişte tek şey olmalı ve kimsenin olmadığı yer belli: **fişi kalem kalem
+okumak.** Splitwise yapmıyor, bütçe uygulamaları yapmıyor. Grup ve tek kişilik
+ev, indiren kişinin sonradan fark ettiği şeyler olsun. Üçünden **tek kişilik
+ev** afişten çıkarılmalı: en kalabalık pazar ve bölüşme olmadığı için fiş
+okuma avantajı orada daha az parlıyor.
+
+**Banka bağlantısı yapılmayacak** — düzenlemeye tabi, pahalı, ve bizim farkımızı
+değil rakibin oyununu oynamak olur.
 
 ### Kararlaştırılmış tasarım notları
 

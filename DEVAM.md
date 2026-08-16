@@ -218,7 +218,7 @@ tek seferlik ve sonrasinda temizlik gerektigini bilerek yapin.
 
 ## Testler
 
-On dokuz takım, toplam **497 kontrol**, hepsi çalışan bir API'ye HTTP ile bağlanır. Yerel sunucuya da
+On dokuz takım, toplam **516 kontrol**, hepsi çalışan bir API'ye HTTP ile bağlanır. Yerel sunucuya da
 canlıya da aynı şekilde çalıştırılabilir:
 
 ```bash
@@ -249,6 +249,21 @@ oluşturup sonunda temizler; **üretim verisine dokunmazlar**.
 sahte bir jetonla dolaylı olarak doğrular.
 
 ---
+
+## Fiş okuma — bilinmesi gerekenler
+
+**Gemini ücretsiz katmanı arka arkaya iki fiş taramayı kaldırmıyor.** Ölçüldü:
+ilk istek 200 (13 sn), ikincisi 429. Sunucu 429'da bir kez 20 sn bekleyip
+tekrar deniyor; istemci de hangi fişin neden okunamadığını yazıyor (önceden
+sessizce yutuluyordu ve kullanıcı iki fiş seçip bir tane görüyordu).
+Kalıcı çözüm faturalandırma.
+
+**Fiş okuma her zaman 10-20 saniye sürer**, o yüzden `api.ts` içindeki uyanma
+şeridi OCR çağrılarında susturuldu. 3 saniyelik eşik yüzünden her taramada
+"sunucu uyanıyor" yazıyordu; sunucu uyanmıyor, model çalışıyor.
+
+**Canlıya karşı OCR testi çalıştırmayın** — kota tüketiyor ve o kota günlük
+kullanımdan çalınıyor.
 
 ## Kolay gözden kaçan tasarım kararları
 
@@ -304,7 +319,7 @@ hissettiriyordu.
   önler. **Aynı Render hesabında ikinci bir ücretsiz servis açılmamalı** —
   aylık 750 saatlik kota tek servisi 7/24 ayakta tutmaya ancak yetiyor.
 - **iOS sürümü yok.** Mac ve yıllık geliştirici hesabı gerekiyor.
-- **Uygulama otomatik test edilmiyor.** Sunucu 497 testle korunuyor ama
+- **Uygulama otomatik test edilmiyor.** Sunucu 516 testle korunuyor ama
   arayüzün kendisi hiçbir cihazda otomatik çalıştırılmıyor; ekran hataları
   ancak elle denemeyle bulunuyor.
 
