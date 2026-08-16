@@ -578,10 +578,12 @@ dokunmaz. Yardımcılar: `fcm-verify.py` (Firebase kimlik bilgisi gerçekten
   faturalandırmayı açmak — kodda hiçbir şey değişmez.
 - **Faturalandırma açılınca hız sınırlaması öncelik olur.** Ücretsiz katmanda
   `/ocr/receipt` istismarının bedeli "kota doldu"ydu; ücretlide bir fatura.
-- **Fiş fotoğrafı tam çözünürlükte gönderiliyor** (yalnızca JPEG kalitesi
-  düşürülüyor). Küçültmek yükleme, sunucu ve model tarafında birden kazandırır;
-  `src/photo.ts` avatarlar için bunu zaten yapıyor. Eşik **ölçülerek**
-  bulunmalı: çok küçültmek fişi okunmaz yapar.
+- ~~**Fiş fotoğrafı tam çözünürlükte gönderiliyor**~~ — **v36'da düzeltildi.**
+  `RECEIPT_MAX_EDGE = 2000` (`src/photo.ts`), `base64: true` kaldırıldı ve
+  sıkıştırma 0.8'e çıkarıldı. Galeriye kaydedilen kopya tam çözünürlükte
+  kalıyor. **Eşik hâlâ ölçülmedi:** 2000 temkinli bir başlangıç, `1600`/`1200`
+  muhtemelen çalışır ama `tests/fis-olcum.py` ile doğrulanmadan düşürülmemeli
+  — kalem sayısı sessizce azalırsa harcama eksik kaydedilir.
 - **Gemini ücretsiz katmanı arka arkaya iki fiş taramayı kaldırmıyor.**
   Ölçüldü: üretime karşı iki ardışık `/ocr/receipt` isteğinde birincisi 200
   (13 sn), ikincisi **429 — kota**. Sunucu 429'da bir kez 20 sn bekleyip

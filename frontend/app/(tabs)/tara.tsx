@@ -11,6 +11,7 @@ import * as ImagePicker from "expo-image-picker";
 import * as MediaLibrary from "expo-media-library";
 import { apiPost } from "@/src/api";
 import { setQueue, clearQueue } from "@/src/pendingReviews";
+import { shrinkReceiptToBase64 } from "@/src/photo";
 import { colors, spacing, radius, type as T, fontFamily } from "@/src/theme";
 
 /**
@@ -152,9 +153,15 @@ export default function Tara() {
   const takePhoto = async () => {
     if (!cam.current) return;
     try {
-      const shot = await cam.current.takePictureAsync({ base64: true, quality: 0.6 });
+      // `base64: true` ARTIK ISTENMIYOR: tam cozunurlukte base64 uretmek
+      // telefonda 3 MB'lik bir dizge kurmak demekti ve bu is ag hic
+      // baslamadan once yapiliyordu. Once dosya aliniyor, galeriye TAM
+      // cozunurlukte kaydediliyor, sunucuya giden kopya kucultuluyor.
+      const shot = await cam.current.takePictureAsync({ quality: 1 });
       await saveToGallery(shot?.uri);
-      if (shot?.base64) await sendToOCR(shot.base64);
+      if (!shot?.uri) return;
+      const b64 = await shrinkReceiptToBase64(shot.uri, shot.width, shot.height);
+      if (b64) await sendToOCR(b64);
     } catch (e: any) { setError(e.message || "Fotoğraf çekilemedi"); }
   };
 
@@ -163,12 +170,19 @@ export default function Tara() {
     if (!perm.granted) { setError("Galeri izni verilmedi"); return; }
     const res = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ["images"],
-      base64: true, quality: 0.6,
+      quality: 1,
       allowsMultipleSelection: true,
       selectionLimit: 8,
     });
     if (res.canceled) return;
-    const b64s = (res.assets || []).map((a) => a.base64).filter(Boolean) as string[];
+    // Sirayla kucultuluyor: sekiz fisin base64'unu ayni anda bellekte tutmak
+    // zayif telefonlarda uygulamayi dusurur.
+    const b64s: string[] = [];
+    for (const a of res.assets || []) {
+      if (!a.uri) continue;
+      const b64 = await shrinkReceiptToBase64(a.uri, a.width, a.height);
+      if (b64) b64s.push(b64);
+    }
     await sendBatchToOCR(b64s);
   };
 

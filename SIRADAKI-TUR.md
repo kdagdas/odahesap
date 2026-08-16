@@ -30,25 +30,32 @@ Bunlar yapılmadan Tur 9'un çoğu ölçülemez:
 alınmalı:** `/ocr/receipt` sınırsız çağrılabiliyor ve artık her çağrı para.
 `/households/join` de sınırsız denenebiliyor (davet kodu 6 hane).
 
-### 2. Fiş fotoğrafını küçültme (~1-2 sa + ölçüm)
+### 2. Fiş fotoğrafını küçültme — YAPILDI (v36), eşik ölçülmeyi bekliyor
 
-Bugün fotoğraf **tam çözünürlükte** gönderiliyor, yalnızca JPEG kalitesi
-düşürülüyor:
+**Faturalandırmadan bağımsız çıktı:** küçültme telefonda oluyor, kotayla
+ilgisi yok. Üstelik ücretsiz katmanda daha çok işe yarıyor — istek sayısını
+değiştirmiyor ama her isteği hızlandırıyor.
+
+Yapılanlar:
+- `RECEIPT_MAX_EDGE = 2000` (`src/photo.ts`), en uzun kenara göre
+- **`base64: true` kaldırıldı**: tam çözünürlükte base64 üretmek telefonda
+  ~3 MB'lık bir dizge kurmaktı ve ağ hiç başlamadan yapılıyordu
+- Sıkıştırma 0.6 → **0.8**: termal fiş yazısını bozan şey çözünürlük değil
+  JPEG artefaktı; küçülmüş görüntüde daha az sıkıştırmak hem küçük hem daha
+  okunur bir dosya veriyor
+- Galeriye kaydedilen kopya **tam çözünürlükte** kalıyor
+
+**Eşik hâlâ ölçülmedi.** 2000 bilerek temkinli. `tests/fis-olcum.py` aynı fişi
+birden çok boyutta taratıp süre ve kalem sayısını karşılaştırıyor; ücretsiz
+katmanda istekler arası 70 sn bekliyor, üç boyut ~2,5 dakika ve 3 istek.
 
 ```
-takePictureAsync({ base64: true, quality: 0.6 })
+.venv/Scripts/python.exe ../tests/fis-olcum.py <fis.jpg> --boyut 2000,1600,1200
 ```
 
-Modern kamera 3000-4000 piksel çekiyor; fiş bunun dörtte birinde de okunur.
-Üç yerde birden maliyet üretiyor: yükleme, Render'ın zayıf işlemcisinde
-base64 çözme, ve modelin işleyeceği piksel sayısı.
-
-**Çözüm kod tabanında zaten var:** `src/photo.ts` avatarları `ImageManipulator`
-ile küçültüyor. Aynı yaklaşım fişe hiç uygulanmamış.
-
-**Tahminle yapılmayacak, ölçülecek:** aynı fiş 1200 / 1600 / 2000 pikselde
-taranıp hem süre hem çıkan kalem sayısı karşılaştırılacak. Çok küçültmek fişi
-okunmaz yapar; doğru eşik deneyle bulunur.
+Kural: **kalem sayısı referansla aynı kalan en küçük boyut.** Bir kalem bile
+eksiliyorsa bir üst boyutta kalın — tahminle düşürmek fişin yarısını sessizce
+kaybettirir.
 
 ### 3. Toplu taramada paralel istek
 
