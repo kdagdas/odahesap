@@ -18,7 +18,9 @@ import {
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import Svg, { Circle } from "react-native-svg";
-import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
+import {
+  SafeAreaProvider, useSafeAreaInsets, initialWindowMetrics,
+} from "react-native-safe-area-context";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 
 import {
@@ -613,7 +615,7 @@ export function BottomSheet({
           sifir okunuyor ve sayfa telefonun gezinme cubugunun altinda kaliyordu.
           Kanca da saglayicinin ALTINDA cagrilmali -- disaridan cagirmak ayni
           yanlis degeri okumak demek, o yuzden govde ayri bilesen. */}
-      <SafeAreaProvider>
+      <SafeAreaProvider initialMetrics={initialWindowMetrics ?? undefined}>
         <SheetBody onClose={onClose} maxHeight={maxHeight} testID={testID}>
           {children}
         </SheetBody>
@@ -670,7 +672,7 @@ function SheetBody({
   // biraz iceride dursun ki "ekrana yapisik" degil "kart" okunsun.
   const yuzuyor = kb > 0;
   // Gezinme cubugunun uzerinde her zaman en az bir parmak payi kalsin.
-  const altPay = Math.max(insets.bottom, spacing.md);
+  const altPay = Math.max(insets.bottom, initialWindowMetrics?.insets.bottom ?? 0, spacing.md);
 
   return (
     <View style={styles.sheetScrim}>

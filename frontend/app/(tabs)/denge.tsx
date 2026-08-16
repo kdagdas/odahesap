@@ -171,7 +171,7 @@ export default function Denge() {
     const ad = nameOf(payFor.to).split(" ")[0];
     try {
       await Share.share({
-        message: `Merhaba ${ad}, KaSa'da ${formatEUR(tutar())} borcum var. `
+        message: `Merhaba ${ad}, KaSa'da sana ${formatEUR(payFor.amount)} borcum var. `
           + "Ödeme bilgini paylaşır mısın? (Profil → Ödeme Bilgilerim → Paylaş)",
       });
     } catch { /* iptal */ }
