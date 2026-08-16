@@ -129,6 +129,8 @@ export default function Denge() {
     setPayWays(true);
   };
 
+  const yollariKapat = () => setPayWays(false);
+
   const tutar = () => parseFloat(payAmount.replace(",", ".")) || 0;
 
   const acPaypal = async () => {
@@ -350,7 +352,7 @@ export default function Denge() {
                                   testID={iPay ? `mark-paid-to-${t.to}` : `mark-paid-${t.from}`}
                                 >
                                   <Text style={iPay ? styles.btnDarkTxt : styles.btnSoftTxt}>
-                                    {iPay ? "Ödedim" : "Ödendi"}
+                                    {iPay ? "Öde" : "Ödendi"}
                                   </Text>
                                 </Pressable>
                               )}
@@ -468,8 +470,11 @@ export default function Denge() {
           </Sheet>
         </ScrollView>
 
-        {payFor && (
-          <BottomSheet visible onClose={() => { setPayFor(null); setError(null); setPayWays(false); }}>
+        {/* TEK sayfa: odeme yollari ayri bir Modal degil, ayni sayfanin
+            ikinci yuzu. Ust uste iki Modal alttakini ekranda birakiyor ve
+            ustteki telefon gezinme cubugunun altina tasiyordu. */}
+        {payFor && !payWays && (
+          <BottomSheet visible onClose={() => { setPayFor(null); setError(null); }}>
             <Text style={styles.payTitle}>
               {payFor.from === me
                 ? `${nameOf(payFor.to).split(" ")[0]} kişisine ödeme`
@@ -531,7 +536,11 @@ export default function Denge() {
         {/* Odeme yollari. Karsi tarafin bilgisi CIHAZDA: sunucuda tutulmuyor,
             bir kez paylasildiginda kaydediliyor. Yoksa istenebiliyor. */}
         {payWays && payFor && (
-          <BottomSheet visible onClose={() => setPayWays(false)}>
+          <BottomSheet visible onClose={yollariKapat}>
+            <Pressable style={styles.waysBack} onPress={yollariKapat} testID="ways-back" hitSlop={8}>
+              <Ionicons name="chevron-back" size={18} color={colors.inkSecondary} />
+              <Text style={styles.waysBackTxt}>Tutar</Text>
+            </Pressable>
             <Text style={[overline, styles.waysTitle]}>
               {nameOf(payFor.to).split(" ")[0].toLocaleUpperCase("tr")} · {formatEUR(parseFloat(payAmount.replace(",", ".")) || 0)}
             </Text>
@@ -663,6 +672,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg, marginTop: spacing.sm, lineHeight: 17,
   },
   waysTitle: { paddingHorizontal: spacing.lg, marginBottom: spacing.sm },
+  waysBack: {
+    flexDirection: "row", alignItems: "center", gap: 2,
+    paddingHorizontal: spacing.md, paddingBottom: spacing.sm,
+  },
+  waysBackTxt: { ...T.captionSb, color: colors.inkSecondary },
   wayRow: {
     flexDirection: "row", alignItems: "center", gap: spacing.md,
     paddingHorizontal: spacing.lg, paddingVertical: spacing.md, minHeight: 64,

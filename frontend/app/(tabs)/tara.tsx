@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   View, Text, StyleSheet, Pressable, ActivityIndicator, ScrollView,
-  Animated,
+  Animated, useWindowDimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
@@ -35,7 +35,7 @@ function ScanOverlay({ note }: { note?: string }) {
     "Neredeyse bitti",
   ];
   const [adim, setAdim] = useState(0);
-  const [h, setH] = useState(0);
+  const { height: h } = useWindowDimensions();
   const line = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -53,33 +53,30 @@ function ScanOverlay({ note }: { note?: string }) {
 
   return (
     <View style={styles.processing} testID="ocr-processing">
-      {/* Cerceve, kameradaki rehber cercevesiyle AYNI olculerde: cizgi
-          kullanicinin fisi koydugu alanin ustunde gidip geliyor. Ortada ayri
-          bir kucuk kutu cizmek "neyin tarandigi" sorusunu bos birakiyordu. */}
-      <View style={styles.scanFrame} onLayout={(e) => setH(e.nativeEvent.layout.height)}>
-        <View style={[styles.scanCorner, styles.scanTL]} />
-        <View style={[styles.scanCorner, styles.scanTR]} />
-        <View style={[styles.scanCorner, styles.scanBL]} />
-        <View style={[styles.scanCorner, styles.scanBR]} />
-        {h > 0 && (
-          <Animated.View
-            style={[styles.scanLine, {
-              transform: [{
-                translateY: line.interpolate({ inputRange: [0, 1], outputRange: [4, h - 6] }),
-              }],
-            }]}
-          />
-        )}
-      </View>
-      <Text style={styles.processingTxt}>{note || AKIS[adim]}</Text>
-      <View style={styles.dots}>
-        {AKIS.map((_, i) => (
-          <View key={i} style={[styles.dot, i <= adim && styles.dotOn]} />
-        ))}
+      {/* Kendi cercevemi cizmiyorum: kameradaki rehber cercevesi zaten orada
+          ve ustune ikinci bir kutu koymak "hangisi?" sorusunu doguruyordu.
+          Cizgi tum ekranda gidip geliyor, arkasi seffaf. */}
+      <Animated.View
+        style={[styles.scanLine, {
+          transform: [{
+            translateY: line.interpolate({ inputRange: [0, 1], outputRange: [0, h || 600] }),
+          }],
+        }]}
+      />
+      {/* Yazilar ekranin ORTASINDA: onceden dikey akista asagi kayip kamera
+          dugmesinin altinda kaliyordu. */}
+      <View style={styles.scanCenter}>
+        <Text style={styles.processingTxt}>{note || AKIS[adim]}</Text>
+        <View style={styles.dots}>
+          {AKIS.map((_, i) => (
+            <View key={i} style={[styles.dot, i <= adim && styles.dotOn]} />
+          ))}
+        </View>
       </View>
     </View>
   );
 }
+
 
 export default function Tara() {
   const router = useRouter();
@@ -275,29 +272,16 @@ const styles = StyleSheet.create({
   },
   frameHintTxt: { ...T.bodySb, color: colors.onDark },
   processing: {
-    ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(15,27,51,0.88)",
-    alignItems: "center", justifyContent: "center", gap: spacing.lg,
+    ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(15,27,51,0.82)",
+    alignItems: "center", justifyContent: "center",
     paddingHorizontal: spacing.lg,
   },
   processingTxt: { ...T.emph, color: colors.onDark },
-  // Kameradaki `frameBox` ile ayni olculer.
-  scanFrame: {
-    width: "74%", aspectRatio: 0.62, position: "relative",
-    borderRadius: radius.md, overflow: "hidden",
-    backgroundColor: "rgba(255,255,255,0.04)",
-  },
-  scanCorner: {
-    position: "absolute", width: CORNER, height: CORNER,
-    borderColor: colors.accentOnDark, borderWidth: 3,
-  },
-  scanTL: { top: 0, left: 0, borderRightWidth: 0, borderBottomWidth: 0, borderTopLeftRadius: 8 },
-  scanTR: { top: 0, right: 0, borderLeftWidth: 0, borderBottomWidth: 0, borderTopRightRadius: 8 },
-  scanBL: { bottom: 0, left: 0, borderRightWidth: 0, borderTopWidth: 0, borderBottomLeftRadius: 8 },
-  scanBR: { bottom: 0, right: 0, borderLeftWidth: 0, borderTopWidth: 0, borderBottomRightRadius: 8 },
   scanLine: {
-    position: "absolute", left: 10, right: 10, height: 2,
-    backgroundColor: colors.accentOnDark, borderRadius: 1,
+    position: "absolute", left: 0, right: 0, top: 0, height: 2,
+    backgroundColor: colors.accentOnDark,
   },
+  scanCenter: { alignItems: "center", gap: spacing.md },
   dots: { flexDirection: "row", gap: 6 },
   dot: { width: 5, height: 5, borderRadius: 3, backgroundColor: "rgba(255,255,255,0.25)" },
   dotOn: { backgroundColor: colors.accentOnDark },

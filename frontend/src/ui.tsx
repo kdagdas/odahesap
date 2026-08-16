@@ -936,6 +936,45 @@ export function SplitPicker({
               <Text style={styles.splitTotal}>{formatEUR(total)}</Text>
             </View>
 
+            {/* Hizli secim. Dort kisilik bir evde "sadece ben" demek icin uc
+                kutu kaldirmak gerekiyordu -- ustelik fisteki HER kalem icin.
+                Iki asamali bir akisa bolmek yerine ucluk cip: en sik iki
+                durum tek dokunusa, "sadece Salih" iki dokunusa iniyor. */}
+            <View style={styles.quickRow}>
+              {[
+                { k: "all", label: "Tüm ev" },
+                { k: "me", label: "Sadece ben" },
+                { k: "none", label: "Temizle" },
+              ].map((q) => {
+                const secili =
+                  (q.k === "all" && picked.length === members.length) ||
+                  (q.k === "me" && picked.length === 1 && picked[0] === meId);
+                return (
+                  <Pressable
+                    key={q.k}
+                    style={[styles.quickChip, secili && styles.quickChipOn]}
+                    onPress={() => {
+                      setErr(null);
+                      const next =
+                        q.k === "all" ? members.map((m) => m.user_id)
+                        : q.k === "me" ? (meId ? [meId] : [])
+                        : [];
+                      setPicked(next);
+                      if (mode === "equal" && next.length) {
+                        setAmounts(Object.fromEntries(members.map((m) => [
+                          m.user_id,
+                          next.includes(m.user_id) ? showAmount(total / next.length) : "",
+                        ])));
+                      }
+                    }}
+                    testID={testID ? `${testID}-quick-${q.k}` : undefined}
+                  >
+                    <Text style={[styles.quickTxt, secili && styles.quickTxtOn]}>{q.label}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
             {allowExact && (
               <View style={styles.segment}>
                 {(["equal", "exact"] as const).map((m) => (
@@ -1257,6 +1296,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg, marginBottom: spacing.md,
   },
   splitTotal: { ...T.bodySb, color: colors.ink },
+  quickRow: {
+    flexDirection: "row", gap: spacing.sm, paddingHorizontal: spacing.lg,
+    marginBottom: spacing.sm,
+  },
+  quickChip: {
+    flex: 1, alignItems: "center", justifyContent: "center", minHeight: 34,
+    borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  quickChipOn: { backgroundColor: colors.accentSoft, borderColor: colors.accent },
+  quickTxt: { ...T.captionSb, color: colors.inkSecondary },
+  quickTxtOn: { color: colors.accentDark },
   segment: {
     flexDirection: "row", gap: spacing.xs, marginHorizontal: spacing.lg,
     marginBottom: spacing.sm, backgroundColor: colors.surfaceSecondary,
