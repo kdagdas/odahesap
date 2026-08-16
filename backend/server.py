@@ -147,6 +147,10 @@ class ExpenseItem(BaseModel):
     # ("ZWIEBELN 2KG"); bu alan onu ayri tutuyor.
     size_amount: Optional[float] = None
     size_unit: Optional[Literal["kg", "lt"]] = None
+    # Urunun NE oldugu -- markadan ve ambalajdan bagimsiz, kisa Turkce ad.
+    # Fisteki yazim ile aranan kelime cogu zaman tutmuyor: alinacaklar listesi
+    # Turkce yaziliyor, fis Almanca geliyor. Bu alan ikisi arasindaki kopru.
+    generic: Optional[str] = None
     category: str = "diger"
 
 
@@ -1077,6 +1081,16 @@ Rules:
    - Quantity: if you see "2 x 1,49" or "3 Stk" or "2X" style, set quantity accordingly and use the unit price. If unclear, quantity = 1 and price = total for that line.
    - Unit: weighed goods print a separate line under the item, e.g. "0,590 kg x 10,99 EUR/kg" or "0,284 kg" — that line belongs to the item ABOVE it, never to a new item. When you see one, set "unit":"kg", "quantity":0.590 and "price":10.99 (the per-kilo price). Same for litres ("1,5 l", "0,75 L") with "unit":"lt". Multi-packs counted in pieces stay "unit":"adet". Never turn a weight into a piece count: 0,590 kg is not 590 pieces.
    - German items often have "A" or "B" (VAT class) at end — strip it.
+   - Generic name: ALSO return "generic" — what the product actually IS, as a
+     short common noun in TURKISH, singular and lowercase. Use your knowledge
+     of the product, not the printed words: receipts print brand and marketing
+     names, so "Gelbwuerzel 1kg" is "havuç", "Goldaehren" is "ekmek",
+     "Hafermilch" is "yulaf sütü", "TUNA DILIM SUCUK" is "sucuk", "Milbona
+     Joghurt" is "yoğurt". Keep it to one or two words and do not include
+     brand, size or packaging.
+     If you genuinely do not know what the product is, return null. A wrong
+     generic name is worse than none: it silently merges two different
+     products into one.
    - Package size: if the printed name carries a pack size ("ZWIEBELN 2KG",
      "PAPRIKA ROT 500G", "6x0,33L", "Milch 1,5L"), ALSO return it separately as
      "size_amount" (a number in kilograms or litres, so 500 g is 0.5) and
@@ -1115,7 +1129,8 @@ Return JSON EXACTLY in this schema:
   "currency": "EUR" | "TRY",
   "items": [
     { "name": string, "price": number, "quantity": number, "unit": "adet" | "kg" | "lt" | "paket",
-      "size_amount": number | null, "size_unit": "kg" | "lt" | null, "category": string }
+      "size_amount": number | null, "size_unit": "kg" | "lt" | null,
+      "generic": string | null, "category": string }
   ]
 }
 
@@ -1288,6 +1303,11 @@ async def ocr_receipt(body: OCRRequest, user=Depends(get_current_user)):
             got = parse_size(name)
             if got:
                 size_amount, size_unit = got[0], got[1]
+        # Modelin urun bilgisi. Fis "Gelbwurzel 1kg" yaziyor ama satilan sey
+        # havuc; hicbir kural tabanli eslestirme bunu bilemez. Bos gelmesi
+        # sorun degil, yanlis gelmesi sorun -- isteme "emin degilsen null don"
+        # yazili.
+        generic = str(it.get("generic") or "").strip().lower()[:40] or None
         items.append(
             {
                 "name": name,
@@ -1296,6 +1316,7 @@ async def ocr_receipt(body: OCRRequest, user=Depends(get_current_user)):
                 "unit": unit,
                 "size_amount": size_amount,
                 "size_unit": size_unit,
+                "generic": generic,
                 "category": cat,
             }
         )
@@ -1826,6 +1847,10 @@ def price_of_item(item: dict) -> Optional[dict]:
     key = product_key(name)
     if not key:
         return None
+    # Genel ad, markalar arasi karsilastirmanin tek kopru noktasi: "Gelbwurzel"
+    # ile "Karotten Bio" ayni urun anahtarina dusmez ama ikisi de "havuc".
+    generic = str(item.get("generic") or "").strip().lower() or None
+    gkey = product_key(generic) if generic else None
     try:
         price = float(item.get("price") or 0)
     except (TypeError, ValueError):
@@ -1849,13 +1874,16 @@ def price_of_item(item: dict) -> Optional[dict]:
     if size:
         amount, base, _ = size
         return {"product_key": key, "product": name, "pack_type": "paketli",
+                "generic": generic, "generic_key": gkey,
                 "size_amount": amount, "size_unit": base,
                 "unit_price": round(price / amount, 4), "price_unit": base}
     if unit in ("kg", "lt"):
         return {"product_key": key, "product": name, "pack_type": "acik",
+                "generic": generic, "generic_key": gkey,
                 "size_amount": None, "size_unit": unit,
                 "unit_price": round(price, 4), "price_unit": unit}
     return {"product_key": key, "product": name, "pack_type": "adet",
+            "generic": generic, "generic_key": gkey,
             "size_amount": None, "size_unit": "adet",
             "unit_price": round(price, 4), "price_unit": "adet"}
 

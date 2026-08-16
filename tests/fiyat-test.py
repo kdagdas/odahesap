@@ -109,6 +109,29 @@ check("sifir boyut yok sayildi", p and p["pack_type"] == "adet", str(p))
 p = server.price_of_item({"name": "GURKEN", "price": 1.11, "size_amount": "abc"})
 check("bozuk boyut kalemi dusurmedi", p is not None, str(p))
 
+print("\n-- 5b. genel urun adi --")
+# Fis "Gelbwurzel 1kg" yaziyor ama satilan sey havuc. Hicbir kural tabanli
+# eslestirme bunu bilemez -- modelin urun bilgisi. Alinacaklar listesi Turkce
+# yaziliyor, fis Almanca geliyor; bu alan ikisi arasindaki kopru.
+p = server.price_of_item({"name": "Gelbwurzel 1kg", "price": 2.49, "quantity": 1,
+                          "generic": "Havuç"})
+check("genel ad tasiniyor", p and p["generic"] == "havuç", str(p))
+check("genel ad anahtari normallestirildi", p and p["generic_key"] == "havuc", str(p))
+# Farkli marketlerin farkli yazimlari AYNI genel anahtara dusmeli: urun
+# anahtarlari tutmaz ("gelbwurzel" vs "karotten bio") ama ikisi de havuctur.
+p2 = server.price_of_item({"name": "Karotten Bio 500g", "price": 1.49, "quantity": 1,
+                           "generic": "havuc"})
+check("farkli markalar ayni genel anahtarda bulusuyor",
+      p and p2 and p["generic_key"] == p2["generic_key"],
+      f'{p and p["generic_key"]} vs {p2 and p2["generic_key"]}')
+check("urun anahtarlari ise ayri kaliyor", p and p2 and p["product_key"] != p2["product_key"])
+# Model emin degilse null donuyor: yanlis genel ad, olmamasindan kotudur --
+# iki farkli urunu sessizce birlestirir.
+p3 = server.price_of_item({"name": "Bilinmeyen Sey", "price": 3.0, "quantity": 1})
+check("genel ad yoksa kalem yine isleniyor",
+      p3 is not None and p3["generic"] is None, str(p3))
+
+
 print("\n-- 6. islenemeyen kalemler --")
 check("adsiz kalem atlaniyor", server.price_of_item({"name": "", "price": 5}) is None)
 check("sifir fiyat atlaniyor",
