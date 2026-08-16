@@ -215,7 +215,8 @@ export default function Panel() {
 
               <Card title="Alınacaklar"
                     action={shopping.length > 3 ? `Tümü · +${shopping.length - 3}` : "Tümü"}
-                    onAction={() => router.push("/(tabs)/liste")} style={styles.mx}>
+                    onAction={() => router.push("/(tabs)/liste?scope=household")}
+                    style={styles.mx}>
                 {shopping.length === 0 ? (
                   <Row title="Liste temiz" subtitle="Eve lazım olanı yazın, markete giden görsün"
                        leading={<IconPill name="checkmark" color={colors.accent}

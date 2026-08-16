@@ -5,7 +5,7 @@ import {
   ActivityIndicator, KeyboardAvoidingView, Platform, RefreshControl,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useLocalSearchParams } from "expo-router";
 
 import { apiGet, apiPost, apiDelete, api } from "@/src/api";
 import { useAuth } from "@/src/auth";
@@ -25,6 +25,16 @@ export default function Liste() {
   const { user } = useAuth();
   const { members } = useHousehold();
   const [scope, setScope] = useState<Scope>("household");
+  // Anasayfa'daki "Alinacaklar" karti EV listesini gosteriyor; "Tumu" dendiginde
+  // de eve gitmeli. Sekmeler bir kez degistirildikten sonra durum korundugu
+  // icin kullanici Kendim'de birakmissa oraya dusuyordu -- gordugu listeyle
+  // gittigi liste ayni olmuyordu.
+  const { scope: istenen } = useLocalSearchParams<{ scope?: string }>();
+  useFocusEffect(
+    useCallback(() => {
+      if (istenen === "household" || istenen === "self") setScope(istenen as Scope);
+    }, [istenen])
+  );
   const [items, setItems] = useState<Item[]>([]);
   const [draft, setDraft] = useState("");
   const [loading, setLoading] = useState(true);

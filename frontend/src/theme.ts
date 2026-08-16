@@ -186,7 +186,7 @@ export const CATEGORY_LABEL_TR: Record<string, string> = {
  */
 export const MERCHANT_COLORS: Record<string, string> = {
   // Almanya
-  REWE: "#CC071E", EDEKA: "#F0B400", ALDI: "#0B4B99", LIDL: "#0050AA",
+  REWE: "#CC071E", EDEKA: "#F0B400", ALDI: "#14B8A6", LIDL: "#0050AA",
   PENNY: "#CC071E", KAUFLAND: "#E10915", NETTO: "#FFD700", NORMA: "#E2001A",
   DM: "#004890", ROSSMANN: "#C8102E", ACTION: "#004E9E", TEDI: "#E30613",
   BAUHAUS: "#F58220", OBI: "#F47C20", HORNBACH: "#F5A800", IKEA: "#0058A3",
@@ -195,6 +195,10 @@ export const MERCHANT_COLORS: Record<string, string> = {
   CARREFOURSA: "#004E9E", MACROCENTER: "#1A1A1A", "TARIM KREDI": "#2E7D32",
   "TARIM KREDİ": "#2E7D32", FILE: "#8DC63F", HAKMAR: "#D6001C",
   "ONUR MARKET": "#005BAA", METRO: "#003D7D",
+  // Evin sik gittigi yerel dukkanlar -- havuzdan rastgele renk almasinlar
+  // diye burada. Rozet rengi tanidik olunca liste goz taramasiyla okunuyor.
+  "BIZIM": "#F2B705", "BİZİM": "#F2B705", "BIZIM GMBH": "#F2B705",
+  "BIZIM FLEISCHER": "#7B1E3A", "BİZİM FLEISCHER": "#7B1E3A",
 };
 
 /**
@@ -210,10 +214,16 @@ const FALLBACK_COLORS = [
   "#15803D", "#A21CAF", "#C2410C", "#0E7490", "#4D7C0F",
 ];
 
+/** Ticari unvan ekleri renk aramasını bozmasın: fişin üstünde
+ *  "Bizim Fleischer GmbH" yazıyor ama tanıdığımız ad "Bizim Fleischer".
+ *  Sunucudaki `normalize_merchant()` ile aynı fikir, burada küçük hâli. */
+const LEGAL_SUFFIX = /\s+(GMBH|GMBH\s*&\s*CO\.?\s*KG|MBH|AG|KG|OHG|GBR|E\.?K\.?|SE|A\.?Ş\.?|AS|LTD\.?\s*ŞTİ\.?|LTD\.?|ŞTİ\.?|TİC\.?|SAN\.?|INC\.?|B\.?V\.?)+$/;
+
 export function merchantColor(name?: string | null): string {
   if (!name) return colors.dark;
-  const key = name.trim().toUpperCase();
-  const known = MERCHANT_COLORS[key];
+  const raw = name.trim().toUpperCase();
+  const key = raw.replace(LEGAL_SUFFIX, "").trim() || raw;
+  const known = MERCHANT_COLORS[key] ?? MERCHANT_COLORS[raw];
   if (known) return known;
   let hash = 0;
   for (let i = 0; i < key.length; i++) hash = (hash * 31 + key.charCodeAt(i)) >>> 0;

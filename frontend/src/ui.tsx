@@ -666,14 +666,16 @@ export function BottomSheet({
 }
 
 /**
- * Iki secenekli sekme seridi -- secili olan altinda kayan bir hap ile.
+ * Iki secenekli sekme seridi.
  *
- * Onceki halde arka plan aniden yer degistiriyordu; goz nereye gittigini
- * takip edemiyor ve gecis "tiklandi mi acaba" hissi veriyordu. Kayan hap ayni
- * bilgiyi tasiyip hareketi gozle izlenebilir kiliyor.
+ * **Kayan hap animasyonu denendi ve KALDIRILDI.** Animasyonun kendisi native
+ * tarafta calisiyordu ama akici gorunmuyordu: sekmeye basmak ayni anda
+ * sunucudan veri cekiyor ve butun liste yeniden ciziliyor, animasyon o yukle
+ * yarisiyor. Kasan bir gecis, hic gecis olmamasindan kotudur.
  *
- * Sure 180 ms: 250 ms'yi gecen bir gecis uygulamayi yavas hissettiriyor ve
- * bu uygulamanin en degerli ozelligi hizli hissettirmesi.
+ * Sebep animasyon degil es zamanli is; ama belirtiyi kaldirmak dogru karar --
+ * duzeltmek icin veri cekmeyi ertelemek gerekirdi ve o da sekmeyi yavas
+ * hissettirirdi.
  */
 export function TabSwitch<T extends string>({
   value, options, onChange, onDark = false, testID,
@@ -685,37 +687,8 @@ export function TabSwitch<T extends string>({
   onDark?: boolean;
   testID?: string;
 }) {
-  const index = Math.max(0, options.findIndex((o) => o.value === value));
-  const slide = React.useRef(new Animated.Value(index)).current;
-  const [w, setW] = React.useState(0);
-
-  React.useEffect(() => {
-    Animated.timing(slide, {
-      toValue: index, duration: 180, useNativeDriver: true,
-    }).start();
-  }, [index]);
-
-  const step = w > 0 ? (w - 6) / options.length : 0;
-
   return (
-    <View
-      style={[styles.tabs, onDark && styles.tabsOnDark]}
-      onLayout={(e) => setW(e.nativeEvent.layout.width)}
-      testID={testID}
-    >
-      {w > 0 && (
-        <Animated.View
-          style={[styles.tabPill, onDark && styles.tabPillOnDark, {
-            width: step,
-            transform: [{
-              translateX: slide.interpolate({
-                inputRange: options.map((_, i) => i),
-                outputRange: options.map((_, i) => i * step),
-              }),
-            }],
-          }]}
-        />
-      )}
+    <View style={[styles.tabs, onDark && styles.tabsOnDark]} testID={testID}>
       {options.map((o) => {
         const on = o.value === value;
         const renk = onDark
@@ -724,7 +697,10 @@ export function TabSwitch<T extends string>({
         return (
           <Pressable
             key={o.value}
-            style={styles.tab}
+            style={[
+              styles.tab,
+              on && (onDark ? styles.tabOnDarkActive : styles.tabActive),
+            ]}
             onPress={() => onChange(o.value)}
             testID={testID ? `${testID}-${o.value}` : undefined}
           >
@@ -1236,16 +1212,13 @@ const styles = StyleSheet.create({
     flexDirection: "row", backgroundColor: colors.surfaceSecondary,
     borderRadius: radius.pill, padding: 3,
   },
-  tabPill: {
-    position: "absolute", top: 3, bottom: 3, left: 3,
-    backgroundColor: colors.dark, borderRadius: radius.pill,
-  },
   tabsOnDark: { backgroundColor: "rgba(255,255,255,0.10)", padding: 4 },
-  tabPillOnDark: { backgroundColor: colors.onDark, top: 4, bottom: 4, left: 4 },
   tab: {
     flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center",
-    gap: 6, paddingVertical: spacing.sm,
+    gap: 6, paddingVertical: spacing.sm, borderRadius: radius.pill,
   },
+  tabActive: { backgroundColor: colors.dark },
+  tabOnDarkActive: { backgroundColor: colors.onDark },
   tabTxt: { ...T.captionSb },
   pickTitle: { ...overline, paddingHorizontal: spacing.lg, marginBottom: spacing.sm },
   pickMark: { fontSize: 24, lineHeight: 30, width: 34, textAlign: "center" },

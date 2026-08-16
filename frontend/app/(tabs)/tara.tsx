@@ -35,6 +35,7 @@ function ScanOverlay({ note }: { note?: string }) {
     "Neredeyse bitti",
   ];
   const [adim, setAdim] = useState(0);
+  const [h, setH] = useState(0);
   const line = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -52,18 +53,23 @@ function ScanOverlay({ note }: { note?: string }) {
 
   return (
     <View style={styles.processing} testID="ocr-processing">
-      <View style={styles.scanBox}>
+      {/* Cerceve, kameradaki rehber cercevesiyle AYNI olculerde: cizgi
+          kullanicinin fisi koydugu alanin ustunde gidip geliyor. Ortada ayri
+          bir kucuk kutu cizmek "neyin tarandigi" sorusunu bos birakiyordu. */}
+      <View style={styles.scanFrame} onLayout={(e) => setH(e.nativeEvent.layout.height)}>
         <View style={[styles.scanCorner, styles.scanTL]} />
         <View style={[styles.scanCorner, styles.scanTR]} />
         <View style={[styles.scanCorner, styles.scanBL]} />
         <View style={[styles.scanCorner, styles.scanBR]} />
-        <Animated.View
-          style={[styles.scanLine, {
-            transform: [{
-              translateY: line.interpolate({ inputRange: [0, 1], outputRange: [6, 152] }),
-            }],
-          }]}
-        />
+        {h > 0 && (
+          <Animated.View
+            style={[styles.scanLine, {
+              transform: [{
+                translateY: line.interpolate({ inputRange: [0, 1], outputRange: [4, h - 6] }),
+              }],
+            }]}
+          />
+        )}
       </View>
       <Text style={styles.processingTxt}>{note || AKIS[adim]}</Text>
       <View style={styles.dots}>
@@ -270,16 +276,19 @@ const styles = StyleSheet.create({
   frameHintTxt: { ...T.bodySb, color: colors.onDark },
   processing: {
     ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(15,27,51,0.88)",
-    alignItems: "center", justifyContent: "center", gap: spacing.md,
+    alignItems: "center", justifyContent: "center", gap: spacing.lg,
+    paddingHorizontal: spacing.lg,
   },
   processingTxt: { ...T.emph, color: colors.onDark },
-  scanBox: {
-    width: 200, height: 164, borderRadius: radius.md, overflow: "hidden",
+  // Kameradaki `frameBox` ile ayni olculer.
+  scanFrame: {
+    width: "74%", aspectRatio: 0.62, position: "relative",
+    borderRadius: radius.md, overflow: "hidden",
     backgroundColor: "rgba(255,255,255,0.04)",
   },
   scanCorner: {
-    position: "absolute", width: 22, height: 22,
-    borderColor: colors.accentOnDark, borderWidth: 2.5,
+    position: "absolute", width: CORNER, height: CORNER,
+    borderColor: colors.accentOnDark, borderWidth: 3,
   },
   scanTL: { top: 0, left: 0, borderRightWidth: 0, borderBottomWidth: 0, borderTopLeftRadius: 8 },
   scanTR: { top: 0, right: 0, borderLeftWidth: 0, borderBottomWidth: 0, borderTopRightRadius: 8 },
