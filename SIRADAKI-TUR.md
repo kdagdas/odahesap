@@ -58,13 +58,56 @@ Bunlar konuşuldu, maketleri onaylandı, koda girmedi:
 7. **İstatistik'te "Toplam"ın yeşili nötre dönsün** (yeşil = alacak demek).
 8. **Anasayfa'da "dikkat isteyenler" şeridi** — yalnızca varsa en üstte.
 
-## Sonra: tam çözüm olarak Ay ↔ Dönem anahtarı
+## Tur 10'un MERKEZİ: Ay ↔ Dönem anahtarı
 
-İki takvim sorununun %90'ını yukarıdaki 3-5 çözüyor. Kalan %10 için
-İstatistik'teki hap gerçek bir anahtar olur: `Ay | Dönem`. O zaman hangi
-pencereye baktığını kullanıcı seçer. Maliyeti: `/stats/monthly` ay
-sınırlarıyla süzüyor, döneme geçmek için filtrenin ve "Ay Boyunca" eğrisinin
-değişken uzunluğu kaldırması gerekiyor.
+Yukarıdaki 3-5 belirtiyi hafifletir ama **sebebi kaldırmaz.** Sebep: kullanıcı
+hangi pencereye baktığını *seçemiyor*. Ev sahibi bu turda defalarca karıştırdı
+ve uygulamayı yazan kişi o — kullanıcının hiç şansı yok.
+
+İstatistik'teki hap gerçek bir anahtar olacak: **`Ay | Dönem`**.
+
+- Sunucu: `_month_expenses` ay sınırı yerine genel bir **aralık** alacak;
+  "geçen ay" karşılaştırması "önceki dönem"e dönüşecek
+- İstemci: eğrinin x ekseni değişken uzunluk kaldıracak (dönem üç hafta da
+  olabilir yedi hafta da)
+- Kendi test takımı
+
+**Tahmin: ~1 gün.** Ev sahibi "öbür türlü olmayacak" dedi ve haklı.
+
+## Ödeşme sıklığı + dönem kapatma hatırlatması
+
+Ev ayarlarına **"Ödeşme sıklığı"** geliyor: haftalık / iki haftada bir /
+aylık / hatırlatma istemiyorum. Vadesi gelince **iki ayrı bildirim**:
+
+- **Borcu olanlara:** "Dönem kapanmak üzere · Salih'e 40,60 € borcun var"
+- **Yöneticiye, ancak herkes ödeştiyse:** "Dönem kapatılabilir"
+
+Tek genel hatırlatma yanlış olurdu: borcu olmayana anlamsız gelir, yöneticiyi
+de ödeşilmeden kapatmaya iter (PROJE-DOKUMANI §12'deki endişe). **Hatırlatma
+asla kendiliğinden kapatmaz** — düzenli ödemelerdeki kuralın aynısı.
+
+Zamanlanmış işi **kira hatırlatmasıyla paylaşıyor** (GitHub Actions, günlük).
+Tahmin: ~3-4 sa, ikisi birlikte.
+
+## Uygulama içinden tema seçimi — iki yol
+
+`StyleSheet.create` modül yüklenirken çalışıp o anki renkleri içine gömüyor;
+sonradan `colors`'ı değiştirmek çalışmıyor.
+
+| Yol | Ne | Maliyet |
+|---|---|---|
+| **A** | Ayarlarda Açık/Koyu/Sistem, *bir sonraki açılışta* geçerli | ~30 dk |
+| **B** | Gerçek canlı tema — 22 dosyada 1.234 satır stil bileşen içine | ~1 gün |
+
+**A önerildi.** B'nin kazancı estetik, maliyeti riskli bir refaktör; sistem
+teması zaten Android'de tek dokunuş uzakta.
+
+## Köprüde eksik kalan filtre
+
+Fiş tarihi, maddenin listeye yazıldığı tarihten **önceyse** eşleştirme.
+Gerekçe: fişler biriktirilip toplu giriliyor; iki hafta önceki krema bu
+haftaki ihtiyaç değil. Tek satırlık iş. Otomatik işaretleme olmadığı için
+kritik değil ama her yanlış öneri doğru önerilere olan güveni azaltıyor.
 
 ## Tur 9'dan kalanlar — hâlâ faturalandırma bekliyor
 
