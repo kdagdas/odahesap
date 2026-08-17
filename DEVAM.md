@@ -372,6 +372,53 @@ Uzunluk + sağlama harf hatasını zaten yakalıyor.
 Yakalanamayan tek şey **başkasına ait geçerli bir IBAN**; onun panzehiri
 ödeyenin ekranında hesap sahibinin adını görmesi.
 
+## Alınacaklar ↔ fiş köprüsü
+
+Fiş kaydedildikten sonra, fişteki kalemler bekleyen alınacaklar listesiyle
+eşleştirilip **öneri** olarak sunulur (`POST /shopping/match`).
+
+- **Sunucu hiçbir şeyi işaretlemez.** Liste paylaşılan bir şey; ev
+  arkadaşının yazdığı maddeyi haber vermeden silmek, uygulamanın en çok güven
+  kaybedeceği yer olurdu. İşaretleme kullanıcının onayıyla, var olan
+  `PATCH /shopping/{id}` üzerinden yapılır.
+- **İki güven seviyesi:** anahtarlar birebir aynıysa `sure=True` (kutu
+  işaretli açılır); tam kelime içeriyorsa `sure=False` (kutu **boş** açılır).
+  Yanlış düşürmek, düşürmemekten pahalı.
+- **Eşleştirme Tur 8'in genel ürün adı işine dayanıyor:** fişte `SAHNE 200G`,
+  listede `Krema` → `product_key` ikisini aynı anahtara indiriyor. Bunu
+  rakiplerin hiçbiri yapamaz çünkü hiçbiri fişi kalem kalem okumuyor.
+- Alt dize değil **tam kelime** aranıyor (`kisa in uzun.split()`): alt dize
+  olsaydı "yağ" → "yağlı kağıt"a eşleşirdi. Üç harf eşiği de gerekli, yoksa
+  "su" her şeye eşleşir.
+- Eşleşme yoksa hiçbir şey görünmez; akış kesilmez.
+
+`kopru-test.py` 18 kontrolle koruyor.
+
+## Ekranlardaki sayılar — hangisi hangisi
+
+Karışıklığın kaynağı iki bağımsız eksen:
+
+**Pencere:** dönem (ödeşmenin birimi) · takvim ayı (istatistiğin birimi)
+**Kapsam:** ev (listede evin tamamı) · sen (listede sen, payın kadar)
+
+| Nerede | Pencere | Kapsam |
+|---|---|---|
+| Anasayfa "Bu dönem ev harcaması" | dönem | ev |
+| Anasayfa "Kişi başı" | dönem | ev ÷ üye sayısı (düz ortalama) |
+| Anasayfa "Günde ortalama" | dönem | ev ÷ gün |
+| Kasa "Senin ödediğin" | dönem | **bakiyeyi ilgilendiren her şey** |
+| Kasa "payın" | dönem | senin payın (`expense_shares`) |
+| Kasa dönem hapı | dönem | ev |
+| İstatistik "Ev harcaması" | **ay** | ev |
+| İstatistik "Ev payın" / "Kişisel" | **ay** | sen |
+
+**Ev harcaması = evin TAMAMI bölüşüyor.** Üç kişilik bir evde "sen + Salih"
+alımı ev harcaması değildir. Bu kural artık dört yerde de aynı: `/stats`,
+`/stats/monthly`, `/periods` özeti ve bakiye.
+
+**"ödediğin − payın = net"** ilişkisi `stats-test.py` ve
+`etiket-bazli-test.py` ile korunuyor. Tutmuyorsa bir yerde kapsam kaymıştır.
+
 ## Kolay gözden kaçan tasarım kararları
 
 **Bildirim hataları yutulur.** `notify()` hiçbir zaman istisna fırlatmaz —

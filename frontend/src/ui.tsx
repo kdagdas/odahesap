@@ -923,9 +923,11 @@ export function TabSwitch<T extends string>({
     <View style={[styles.tabs, onDark && styles.tabsOnDark]} testID={testID}>
       {options.map((o) => {
         const on = o.value === value;
+        // Secili hap `brand` zeminde duruyor -> yazi `onBrand`.
+        // Koyu baslikta ise hap beyaz -> yazi koyu.
         const renk = onDark
           ? (on ? colors.dark : colors.onDarkMuted)
-          : (on ? colors.onDark : colors.inkSecondary);
+          : (on ? colors.onBrand : colors.inkSecondary);
         return (
           <Pressable
             key={o.value}
@@ -1583,7 +1585,9 @@ const styles = StyleSheet.create({
     flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center",
     gap: 6, paddingVertical: spacing.sm, borderRadius: radius.pill,
   },
-  tabActive: { backgroundColor: colors.ink },
+  // Secili hap ZEMINI. `ink` (murekkep) DEGIL: o bir on plan rengi ve
+  // karanlik temada acik oluyor -- zemin de yazi da acik kaliyordu.
+  tabActive: { backgroundColor: colors.brand },
   tabOnDarkActive: { backgroundColor: colors.onDark },
   tabTxt: { ...T.captionSb },
   pickTitle: { ...overline, paddingHorizontal: spacing.lg, marginBottom: spacing.sm },
@@ -1624,9 +1628,9 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill, padding: 3,
   },
   segBtn: { flex: 1, alignItems: "center", paddingVertical: spacing.sm, borderRadius: radius.pill },
-  segBtnOn: { backgroundColor: colors.ink },
+  segBtnOn: { backgroundColor: colors.brand },
   segTxt: { ...T.captionSb, color: colors.inkSecondary },
-  segTxtOn: { color: colors.onDark },
+  segTxtOn: { color: colors.onBrand },
   splitShare: { ...T.captionSb, color: colors.inkSecondary, minWidth: 74, textAlign: "right" },
   splitInput: {
     minWidth: 88, textAlign: "right", paddingHorizontal: spacing.sm, paddingVertical: 6,

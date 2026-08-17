@@ -34,6 +34,7 @@ export default function Profil() {
   const acikBildirim = ["new_expense", "expense_edit", "settlement", "period_closed"]
     .filter((k) => prefsAll[k] !== false).length;
   const [vadesiGelen, setVadesiGelen] = useState(0);
+  const [hesapAcik, setHesapAcik] = useState(false);
 
   const [savingAvatar, setSavingAvatar] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -211,9 +212,24 @@ export default function Profil() {
                 </View>
                 <Ionicons name="chevron-forward" size={20} color={colors.inkTertiary} />
               </Pressable>
-            </Card>
 
-            <Card title="Hesap">
+              <Divider inset={spacing.lg} />
+              {/* Hesap AYRI bir kart degil, bu grubun icinde acilir bir satir:
+                  ad, e-posta ve sifre sana ait -- eve ya da uygulamaya degil.
+                  Ucu de nadir kullaniliyor, o yuzden kapali baslıyor. */}
+              <Pressable style={styles.navRow} onPress={() => setHesapAcik((v) => !v)}
+                         testID="open-account" android_ripple={{ color: colors.divider }}>
+                <IconPill name="person-outline" color={colors.inkSecondary}
+                          tint={colors.surfaceSecondary} size={38} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.navTitle}>Hesabın</Text>
+                </View>
+                <Text style={styles.navState}>ad, e-posta, şifre</Text>
+                <Ionicons name={hesapAcik ? "chevron-up" : "chevron-down"} size={20}
+                          color={colors.inkTertiary} />
+              </Pressable>
+              {hesapAcik && (
+              <>
               {([
                 { key: "name", label: "Adını değiştir", value: user?.name, icon: "person-outline" },
                 { key: "email", label: "E-postanı değiştir", value: user?.email, icon: "mail-outline" },
@@ -287,6 +303,8 @@ export default function Profil() {
                   )}
                 </View>
               ))}
+              </>
+              )}
             </Card>
 
             <Text style={styles.grup}>EVE AİT</Text>

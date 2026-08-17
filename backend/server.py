@@ -2251,6 +2251,76 @@ async def add_shopping(body: ShoppingItemCreate, user=Depends(get_current_user))
     return {"item": doc}
 
 
+class ShoppingMatchReq(BaseModel):
+    """Fişten çıkan kalem adları."""
+    names: List[str] = Field(default_factory=list)
+
+
+@api.post("/shopping/match")
+async def match_shopping(body: ShoppingMatchReq, user=Depends(get_current_user)):
+    """Fişteki kalemleri BEKLEYEN alınacaklar listesiyle eşleştirir.
+
+    Bu uç yalnızca **önerir**; hiçbir şeyi işaretlemez. Liste paylaşılan bir
+    şey — ev arkadaşının yazdığı maddeyi haber vermeden silmek, uygulamanın
+    en çok güven kaybedeceği yer olurdu. İşaretleme kullanıcının onayıyla,
+    var olan `PATCH /shopping/{id}` üzerinden yapılıyor.
+
+    Eşleştirme Tur 8'in **genel ürün adı** işinin üstüne kuruluyor: fişte
+    `SAHNE 200G` yazıyor, listede `Krema`; ikisi de `product_key` ile aynı
+    anahtara düşüyor. Bu, rakiplerin yapamadığı bir şey çünkü hiçbiri fişi
+    kalem kalem okumuyor.
+
+    İki güven seviyesi dönüyor:
+      * `sure=True`  — anahtarlar birebir aynı; kutu işaretli gelir
+      * `sure=False` — biri ötekini içeriyor (ör. "süt" ⊂ "tam yağlı süt");
+        kutu BOŞ gelir. Yanlış düşürmek, düşürmemekten pahalı.
+    """
+    hh = await get_user_household(user["user_id"])
+    if not hh:
+        return {"matches": []}
+
+    bekleyen = await db.shopping_items.find(
+        {"household_id": hh["household_id"], "scope": "household", "done": False},
+        {"_id": 0, "item_id": 1, "text": 1},
+    ).to_list(500)
+    if not bekleyen:
+        return {"matches": []}
+
+    fis = []
+    for ham in body.names:
+        ad = str(ham or "").strip()
+        if not ad:
+            continue
+        fis.append((ad, product_key(ad) or ad.casefold()))
+
+    kullanilan: set = set()
+    out = []
+    for it in bekleyen:
+        anahtar = product_key(it["text"]) or it["text"].casefold()
+        if not anahtar:
+            continue
+        for ad, fanahtar in fis:
+            if ad in kullanilan or not fanahtar:
+                continue
+            if fanahtar == anahtar:
+                out.append({"item_id": it["item_id"], "text": it["text"],
+                            "receipt_name": ad, "sure": True})
+                kullanilan.add(ad)
+                break
+            # Iceren eslesme: "sut" ile "tam yagli sut".
+            #
+            # TAM KELIME araniyor, alt dize degil. Alt dize olsaydi "yag"
+            # "yagli kagit"a eslesirdi; kelime sinirinda aranınca eslesmiyor.
+            # Uc harf esigi de gerekli: "su" tek basina her seye eslesir.
+            kisa, uzun = sorted((anahtar, fanahtar), key=len)
+            if len(kisa) >= 3 and kisa in uzun.split():
+                out.append({"item_id": it["item_id"], "text": it["text"],
+                            "receipt_name": ad, "sure": False})
+                kullanilan.add(ad)
+                break
+    return {"matches": out}
+
+
 async def _get_writable_item(item_id: str, user: dict) -> dict:
     item = await db.shopping_items.find_one({"item_id": item_id}, {"_id": 0})
     if not item:
@@ -3555,18 +3625,34 @@ async def list_periods(user=Depends(get_current_user)):
     # gunler. Toplam da geliyor cunku tarih araligi tek basina hafizayi
     # tetiklemiyor -- bankacilik uygulamalarinin ekstre secicileri de araligin
     # yanina tutari koyuyor.
+    # GIZLILIK: once bu ozet HER harcamayi sayiyordu -- baskalarinin "Kendim"
+    # harcamalari dahil. Yani donem secicideki tutar, Salih'in kisisel
+    # harcamalarinin toplamini da sana gosteriyordu. Doküman bu konuda net:
+    # "gizli olmalari gereken seyler varliklarini bile duyurmamalidir."
+    #
+    # Ayrica TANIM BIRLIGI: burasi artik "ev harcamasi"ni Anasayfa ve
+    # Istatistik ile ayni sekilde tanimliyor -- evin tamaminin bolustugu
+    # harcamalar. Once dort ayri toplam vardi ve hangisinin ne oldugu
+    # anlasilmiyordu.
+    hepsi = await db.expenses.find(
+        {"household_id": hh["household_id"]}, {"_id": 0}
+    ).to_list(20000)
+    uyeler = set(hh["member_ids"])
     ozet: Dict[str, dict] = {}
-    async for row in db.expenses.aggregate([
-        {"$match": {"household_id": hh["household_id"]}},
-        {"$group": {
-            "_id": "$period_id",
-            "ilk": {"$min": "$expense_date"},
-            "son": {"$max": "$expense_date"},
-            "adet": {"$sum": 1},
-            "toplam": {"$sum": "$total"},
-        }},
-    ]):
-        ozet[row["_id"]] = row
+    for e in hepsi:
+        pay = expense_shares(e, list(uyeler))
+        if not pay:
+            continue
+        if e.get("target_type") == "self" and set(pay) == {e["added_by"]}:
+            continue
+        if not (uyeler and uyeler <= set(pay)):
+            continue
+        gun = _expense_day(e)
+        o = ozet.setdefault(e["period_id"], {"ilk": gun, "son": gun, "adet": 0, "toplam": 0.0})
+        o["ilk"] = min(o["ilk"], gun)
+        o["son"] = max(o["son"], gun)
+        o["adet"] += 1
+        o["toplam"] += float(e["total"])
 
     for p in periods:
         o = ozet.get(p["period_id"])

@@ -12,14 +12,14 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { apiGet, apiPost } from "@/src/api";
+import { api, apiGet, apiPost } from "@/src/api";
 import { popNext, remaining, totalCount, currentIndex, clearQueue } from "@/src/pendingReviews";
 import { useAuth } from "@/src/auth";
 import { useHousehold } from "@/src/household";
 import {
   CategoryPicker, CategoryIcon, MerchantBadge, ScreenHeader, formatEUR, formatDateTR,
   todayISO, nextUnit, UnitPicker, HintCard, SplitPicker, splitAll, splitSummary,
-  type Split,
+  BottomSheet, Divider, type Split,
 } from "@/src/ui";
 import {
   colors, spacing, radius, type as T, overline, fontFamily, CATEGORY_ICONS, CATEGORY_LABEL_TR,
@@ -141,6 +141,43 @@ export default function Review() {
   const skipReceipt = () => goToNextOrExit();
 
   /**
+   * Alinacaklar koprusu — Tur 8'in GENEL URUN ADI isinin uzerine kuruluyor.
+   *
+   * Fiste `SAHNE 200G` yaziyor, listede `Krema`; ikisi de ayni anahtara
+   * dusuyor ve market donusu listeyi elle temizlemek gerekmiyor. Rakiplerin
+   * hicbiri bunu yapamaz cunku hicbiri fisi kalem kalem okumuyor.
+   *
+   * Sunucu yalnizca ONERIYOR; isaretleme burada, kullanicinin onayiyla
+   * oluyor. Liste PAYLASILAN bir sey -- ev arkadasinin yazdigi maddeyi haber
+   * vermeden silmek uygulamanin en cok guven kaybedecegi yer olurdu.
+   */
+  type Eslesme = { item_id: string; text: string; receipt_name: string; sure: boolean };
+  const [kopru, setKopru] = useState<Eslesme[] | null>(null);
+  const [secili, setSecili] = useState<Record<string, boolean>>({});
+
+  const bulEslesme = async (): Promise<Eslesme[]> => {
+    try {
+      const adlar = rows.map((r) => r.name.trim()).filter(Boolean);
+      if (!adlar.length) return [];
+      const res = await apiPost<{ matches: Eslesme[] }>("/shopping/match", { names: adlar });
+      const m = res.matches || [];
+      // Emin olunmayan eslesme ISARETSIZ geliyor: yanlis dusurmek,
+      // dusurmemekten pahali.
+      setSecili(Object.fromEntries(m.map((x) => [x.item_id, x.sure])));
+      return m;
+    } catch { return []; }
+  };
+
+  const dusur = async () => {
+    const secilenler = (kopru || []).filter((m) => secili[m.item_id]);
+    await Promise.all(secilenler.map((m) =>
+      api(`/shopping/${m.item_id}`, { method: "PATCH", body: JSON.stringify({ done: true }) })
+        .catch(() => {})));
+    setKopru(null);
+    goToNextOrExit();
+  };
+
+  /**
    * Sarı bant tek başına yetmiyor — kaydırıp geçilebiliyor. Kesme anı burası:
    * uyarı pasif kalsın, ama geri dönüşü olan son noktada bir kez sorulsun.
    * Engellemek değil, "gerçekten mi" demek.
@@ -199,6 +236,10 @@ export default function Review() {
           expense_date: iso,
         });
       }
+      // Fis kaydedildi. Simdi alinacaklar listesiyle eslesen var mi?
+      // Eslesme YOKSA hiçbir sey gorunmuyor -- kesintisiz devam ediyor.
+      const eslesme = await bulEslesme();
+      if (eslesme.length) { setKopru(eslesme); return; }
       goToNextOrExit();
     } catch (e: any) { setError(e.message || "Kaydetme başarısız"); }
     finally { setSaving(false); }
@@ -460,6 +501,60 @@ export default function Review() {
           </View>
         </View>
       </KeyboardAvoidingView>
+
+      {/* Fis kaydedildikten SONRA aciliyor: kaydetmeden once kalemler hala
+          degisebilir. Eslesme yoksa hic gorunmuyor. */}
+      <BottomSheet visible={!!kopru} onClose={() => { setKopru(null); goToNextOrExit(); }}
+                   testID="kopru-sheet">
+        <View style={styles.kopruBas}>
+          <View style={styles.kopruIkon}>
+            <Ionicons name="cart" size={18} color={colors.accentDark} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.kopruTitle}>Listeden düşürelim mi?</Text>
+            <Text style={styles.kopruDesc}>
+              Fişte {kopru?.length} ürün listede de vardı
+            </Text>
+          </View>
+        </View>
+
+        {(kopru || []).map((m, i) => {
+          const on = !!secili[m.item_id];
+          return (
+            <View key={m.item_id}>
+              {i > 0 && <Divider inset={52} />}
+              <Pressable style={styles.kopruRow}
+                         onPress={() => setSecili((s) => ({ ...s, [m.item_id]: !on }))}
+                         testID={`kopru-${m.item_id}`}>
+                <Ionicons name={on ? "checkbox" : "square-outline"} size={21}
+                          color={on ? colors.accent : colors.inkTertiary} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.kopruAd}>{m.text}</Text>
+                  <Text style={styles.kopruFis} numberOfLines={1}>{m.receipt_name}</Text>
+                </View>
+                {!m.sure && (
+                  <View style={styles.kopruSuphe}>
+                    <Text style={styles.kopruSupheTxt}>emin değil</Text>
+                  </View>
+                )}
+              </Pressable>
+            </View>
+          );
+        })}
+
+        <View style={styles.kopruAlt}>
+          <Pressable style={styles.kopruKalsin}
+                     onPress={() => { setKopru(null); goToNextOrExit(); }}
+                     testID="kopru-kalsin">
+            <Text style={styles.kopruKalsinTxt}>Kalsın</Text>
+          </Pressable>
+          <Pressable style={styles.kopruOnay} onPress={dusur} testID="kopru-dusur">
+            <Text style={styles.kopruOnayTxt}>
+              {(kopru || []).filter((m) => secili[m.item_id]).length} ürünü düşür
+            </Text>
+          </Pressable>
+        </View>
+      </BottomSheet>
     </View>
   );
 }
@@ -511,6 +606,42 @@ const styles = StyleSheet.create({
   emptyTitle: { ...T.emph, color: colors.ink },
   emptyDesc: { ...T.body, color: colors.inkSecondary },
   // Tek kap: kalemler kart degil satir.
+  kopruBas: {
+    flexDirection: "row", alignItems: "center", gap: spacing.md,
+    paddingHorizontal: spacing.lg, paddingBottom: spacing.sm,
+  },
+  kopruIkon: {
+    width: 34, height: 34, borderRadius: 17, backgroundColor: colors.accentSoft,
+    alignItems: "center", justifyContent: "center",
+  },
+  kopruTitle: { ...T.emph, color: colors.ink },
+  kopruDesc: { ...T.caption, color: colors.inkTertiary, marginTop: 1 },
+  kopruRow: {
+    flexDirection: "row", alignItems: "center", gap: spacing.md,
+    paddingHorizontal: spacing.lg, paddingVertical: spacing.sm, minHeight: 52,
+  },
+  kopruAd: { ...T.body, color: colors.ink },
+  kopruFis: { ...T.caption, color: colors.inkTertiary, marginTop: 1 },
+  kopruSuphe: {
+    backgroundColor: colors.warningSoft, borderRadius: 6,
+    paddingHorizontal: spacing.sm, paddingVertical: 2,
+  },
+  kopruSupheTxt: { ...T.caption, fontSize: 10, color: colors.onWarning },
+  kopruAlt: {
+    flexDirection: "row", gap: spacing.sm,
+    paddingHorizontal: spacing.lg, paddingTop: spacing.md,
+  },
+  kopruKalsin: {
+    paddingHorizontal: spacing.xl, minHeight: 48, alignItems: "center",
+    justifyContent: "center", borderRadius: radius.pill,
+    borderWidth: 1, borderColor: colors.border,
+  },
+  kopruKalsinTxt: { ...T.bodySb, color: colors.inkSecondary },
+  kopruOnay: {
+    flex: 1, minHeight: 48, alignItems: "center", justifyContent: "center",
+    borderRadius: radius.pill, backgroundColor: colors.brand,
+  },
+  kopruOnayTxt: { ...T.bodySb, color: colors.onBrand },
   itemsWrap: {
     backgroundColor: colors.surface, borderRadius: radius.lg,
     borderWidth: 1, borderColor: colors.border, overflow: "hidden",
