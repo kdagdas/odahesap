@@ -1,3 +1,5 @@
+import { Appearance } from "react-native";
+
 /**
  * KaSa tasarım jetonları.
  *
@@ -8,7 +10,28 @@
  * buraya isimlendirilmiş bir jeton olarak eklenir — ekranlara dağılmış 27
  * ham kod, yarısı zaten var olan jetonun kopyasıydı.
  */
-export const colors = {
+/**
+ * Karanlık tema — SİSTEM ayarını takip eder, uygulama içinden seçilmez.
+ *
+ * Karar PROJE-DOKUMANI §12'de: tema yalnızca **açılışta** okunuyor. Bunun
+ * bedeli, kullanıcı sistem temasını değiştirince farkın bir sonraki açılışta
+ * görünmesi; kazancı ise `StyleSheet.create` zaten modül yüklenirken
+ * çalıştığı için **hiçbir stilin bileşen içine taşınması gerekmemesi**
+ * (22 dosyada 1.234 satır stil, canlı tema için hepsinin taşınması gerekirdi).
+ *
+ * **Ters çevirme YOK.** Bugün lacivert zemin, beyaz yüzey onun üstünde;
+ * kavisle binen o katman uygulamanın imzası ve "bu yüzey yukarıda" diyor.
+ * Ters çevrilseydi beyaz başlık ekranın en açık ögesi olur ve ilişki bozulurdu.
+ * Karanlıkta da yüzey başlıktan AÇIK kalıyor — ilişki korunuyor:
+ *
+ *   |            | Aydınlık | Karanlık |
+ *   | Başlık     | #0F1B33  | #0A1120  (daha koyu lacivert) |
+ *   | Yüzey      | beyaz    | #161B22  (koyu gri, yine daha açık) |
+ *
+ * Metin saf beyaz değil (`#E8EDF4`): koyu zeminde saf beyaz gözü yorar.
+ * Yeşil ve amber iki temada da çalışıyor, değişmediler.
+ */
+const AYDINLIK = {
   // Zeminler
   bg: "#F6F8FB",              // ekran zemini (saf beyaz değil — kartlar yüzey gibi okunsun)
   surface: "#FFFFFF",
@@ -47,9 +70,7 @@ export const colors = {
   warningSoft: "#FEF3D6",
   // "Senden bir şey bekliyor" — uyarı DEĞİL. Vadesi gelen bir kira bir hata
   // değil, normal ve beklenen bir olay; `warning` ile aynı olsaydı dönem
-  // ortası katılma uyarısıyla aynı sesle konuşurdu. Lacivert–beyaz palette
-  // dikkat çekecek başka yuva yok, o yüzden ayrı ve daha canlı bir amber.
-  // Yalnızca küçük işaretlerde kullanılır; yüzey doldurmaz.
+  // ortası katılma uyarısıyla aynı sesle konuşurdu.
   attention: "#FFA51F",
   onWarning: "#92400E",
   info: "#3B82F6",
@@ -74,6 +95,55 @@ export const colors = {
   onMint: "#FFFFFF",
   onCoral: "#FFFFFF",
 };
+
+const KARANLIK: typeof AYDINLIK = {
+  ...AYDINLIK,
+  bg: "#12161D",
+  surface: "#161B22",
+  surfaceAlt: "#12161D",
+  surfaceSecondary: "#1D232C",
+  border: "#262C36",
+  divider: "#20262F",
+
+  dark: "#0A1120",
+  darkAlt: "#111C33",
+  darkSurface: "#1B2740",
+  onDark: "#E8EDF4",
+  onDarkMuted: "#7C8FA8",
+
+  ink: "#E8EDF4",
+  inkSecondary: "#9BA6B4",
+  inkTertiary: "#6B7887",
+
+  brand: "#1B2740",
+  onBrand: "#E8EDF4",
+  // Yesil koyu zeminde biraz aciliyor ki okunurlugu dussun istemiyoruz.
+  accentDark: "#6EE7B7",
+  accentSoft: "#12352A",
+
+  negativeSoft: "#3B2222",
+  warningSoft: "#3A2E17",
+  onWarning: "#FCD9A0",
+  infoSoft: "#17263F",
+  onInfo: "#9CC4FF",
+
+  onSurface: "#E8EDF4",
+  onSurfaceSecondary: "#9BA6B4",
+  onSurfaceTertiary: "#6B7887",
+  onBrandSoft: "#6EE7B7",
+  brandSoft: "#12352A",
+  brandDark: "#111C33",
+  surfaceTertiary: "#1D232C",
+  borderStrong: "#3A4250",
+};
+
+/**
+ * Tema ACILISTA bir kez okunuyor. `Appearance.getColorScheme()` senkron,
+ * yani `StyleSheet.create` çalışmadan önce hazır.
+ */
+export const isDark = Appearance.getColorScheme() === "dark";
+export const colors = isDark ? KARANLIK : AYDINLIK;
+
 
 export const spacing = {
   xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32, xxxl: 48,
@@ -150,6 +220,13 @@ export const font = {
 };
 
 /** Kategori ikonları — Gemini'nin atadığı anahtarlarla birebir eşleşir. */
+/** İki rengi oranla karıştırır (0 = a, 1 = b). */
+export const mixHex = (a: string, b: string, t: number) => {
+  const h = (s: string, i: number) => parseInt(s.slice(1 + i * 2, 3 + i * 2), 16);
+  const k = (i: number) => Math.round(h(a, i) * (1 - t) + h(b, i) * t);
+  return `#${[0, 1, 2].map((i) => k(i).toString(16).padStart(2, "0")).join("")}`;
+};
+
 export const CATEGORY_ICONS: Record<string, { icon: string; color: string; bg: string }> = {
   // Renkler halka grafiğinde yan yana duruyor ve orada aynı zamanda
   // AÇIKLAMA görevi görüyorlar: liste satırındaki nokta hangi dilim olduğunu
@@ -170,6 +247,18 @@ export const CATEGORY_ICONS: Record<string, { icon: string; color: string; bg: s
   ev_urunleri:  { icon: "spray-bottle",        color: "#A580F8", bg: "#EDE9FE" },
   diger:        { icon: "basket-outline",      color: "#8693A5", bg: "#EEF2F7" },
 };
+
+// Karanlik temada pastel zeminler goz cikariyor. Ikon RENGI aynen kaliyor
+// ("mor = ev urunleri" taninirligi iki temada da ayni), yalnizca zemin o
+// rengin koyu zemine karistirilmis haline donuyor.
+if (isDark) {
+  for (const k of Object.keys(CATEGORY_ICONS)) {
+    CATEGORY_ICONS[k] = {
+      ...CATEGORY_ICONS[k],
+      bg: mixHex(CATEGORY_ICONS[k].color, colors.surface, 0.82),
+    };
+  }
+}
 
 export const CATEGORY_LABEL_TR: Record<string, string> = {
   sut_urunleri: "Süt ürünleri",
@@ -242,15 +331,14 @@ export function merchantColor(name?: string | null): string {
  * REWE/Penny/Kaufland üçü de kırmızı — ayırt eden şey **isim**. Renk bir
  * *tanıma* yardımcısı, bir *ayırt edici* değil; o yüzden ağırlığı düştü.
  */
-const _mix = (a: string, b: string, t: number) => {
-  const h = (s: string, i: number) => parseInt(s.slice(1 + i * 2, 3 + i * 2), 16);
-  const k = (i: number) => Math.round(h(a, i) * (1 - t) + h(b, i) * t);
-  return `#${[0, 1, 2].map((i) => k(i).toString(16).padStart(2, "0")).join("")}`;
-};
 
 export function merchantTint(name?: string | null): { bg: string; fg: string } {
   const base = merchantColor(name);
-  return { bg: _mix(base, "#FFFFFF", 0.86), fg: _mix(base, "#000000", 0.38) };
+  // Zemin, iceride bulundugu YUZEYE dogru karistiriliyor: karanlik temada
+  // beyaza karistirmak parlak bir leke birakirdi.
+  return isDark
+    ? { bg: mixHex(base, colors.surface, 0.78), fg: mixHex(base, "#FFFFFF", 0.35) }
+    : { bg: mixHex(base, "#FFFFFF", 0.86), fg: mixHex(base, "#000000", 0.38) };
 }
 
 /** 8 hazır avatar — fotoğraf yüklenmediğinde kullanılır. */

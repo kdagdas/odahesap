@@ -10,13 +10,13 @@
  */
 import { useCallback, useState } from "react";
 import {
-  View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, TextInput, Switch,
+  View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, TextInput,
 } from "react-native";
 import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@/src/auth";
 import { useHousehold } from "@/src/household";
-import { apiPost, api } from "@/src/api";
+import { apiPost, apiGet, api } from "@/src/api";
 import { Avatar, Card, Divider, ScreenHeader, Sheet, IconPill, useScrollPad } from "@/src/ui";
 import { pickPhotoFromLibrary, takePhotoWithCamera, removePhoto } from "@/src/photo";
 import { colors, spacing, radius, type as T, metrics, AVATARS, fontFamily, overline } from "@/src/theme";
@@ -28,7 +28,12 @@ export default function Profil() {
   const altPay = useScrollPad({ tabs: true });
   const router = useRouter();
   const { user, logout, refresh: refreshAuth } = useAuth();
-  const { household, pendingMembers, isAdmin, refresh } = useHousehold();
+  const { household, members, pendingMembers, isAdmin, refresh } = useHousehold();
+  // Satirlarda gosterilecek DURUM ozetleri.
+  const prefsAll = (user?.notif_prefs || {}) as Record<string, boolean>;
+  const acikBildirim = ["new_expense", "expense_edit", "settlement", "period_closed"]
+    .filter((k) => prefsAll[k] !== false).length;
+  const [vadesiGelen, setVadesiGelen] = useState(0);
 
   const [savingAvatar, setSavingAvatar] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -39,19 +44,16 @@ export default function Profil() {
   const [form, setForm] = useState({ name: "", email: "", pw: "", newPw: "" });
   const [savingAccount, setSavingAccount] = useState(false);
 
-  useFocusEffect(useCallback(() => { refresh(); }, [refresh]));
+  useFocusEffect(useCallback(() => {
+    refresh();
+    // Vadesi gelen duzenli odeme sayisi: satirda DURUM olarak gorunuyor,
+    // boylece "kirayi girdim mi" sorusu Profil'e girmeden cevaplaniyor.
+    apiGet<{ due?: any[] }>("/recurring")
+      .then((r) => setVadesiGelen((r.due || []).length))
+      .catch(() => {});
+  }, [refresh]));
 
-  const prefs = (user as any)?.notif_prefs ?? {
-    new_expense: true, expense_edit: true, settlement: true,
-    join_request: true, period_closed: true,
-  };
 
-  const setPref = async (key: string, value: boolean) => {
-    try {
-      await api("/auth/notifications", { method: "PATCH", body: JSON.stringify({ [key]: value }) });
-      await refreshAuth();
-    } catch (e: any) { setError(e?.message || "Ayar kaydedilemedi"); }
-  };
 
   const doPhoto = async (run: () => Promise<{ ok: boolean; error?: string }>) => {
     setPhotoBusy(true); setError(null); setMessage(null);
@@ -189,8 +191,13 @@ export default function Profil() {
               </Card>
             )}
 
-            {/* Ayrı ekranlara açılan iki kapı. Ev ve uygulama ayarları artık
-                burada değil; bu ekran yalnızca sana ait olanı tutuyor. */}
+            {/* SAHIPLIGE gore uc grup. Tur 3'te verilmis iyi bir karar var --
+                "bu kime ait?" (bana / eve / uygulamaya) -- ama ekran onu
+                GOSTERMIYORDU: baslıksiz tek kartta dort satir vardi ve dordu
+                dort farkli sahibe aitti. Grup basliklari kurali gorunur
+                yapiyor. Satirlardaki "3 uye", "1 vadesi geldi" gibi ekler bir
+                aciklama degil DURUM: girmeden ne oldugunu soyluyor. */}
+            <Text style={styles.grup}>SANA AİT</Text>
             <Card>
               {/* Odeme bilgisi burada: kendine ait, cihazda saklaniyor.
                   Ev ayarlarina koymak yanlis olurdu -- ortak degil. */}
@@ -205,15 +212,28 @@ export default function Profil() {
                 <Ionicons name="chevron-forward" size={20} color={colors.inkTertiary} />
               </Pressable>
               <Divider inset={spacing.lg} />
+              <Pressable style={styles.navRow} onPress={() => router.push("/bildirimler")}
+                         testID="open-notifications" android_ripple={{ color: colors.divider }}>
+                <IconPill name="notifications-outline" color={colors.onInfo} tint={colors.infoSoft} size={38} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.navTitle}>Bildirimler</Text>
+                </View>
+                <Text style={styles.navState}>{acikBildirim} açık</Text>
+                <Ionicons name="chevron-forward" size={20} color={colors.inkTertiary} />
+              </Pressable>
+            </Card>
+
+            <Text style={styles.grup}>EVE AİT</Text>
+            <Card>
               <Pressable style={styles.navRow} onPress={() => router.push("/ev-ayarlari")}
                          testID="open-household-settings" android_ripple={{ color: colors.divider }}>
                 <IconPill name="home" color={colors.accentDark} tint={colors.accentSoft} size={38} />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.navTitle}>Ev ayarları</Text>
-                  <Text style={styles.navDesc}>
-                    {household ? `${household.name} · davet kodu, üyeler` : "Eve bağlı değilsin"}
-                  </Text>
                 </View>
+                <Text style={styles.navState}>
+                  {household ? `${members.length} üye` : "yok"}
+                </Text>
                 {pendingMembers.length > 0 && isAdmin && (
                   <View style={styles.badge}>
                     <Text style={styles.badgeTxt}>{pendingMembers.length}</Text>
@@ -232,17 +252,23 @@ export default function Profil() {
                 <IconPill name="repeat" color={colors.onWarning} tint={colors.warningSoft} size={38} />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.navTitle}>Düzenli giderler</Text>
-                  <Text style={styles.navDesc}>Kira, elektrik, abonelik · ev ve kişisel</Text>
                 </View>
+                {vadesiGelen > 0 && (
+                  <Text style={[styles.navState, { color: colors.onWarning }]}>
+                    {vadesiGelen} vadesi geldi
+                  </Text>
+                )}
                 <Ionicons name="chevron-forward" size={20} color={colors.inkTertiary} />
               </Pressable>
-              <Divider inset={spacing.lg} />
+            </Card>
+
+            <Text style={styles.grup}>UYGULAMA</Text>
+            <Card>
               <Pressable style={styles.navRow} onPress={() => router.push("/ayarlar")}
                          testID="open-app-settings" android_ripple={{ color: colors.divider }}>
                 <IconPill name="settings-outline" color={colors.onInfo} tint={colors.infoSoft} size={38} />
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.navTitle}>Uygulama ayarları</Text>
-                  <Text style={styles.navDesc}>Ülke, para birimi, sürüm</Text>
+                  <Text style={styles.navTitle}>Ülke, para birimi, dil</Text>
                 </View>
                 <Ionicons name="chevron-forward" size={20} color={colors.inkTertiary} />
               </Pressable>
@@ -324,40 +350,6 @@ export default function Profil() {
               ))}
             </Card>
 
-            <Card title="Bildirimler">
-              {[
-                // Harcama tarafi UCE ayrildi. Tek anahtarken duzenleme
-                // gurultusunden bunalan biri, kapatmak icin yeni harcamalari
-                // da kapatmak zorundaydi -- yani parasini ilgilendiren seyleri
-                // duymamayi gozeliyordu.
-                { key: "new_expense", label: "Yeni harcama", desc: "Ev arkadaşın harcama eklediğinde" },
-                { key: "expense_edit", label: "Düzenleme ve silme", desc: "Tutarı ya da kimin bölüştüğü değiştiğinde" },
-                { key: "settlement", label: "Ödeme kaydı", desc: "Ödeme işaretlendiğinde veya geri alındığında" },
-                // Yalnizca YONETICIDE. Yonetici olmayan biri icin bu anahtar
-                // tek bir seyi kontrol ediyordu: "istegin onaylandi" -- hayatta
-                // bir kez olan ve uygulamayi kullanmaya baslamadan once biten
-                // bir olay. Kapatilabilir olmasi anlamsizdi.
-                ...(isAdmin ? [{
-                  key: "join_request", label: "Katılma istekleri",
-                  desc: "Biri eve katılmak istediğinde",
-                }] : []),
-                { key: "period_closed", label: "Dönem kapatma", desc: "Dönem kapatılıp sıfırlandığında" },
-              ].map((row, i) => (
-                <View key={row.key}>
-                  {i > 0 && <Divider inset={spacing.lg} />}
-                  <View style={styles.prefRow}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.prefLabel}>{row.label}</Text>
-                      <Text style={styles.prefDesc}>{row.desc}</Text>
-                    </View>
-                    <Switch value={prefs[row.key] !== false}
-                            onValueChange={(v) => setPref(row.key, v)}
-                            trackColor={{ false: colors.border, true: colors.accent }}
-                            thumbColor={colors.surface} testID={`pref-${row.key}`} />
-                  </View>
-                </View>
-              ))}
-            </Card>
 
             {message && <Text style={styles.message}>{message}</Text>}
             {error && <Text style={styles.errorMsg} testID="settings-error">{error}</Text>}
@@ -384,6 +376,8 @@ const styles = StyleSheet.create({
     flexDirection: "row", alignItems: "center", gap: spacing.md,
     paddingHorizontal: spacing.lg, paddingVertical: spacing.md,
   },
+  grup: { ...overline, paddingHorizontal: spacing.xs, marginTop: spacing.md, marginBottom: -4 },
+  navState: { ...T.caption, color: colors.inkTertiary },
   navTitle: { ...T.bodySb, color: colors.ink },
   navDesc: { ...T.caption, color: colors.inkTertiary, marginTop: 1 },
   badge: {

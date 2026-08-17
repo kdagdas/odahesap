@@ -17,6 +17,8 @@ export type AppUser = {
   email: string;
   name: string;
   avatar_id?: number;
+  /** Sunucu ETKIN degerleri dondurur (bkz. `pref_allows`), ham tercihi degil. */
+  notif_prefs?: Record<string, boolean>;
 };
 
 type AuthResponse = { session_token: string; user: AppUser };

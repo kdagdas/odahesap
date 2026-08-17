@@ -14,7 +14,7 @@ import {
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@/src/auth";
-import { ScreenHeader, Sheet, Card, useScrollPad } from "@/src/ui";
+import { ScreenHeader, Sheet, Card, HintCard, useScrollPad } from "@/src/ui";
 import {
   getMyPayment, setMyPayment, shareText, formatIban, ibanError,
   markPaymentShared, type PaymentInfo,
@@ -80,12 +80,13 @@ export default function OdemeBilgilerim() {
             </Pressable>
           }
         >
-          <Text style={styles.heroSub}>
-            Ev arkadaşların sana ödeme yaparken bunları kullanır.
-          </Text>
         </ScreenHeader>
 
         <Sheet>
+          {/* Aciklama BASLIKTAN cikti: bir kez okunacak bir cumle,
+              kalici olarak ekranin tepesini isgal etmemeli. */}
+          <HintCard hintKey="odeme-nasil">Ev arkadaşların sana ödeme yaparken bunları kullanır.</HintCard>
+
           <View style={styles.body}>
             <Card padded>
               <Text style={styles.label}>HESAP SAHİBİ</Text>

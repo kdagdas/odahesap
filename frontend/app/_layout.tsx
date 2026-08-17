@@ -1,7 +1,9 @@
 import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { useEffect } from "react";
-import { LogBox, View, ActivityIndicator, StyleSheet } from "react-native";
+import {
+  LogBox, View, ActivityIndicator, StyleSheet, Platform, UIManager,
+} from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import * as Linking from "expo-linking";
@@ -15,6 +17,11 @@ import { WakingBanner } from "@/src/WakingBanner";
 import { colors } from "@/src/theme";
 
 LogBox.ignoreAllLogs(true);
+// Android'de LayoutAnimation acikca acilmali; yoksa liste degisimleri
+// ziplayarak gerceklesir (bkz. `animateNextLayout`).
+if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 SplashScreen.preventAutoHideAsync();
 
 function Gate() {

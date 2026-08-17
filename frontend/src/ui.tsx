@@ -14,6 +14,7 @@ import React from "react";
 import {
   View, Text, Pressable, StyleSheet, ViewStyle, StyleProp, Image, TextStyle,
   Keyboard, Platform, Modal, Alert, TextInput, Animated, PanResponder,
+  LayoutAnimation, UIManager,
   useWindowDimensions,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
@@ -212,8 +213,59 @@ export const tabBarHeight = (bottomInset: number) => 60 + Math.max(bottomInset, 
  */
 export function useScrollPad(opts?: { tabs?: boolean; extra?: number }) {
   const insets = useSafeAreaInsets();
-  const alt = opts?.tabs ? tabBarHeight(insets.bottom) : insets.bottom;
+  /* Sekme cubugu `position: absolute` DEGIL: React Navigation ekrani zaten
+     cubugun ustunde bitiriyor, yani ScrollView'in gorunur alani cubugu hic
+     icermiyor. Buraya cubuk yuksekligi eklemek ~120 piksel bos kaydirma
+     uretiyordu -- son oge ekranin ortasina geliyor ve altinda hicbir sey
+     olmayan bir bosluk kaliyordu. (Eski koddaki elle yazilmis 120/130
+     sabitleri de ayni hatayi tasiyordu.)
+     Sekmeli ekranda cihazin gezinme cubugu payini da cubuk kendisi
+     ustleniyor; burada yalnizca nefes payi kaliyor. */
+  const alt = opts?.tabs ? 0 : insets.bottom;
   return { paddingBottom: alt + (opts?.extra ?? spacing.xxl) };
+}
+
+/**
+ * Liste degisimini yumusatir — bir sonraki cizimde uygulanir.
+ *
+ * KURAL: animasyon degisimi ACIKLAR, suslemez. Alinacaklar'da isaretlenen
+ * madde bir yerden otekine ZIPLIYORDU; kayarak gitmesi "senin yaptigin seyin
+ * sonucu" diyor. Sekme gecis animasyonu ise BILEREK yok -- denenmis ve geri
+ * alinmisti, cunku sekmeye basmak ayni anda veri cekiyor ve animasyon o
+ * render firtinasiyla yarisiyor (bkz. SIRADAKI-TUR.md).
+ */
+export function animateNextLayout() {
+  if (Platform.OS === "android" && !UIManager.setLayoutAnimationEnabledExperimental) return;
+  LayoutAnimation.configureNext(LayoutAnimation.create(
+    220, LayoutAnimation.Types.easeInEaseOut, LayoutAnimation.Properties.opacity,
+  ));
+}
+
+/**
+ * Degisen bir tutari hedefine SAYARAK gider.
+ *
+ * Odeme kaydedince bakiyenin bir anda yeni degere atlamasi "bir sey oldu mu"
+ * sorusunu biraktiyordu; sayarak gitmesi yaptigin isin etkisini gosteriyor.
+ * Revolut ve Monzo'nun imzasi. Tek sayi degistigi icin liste yeniden
+ * cizilmiyor -- kasma riski yok.
+ */
+export function useCountUp(value: number, ms = 550) {
+  const [gosterilen, setGosterilen] = React.useState(value);
+  const onceki = React.useRef(value);
+  React.useEffect(() => {
+    const bas = onceki.current;
+    if (bas === value) return;
+    const t0 = Date.now();
+    const id = setInterval(() => {
+      const p = Math.min((Date.now() - t0) / ms, 1);
+      // easeOutCubic: hizli basla, yavas bitir.
+      const e = 1 - Math.pow(1 - p, 3);
+      setGosterilen(bas + (value - bas) * e);
+      if (p >= 1) { clearInterval(id); onceki.current = value; setGosterilen(value); }
+    }, 16);
+    return () => clearInterval(id);
+  }, [value, ms]);
+  return gosterilen;
 }
 
 /** İçerik yüzeyi — koyu başlığın üzerine kavisle biner. */
@@ -770,8 +822,10 @@ function SheetBody({
   const height = React.useRef(0);
 
   React.useEffect(() => {
-    Animated.timing(giris, {
-      toValue: 1, duration: 220, useNativeDriver: true,
+    // Yay, dogrusal zamanlamadan daha dogal: sayfa "gelip yerine oturuyor".
+    // `bounciness: 0` -- ziplama bir alt sayfada oyuncakli duruyor.
+    Animated.spring(giris, {
+      toValue: 1, useNativeDriver: true, bounciness: 0, speed: 14,
     }).start();
   }, [giris]);
 

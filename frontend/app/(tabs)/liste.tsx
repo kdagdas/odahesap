@@ -13,7 +13,7 @@ import { useAuth } from "@/src/auth";
 import { useHousehold } from "@/src/household";
 import {
   ScreenHeader, Sheet, Card, Row, Divider, Avatar, IconPill, Overline, TabSwitch,
-  useScrollPad,
+  animateNextLayout, useScrollPad,
 } from "@/src/ui";
 import { colors, spacing, radius, type as T, metrics } from "@/src/theme";
 
@@ -83,6 +83,7 @@ export default function Liste() {
   };
 
   const toggle = async (item: Item) => {
+    animateNextLayout();
     const next = !item.done;
     setItems((cur) => cur.map((i) => (i.item_id === item.item_id ? { ...i, done: next } : i)));
     try {
@@ -94,6 +95,7 @@ export default function Liste() {
   };
 
   const remove = async (item: Item) => {
+    animateNextLayout();
     setItems((cur) => cur.filter((i) => i.item_id !== item.item_id));
     try { await apiDelete(`/shopping/${item.item_id}`); } catch { await load(); }
   };

@@ -20,8 +20,8 @@ import { api, apiGet, apiPost } from "@/src/api";
 import { useAuth } from "@/src/auth";
 import { useHousehold } from "@/src/household";
 import {
-  ScreenHeader, Sheet, Card, Divider, Chip, SplitPicker, splitAll, splitSummary,
-  BottomSheet, TabSwitch, formatEUR, todayISO, useScrollPad, type Split,
+  ScreenHeader, Sheet, Card, Divider, Chip, SplitPicker, splitAll,
+  BottomSheet, TabSwitch, HintCard, formatEUR, todayISO, useScrollPad, type Split,
 } from "@/src/ui";
 import {
   colors, spacing, radius, type as T, overline, fontFamily,
@@ -33,6 +33,7 @@ type Recurring = {
   split_mode: "equal" | "exact"; split_with: Record<string, number>;
   category?: string | null; merchant?: string | null; notes?: string | null;
   active: boolean; due_period: string | null; last_confirmed?: string | null;
+  next_due?: string; days_until?: number; missed_period?: string | null;
 };
 
 const SUGGESTED = ["Kira", "Elektrik", "Su", "İnternet", "Isınma", "Abonelik", "Temizlik", "Diğer"];
@@ -43,6 +44,36 @@ const fromDDMMYYYY = (s: string): string | null => {
   const m = s.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/);
   return m ? `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}` : null;
 };
+
+const AYLAR_TR = ["Oca", "Şub", "Mar", "Nis", "May", "Haz",
+                  "Tem", "Ağu", "Eyl", "Eki", "Kas", "Ara"];
+const AYLAR_TAM = ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran",
+                   "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"];
+
+const ayAdiTR = (key: string) => AYLAR_TAM[parseInt(key.split("-")[1], 10) - 1] || "";
+
+/** "4 gün gecikti" / "Bugün" / "14 gün sonra" — sayı değil cümle. */
+const vadeYazi = (gun?: number) => {
+  if (gun == null) return "";
+  if (gun < 0) return `${-gun} gün gecikti`;
+  if (gun === 0) return "Bugün";
+  if (gun === 1) return "Yarın";
+  return `${gun} gün sonra`;
+};
+
+/** Takvim yaprağı. Önce çıplak bir gün numarası vardı ve ne olduğu okunmuyordu. */
+function DateChip({ iso, late }: { iso?: string; late?: boolean }) {
+  if (!iso) return <View style={styles.dayBox} />;
+  const [, ay, gun] = iso.split("-").map(Number);
+  return (
+    <View style={[styles.dayBox, late && styles.dayBoxLate]}>
+      <Text style={[styles.dayAy, late && { color: colors.negative }]}>
+        {(AYLAR_TR[ay - 1] || "").toLocaleUpperCase("tr")}
+      </Text>
+      <Text style={[styles.dayTxt, late && { color: colors.negative }]}>{gun}</Text>
+    </View>
+  );
+}
 
 export default function Duzenli() {
   // Gezinme cubugu payi -- ic dolgu zaten var, buraya yalnizca cihazin payi.
@@ -70,6 +101,21 @@ export default function Duzenli() {
   useEffect(() => { load(); }, [load]);
 
   const shown = rows.filter((r) => r.scope === scope);
+  // Vadesi gelmis (ve hala onaylanmamis) olanlar en uste; gerisi vade
+  // tarihine gore siralı. Once `day_of_month` sirasi kullaniliyordu, yani
+  // ayin 1'i bugun gecmis olsa bile listede basta duruyordu.
+  const bekleyen = shown.filter((r) => r.active && r.due_period);
+  const sonrakiler = shown
+    .filter((r) => !(r.active && r.due_period))
+    .sort((a, b) => (a.days_until ?? 0) - (b.days_until ?? 0));
+  const kacirilan = shown.filter((r) => r.active && r.missed_period);
+
+  const skip = async (r: Recurring) => {
+    try {
+      await apiPost(`/recurring/${r.recurring_id}/skip`, { period_key: r.due_period });
+      load();
+    } catch (e) { console.log(e); }
+  };
 
   return (
     <View style={styles.root} testID="duzenli-screen">
@@ -83,12 +129,13 @@ export default function Duzenli() {
             </Pressable>
           }
         >
-          <Text style={styles.heroSub}>
-            Vadesi gelince sorulur. Onaylamadan hiçbir kayıt oluşmaz.
-          </Text>
         </ScreenHeader>
 
         <Sheet>
+          {/* Aciklama BASLIKTAN cikti: bir kez okunacak bir cumle,
+              kalici olarak ekranin tepesini isgal etmemeli. */}
+          <HintCard hintKey="duzenli-nasil">Vadesi gelince sorulur. Onaylamadan hiçbir kayıt oluşmaz.</HintCard>
+
           <View style={styles.body}>
             <TabSwitch
               value={scope}
@@ -114,36 +161,89 @@ export default function Duzenli() {
                 </Text>
               </View>
             ) : (
-              <Card title={scope === "household" ? "Ev Giderleri" : "Kişisel Giderler"}>
-                {shown.map((r, i) => (
-                  <View key={r.recurring_id}>
-                    {i > 0 && <Divider />}
-                    <Pressable
-                      style={[styles.row, !r.active && { opacity: 0.45 }]}
-                      onPress={() => setEditing(r)}
-                      testID={`duzenli-row-${r.recurring_id}`}
-                    >
-                      <View style={styles.dayBox}>
-                        <Text style={styles.dayTxt}>{r.day_of_month}</Text>
-                      </View>
+              /* Bu ekran bir KAYIT DEFTERI degil, yaklasan para takvimi:
+                 vadesi gelince onay bekliyor, yani dogasi bir EYLEM.
+                 Siralama vadeye gore (abonelik yoneticilerinin -- Revolut
+                 Subscriptions, Emma, Bobby -- tamami boyle), bastaki ciplak
+                 "1" ise takvim yapragina dondu. "Tum ev · kisiye ozel · sabit"
+                 jargonu ayrintiya tasindi: kurulumda bir kez lazim, her
+                 bakista degil. */
+              <View style={{ gap: spacing.md }}>
+                {bekleyen.map((r) => (
+                  <View key={r.recurring_id}
+                        style={[styles.dueCard, (r.days_until ?? 0) < 0 && styles.dueCardLate]}>
+                    <Pressable style={styles.row} onPress={() => setEditing(r)}
+                               testID={`duzenli-row-${r.recurring_id}`}>
+                      <DateChip iso={r.next_due} late={(r.days_until ?? 0) < 0} />
                       <View style={{ flex: 1 }}>
                         <Text style={styles.rowTitle}>{r.name}</Text>
-                        <Text style={styles.rowSub} numberOfLines={1}>
-                          {r.scope === "self"
-                            ? "Sadece ben"
-                            : splitSummary({ mode: r.split_mode, with: r.split_with }, members, user?.user_id)}
-                          {" · "}
-                          {!r.active ? "pasif" : r.amount_fixed ? "sabit" : "değişken"}
+                        <Text style={[styles.rowWhen,
+                                      (r.days_until ?? 0) < 0 && { color: colors.negative },
+                                      r.days_until === 0 && { color: colors.onWarning }]}>
+                          {vadeYazi(r.days_until)}
                         </Text>
                       </View>
-                      <Text style={[styles.rowAmount, !r.amount_fixed && { color: colors.inkTertiary }]}>
+                      <Text style={styles.rowAmount}>
                         {r.amount_fixed ? "" : "~"}{money(r.amount)}
                       </Text>
-                      <Ionicons name="chevron-forward" size={16} color={colors.inkTertiary} />
                     </Pressable>
+                    {/* Onay LISTEDE: en sik yapilan is bugun ayrinti sayfasinin
+                        icinde, yani bir adim uzakta duruyordu. */}
+                    <View style={styles.dueActions}>
+                      <Pressable style={styles.onayla} onPress={() => setConfirming(r)}
+                                 testID={`duzenli-confirm-${r.recurring_id}`}>
+                        <Text style={styles.onaylaTxt}>Onayla</Text>
+                      </Pressable>
+                      <Pressable style={styles.atla} onPress={() => skip(r)}
+                                 testID={`duzenli-skip-${r.recurring_id}`}>
+                        <Text style={styles.atlaTxt}>Atla</Text>
+                      </Pressable>
+                    </View>
                   </View>
                 ))}
-              </Card>
+
+                {sonrakiler.length > 0 && (
+                  <>
+                    <Text style={styles.grupBaslik}>SONRAKİLER</Text>
+                    <Card>
+                      {sonrakiler.map((r, i) => (
+                        <View key={r.recurring_id}>
+                          {i > 0 && <Divider inset={62} />}
+                          <Pressable
+                            style={[styles.row, !r.active && { opacity: 0.45 }]}
+                            onPress={() => setEditing(r)}
+                            testID={`duzenli-row-${r.recurring_id}`}
+                          >
+                            <DateChip iso={r.next_due} />
+                            <View style={{ flex: 1 }}>
+                              <Text style={styles.rowTitle}>{r.name}</Text>
+                              <Text style={styles.rowWhen}>
+                                {r.active ? vadeYazi(r.days_until) : "pasif"}
+                              </Text>
+                            </View>
+                            <Text style={[styles.rowAmount, !r.amount_fixed && { color: colors.inkTertiary }]}>
+                              {r.amount_fixed ? "" : "~"}{money(r.amount)}
+                            </Text>
+                            <Ionicons name="chevron-forward" size={16} color={colors.inkTertiary} />
+                          </Pressable>
+                        </View>
+                      ))}
+                    </Card>
+                  </>
+                )}
+
+                {/* Kacirilan ay icin KART uretilmiyor (alti onay karti gurultu
+                    olurdu) ama 1.200 EUR'nun sessizce kaybolmasina da izin
+                    verilmiyor: tek satirlik not. */}
+                {kacirilan.map((r) => (
+                  <View key={`missed-${r.recurring_id}`} style={styles.missed}>
+                    <Ionicons name="information-circle-outline" size={16} color={colors.inkSecondary} />
+                    <Text style={styles.missedTxt}>
+                      {ayAdiTR(r.missed_period!)} {r.name.toLocaleLowerCase("tr")} hiç kaydedilmedi
+                    </Text>
+                  </View>
+                ))}
+              </View>
             )}
 
             <Pressable style={styles.addBtn} onPress={() => setEditing("new")} testID="duzenli-add">
@@ -563,11 +663,37 @@ const styles = StyleSheet.create({
     flexDirection: "row", alignItems: "center", gap: spacing.md,
     paddingHorizontal: spacing.lg, paddingVertical: spacing.md, minHeight: 62,
   },
+  // Takvim yapragi: ay ustte kucuk, gun altta buyuk.
   dayBox: {
-    width: 36, height: 36, borderRadius: radius.md, backgroundColor: colors.surfaceSecondary,
-    alignItems: "center", justifyContent: "center",
+    width: 40, borderRadius: radius.md, backgroundColor: colors.surfaceSecondary,
+    alignItems: "center", justifyContent: "center", paddingVertical: 4,
   },
-  dayTxt: { ...T.bodySb, color: colors.ink },
+  dayBoxLate: { backgroundColor: colors.negativeSoft },
+  dayAy: { ...T.caption, fontSize: 9, lineHeight: 12, color: colors.inkSecondary },
+  dayTxt: { ...T.bodySb, color: colors.ink, lineHeight: 19 },
+  rowWhen: { ...T.caption, color: colors.inkTertiary, marginTop: 1 },
+  grupBaslik: { ...overline, marginTop: spacing.sm },
+  dueCard: {
+    backgroundColor: colors.surface, borderRadius: radius.lg,
+    borderWidth: 1, borderColor: colors.attention, padding: spacing.sm,
+  },
+  dueCardLate: { borderColor: colors.negative },
+  dueActions: { flexDirection: "row", gap: spacing.sm, paddingHorizontal: spacing.sm, paddingTop: spacing.sm },
+  onayla: {
+    flex: 1, minHeight: 40, alignItems: "center", justifyContent: "center",
+    borderRadius: radius.pill, backgroundColor: colors.brand,
+  },
+  onaylaTxt: { ...T.bodySb, color: colors.onBrand },
+  atla: {
+    minHeight: 40, paddingHorizontal: spacing.lg, alignItems: "center", justifyContent: "center",
+    borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border,
+  },
+  atlaTxt: { ...T.bodySb, color: colors.inkSecondary },
+  missed: {
+    flexDirection: "row", alignItems: "center", gap: spacing.sm,
+    backgroundColor: colors.surfaceSecondary, borderRadius: radius.md, padding: spacing.md,
+  },
+  missedTxt: { ...T.caption, color: colors.inkSecondary, flex: 1, lineHeight: 18 },
   rowTitle: { ...T.emph, color: colors.ink },
   rowSub: { ...T.caption, color: colors.inkTertiary, marginTop: 1 },
   rowAmount: { ...T.bodySb, color: colors.ink },

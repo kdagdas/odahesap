@@ -124,7 +124,6 @@ class NotificationPrefs(BaseModel):
     new_expense: Optional[bool] = None
     expense_edit: Optional[bool] = None
     settlement: Optional[bool] = None
-    join_request: Optional[bool] = None
     period_closed: Optional[bool] = None
 
 
@@ -378,9 +377,14 @@ DEFAULT_PREFS = {
     "new_expense": True,     # yeni harcama eklendi
     "expense_edit": True,    # var olan harcama duzenlendi ya da silindi
     "settlement": True,      # odeme kaydedildi ya da geri alindi
-    "join_request": True,
     "period_closed": True,
 }
+
+# Kapatilamayan turler. "Yeni katilma istegi" yalnizca yoneticiye gider ve
+# gormezse ev arkadasi kapida bekler; "Istegin onaylandi" da hayatta bir kez
+# olur ve kacirilirsa kisi eve girdigini bilmez. Ikisi de bir TERCIH degil,
+# akisin calismasi icin sart -- o yuzden anahtari hic yok.
+_ALWAYS = ("join_request",)
 
 # Once dordu birden `new_expense` anahtarini paylasiyordu: "duzenleme
 # bildirimleri beni yoruyor" diyen biri, kapatmak icin yeni harcamalari da
@@ -396,6 +400,8 @@ def pref_allows(prefs: Optional[dict], kind: str) -> bool:
     **miras alir**: `new_expense`'i kapatmis biri, biz anahtari bolduk diye
     aniden yeniden bildirim almaya baslamamali.
     """
+    if kind in _ALWAYS:
+        return True
     p = prefs or {}
     if kind in _INHERIT_FROM_NEW_EXPENSE and kind not in p:
         return {**DEFAULT_PREFS, **p}.get("new_expense", True)
@@ -2671,6 +2677,40 @@ def recurring_due_for(tpl: dict, today: date) -> Optional[str]:
 def _public_recurring(tpl: dict, today: date) -> dict:
     out = {k: v for k, v in tpl.items() if k != "_id"}
     out["due_period"] = recurring_due_for(tpl, today)
+
+    # Siradaki vade tarihi ve kac gun kaldigi/gectigi. Once ekranda yalnizca
+    # `day_of_month` (cıplak bir "1") duruyordu ve ne oldugu anlasilmiyordu.
+    gun = int(tpl["day_of_month"])
+    bu_ay = due_date_in(today.year, today.month, gun)
+    if out["due_period"]:
+        # Vadesi gelmis ve hala onaylanmamis: tarih BU ayin vadesi.
+        sonraki = bu_ay
+    elif today < bu_ay:
+        sonraki = bu_ay
+    else:
+        y, m = (today.year + 1, 1) if today.month == 12 else (today.year, today.month + 1)
+        sonraki = due_date_in(y, m, gun)
+    out["next_due"] = sonraki.isoformat()
+    # Eksi = gecikti. Ekran "4 gun gecikti" diyebilsin diye burada hesaplaniyor;
+    # istemcinin tarih aritmetigi yapmasi gereksiz ve saat dilimine acik.
+    out["days_until"] = (sonraki - today).days
+
+    # Kaydedilmemis GECMIS ay. `recurring_due_for` bilerek yalnizca icinde
+    # bulunulan aya bakiyor (iki ay uygulamayi acmayan biri alti onay kartiyla
+    # karsilasmasin diye) -- ama 1.200 EUR'luk kiranin sessizce kaybolmasina da
+    # izin veriyordu. Kart uretmeden, tek satirlik bir not icin sayiyor.
+    onceki = None
+    if today.month == 1:
+        oy, om = today.year - 1, 12
+    else:
+        oy, om = today.year, today.month - 1
+    onceki_key = f"{oy:04d}-{om:02d}"
+    if (tpl.get("active", True)
+            and tpl.get("last_confirmed") != onceki_key
+            and onceki_key not in (tpl.get("skipped") or [])
+            and make_aware(tpl["created_at"]).date() <= due_date_in(oy, om, gun)):
+        onceki = onceki_key
+    out["missed_period"] = onceki
     return out
 
 

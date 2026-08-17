@@ -9,12 +9,14 @@ import { apiGet } from "@/src/api";
 import { useAuth } from "@/src/auth";
 import { useHousehold } from "@/src/household";
 import {
-  ScreenHeader, HeaderSplit, TrendBadge, Sheet, Card, Row, Divider, Avatar,
+  ScreenHeader, HeaderSplit, HeaderPills, Sheet, Card, Row, Divider, Avatar,
   Money, IconPill, CategoryIcon, categoryLabel, splitBadge, splitSummary, PulseDot,
   Donut, formatEUR, formatEURShort, useScrollPad,
 } from "@/src/ui";
 import { ConfirmSheet } from "@/app/duzenli";
-import { colors, spacing, type as T, overline, fontFamily, metrics, CATEGORY_ICONS } from "@/src/theme";
+import {
+  colors, spacing, radius, type as T, overline, fontFamily, metrics, CATEGORY_ICONS,
+} from "@/src/theme";
 
 type Expense = {
   expense_id: string; added_by: string; target_type: string; target_user_id?: string;
@@ -27,7 +29,7 @@ type Due = {
   split_mode: "equal" | "exact"; split_with: Record<string, number>;
 };
 type Stats = {
-  total: number; per_person: number; daily_average: number; projected_30d: number;
+  total: number; per_person: number; daily_average: number; days?: number;
   change_pct: number | null; expense_count: number;
   categories: { key: string; total: number }[];
   merchants: { name: string; total: number }[];
@@ -40,7 +42,7 @@ export default function Panel() {
   // degismiyordu; olcu artik tek yerden geliyor.
   const altPay = useScrollPad({ tabs: true });
   const { user } = useAuth();
-  const { household, members, refresh: refreshHH } = useHousehold();
+  const { household, members, activePeriod, refresh: refreshHH } = useHousehold();
   const router = useRouter();
   const [stats, setStats] = useState<Stats | null>(null);
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -117,17 +119,39 @@ export default function Panel() {
         >
           <Text style={styles.heroLabel}>BU DÖNEM EV HARCAMASI</Text>
           <Text style={styles.heroValue}>{formatEUR(stats?.total ?? 0)}</Text>
-          <TrendBadge
-            pct={stats?.change_pct}
-            onPress={() => router.push("/istatistik")}
-            testID="open-stats-btn"
-          />
+          {activePeriod && (
+            <Text style={styles.heroHint}>
+              {new Date(activePeriod.started_at).toLocaleDateString("tr-TR",
+                { day: "numeric", month: "long" })}'ten beri
+              {stats?.days ? ` · ${stats.days} gün` : ""}
+            </Text>
+          )}
+          {/* YÜZDE KALDIRILDI. `change_pct` bu dönemin toplamını bir önceki
+              DÖNEMIN toplamıyla karşılaştırıyordu; oysa dönem üç hafta da
+              sürebilir yedi hafta da (PROJE-DOKUMANI §5). Farklı uzunluktaki
+              iki kutuyu oranlamak "%114 artış" gibi bir sayı üretiyor ve o
+              sayı çoğu zaman yalnızca "bu dönem daha uzun sürdü" demek.
+              Doğru karşılaştırma İstatistik'te: aylar eşit uzunlukta sayılır.
+
+              "Ay sonu tahmini" de yanlış etiketti: hesap `günlük ortalama×30`,
+              yani "bu hızla 30 günde" -- ay sonu değil. Üstelik üstteki ana
+              rakam "BU DÖNEM" diyordu, aynı blokta iki farklı takvim vardı.
+              Yerine GÜNLÜK ORTALAMA: bir tahmin değil bir olgu, ve dönem
+              uzunluğundan bağımsız olduğu için tek karşılaştırılabilir sayı. */}
           <HeaderSplit
             items={[
               { label: "Kişi başı", value: formatEUR(stats?.per_person ?? 0) },
-              { label: "Ay sonu tahmini", value: formatEUR(stats?.projected_30d ?? 0) },
+              { label: "Günde ortalama", value: formatEUR(stats?.daily_average ?? 0) },
             ]}
           />
+          <HeaderPills>
+            <Pressable style={styles.statsPill} onPress={() => router.push("/istatistik")}
+                       testID="open-stats-btn">
+              <Ionicons name="stats-chart" size={13} color={colors.onDarkMuted} />
+              <Text style={styles.statsPillTxt}>İstatistikler</Text>
+              <Ionicons name="chevron-forward" size={12} color={colors.onDarkMuted} />
+            </Pressable>
+          </HeaderPills>
         </ScreenHeader>
 
         <Sheet>
@@ -292,6 +316,13 @@ const styles = StyleSheet.create({
   scroll: { backgroundColor: colors.bg, flexGrow: 1 },
   mx: { marginHorizontal: spacing.lg },
   heroLabel: { ...overline, color: colors.onDarkMuted },
+  heroHint: { ...T.caption, color: colors.onDarkMuted, marginTop: 2 },
+  statsPill: {
+    flexDirection: "row", alignItems: "center", gap: 5,
+    backgroundColor: colors.darkSurface, borderRadius: radius.pill,
+    paddingHorizontal: spacing.md, paddingVertical: 6,
+  },
+  statsPillTxt: { ...T.captionSb, color: colors.onDark },
   heroValue: { ...T.hero, color: colors.onDark, marginTop: spacing.xs },
   bellBtn: {
     width: 42, height: 42, borderRadius: 21, backgroundColor: colors.darkSurface,

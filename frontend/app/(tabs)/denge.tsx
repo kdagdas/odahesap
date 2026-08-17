@@ -16,7 +16,7 @@ import { useHousehold } from "@/src/household";
 import {
   ScreenHeader, HeaderSplit, Sheet, Card, Row, Divider, Avatar, Money,
   IconPill, PrimaryButton, BottomSheet, PulseDot, HeaderPills, HeaderPill,
-  formatEUR, currencySign,
+  useCountUp, formatEUR, currencySign,
   useScrollPad,
 } from "@/src/ui";
 import {
@@ -204,6 +204,7 @@ export default function Denge() {
   }, [transfers, me]);
 
   const myPaid = stats?.by_member.find((b) => b.user_id === me)?.total ?? 0;
+  const sayanNet = useCountUp(myNet);
 
   /**
    * Odeme sayfasi TEK yuz.
@@ -325,9 +326,11 @@ export default function Denge() {
         >
           <ScreenHeader overline="KASA" title="Senin Hesabın">
             <Text style={styles.heroLabel}>NET DURUMUN</Text>
+            {/* Sayarak degisiyor: odeme kaydedince rakamin bir anda atlamasi
+                "oldu mu olmadi mi" sorusunu birakiyordu. */}
             <Text style={[styles.heroValue,
                           { color: myNet >= 0 ? colors.accentOnDark : colors.negativeOnDark }]}>
-              {formatEUR(myNet, true)}
+              {formatEUR(sayanNet, true)}
             </Text>
             <Text style={styles.heroHint}>
               {myNet > 0.01 ? "Ev sana borçlu" : myNet < -0.01 ? "Eve borcun var" : "Ödeşmiş durumdasın"}
