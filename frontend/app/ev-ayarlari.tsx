@@ -16,7 +16,9 @@ import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@/src/auth";
 import { useHousehold } from "@/src/household";
 import { apiPost, api } from "@/src/api";
-import { Avatar, Card, Divider, ScreenHeader, Sheet, Tag, useScrollPad } from "@/src/ui";
+import {
+  Avatar, BottomSheet, Card, Divider, ScreenHeader, Sheet, Tag, useScrollPad,
+} from "@/src/ui";
 import { colors, spacing, radius, type as T, overline, metrics, fontFamily } from "@/src/theme";
 
 export default function EvAyarlari() {
@@ -34,6 +36,7 @@ export default function EvAyarlari() {
   const [savingName, setSavingName] = useState(false);
   const [transferTo, setTransferTo] = useState<string | null>(null);
   const [removeTarget, setRemoveTarget] = useState<string | null>(null);
+  const [menuFor, setMenuFor] = useState<string | null>(null);
   const [regenConfirm, setRegenConfirm] = useState(false);
   const [regenBusy, setRegenBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -346,18 +349,17 @@ export default function EvAyarlari() {
                             </Pressable>
                           </View>
                         ) : (
-                          <View style={styles.actionsCol}>
-                            <Pressable
-                              onPress={() => { setTransferTo(m.user_id); setRemoveTarget(null); setMessage(null); setError(null); }}
-                              hitSlop={6} testID={`transfer-admin-${m.user_id}`}>
-                              <Text style={styles.transferLink}>Yönetici yap</Text>
-                            </Pressable>
-                            <Pressable
-                              onPress={() => { setRemoveTarget(m.user_id); setTransferTo(null); setMessage(null); setError(null); }}
-                              hitSlop={6} testID={`remove-member-${m.user_id}`}>
-                              <Text style={styles.removeLink}>Evden çıkar</Text>
-                            </Pressable>
-                          </View>
+                          /* Iki yikici eylem her satirda SUREKLI aciktaydi:
+                             yesil "Yonetici yap" ile kirmizi "Evden cikar"
+                             yan yana, yanlis dokunma riski yuksek. Ikisi de
+                             nadir ve ikisi de ciddi -- yeri bir menu.
+                             Menu basliginda kisinin adi yaziyor, boylece
+                             "hangi satirdaydim" sorusu da kapaniyor. */
+                          <Pressable onPress={() => setMenuFor(m.user_id)} hitSlop={10}
+                                     testID={`member-menu-${m.user_id}`}>
+                            <Ionicons name="ellipsis-horizontal" size={20}
+                                      color={colors.inkTertiary} />
+                          </Pressable>
                         )
                       )}
                     </View>
@@ -365,6 +367,36 @@ export default function EvAyarlari() {
                 );
               })}
             </Card>
+
+            {/* Uye eylem menusu */}
+            <BottomSheet visible={!!menuFor} onClose={() => setMenuFor(null)} testID="member-menu">
+              <Text style={[overline, { paddingHorizontal: spacing.lg, paddingBottom: spacing.sm }]}>
+                {(members.find((x) => x.user_id === menuFor)?.name || "").toLocaleUpperCase("tr")}
+              </Text>
+              <Pressable
+                style={styles.menuRow}
+                onPress={() => {
+                  const id = menuFor; setMenuFor(null);
+                  setTransferTo(id); setRemoveTarget(null); setMessage(null); setError(null);
+                }}
+                testID="menu-transfer-admin"
+              >
+                <Ionicons name="shield-checkmark-outline" size={19} color={colors.inkSecondary} />
+                <Text style={styles.menuTxt}>Yönetici yap</Text>
+              </Pressable>
+              <Divider inset={52} />
+              <Pressable
+                style={styles.menuRow}
+                onPress={() => {
+                  const id = menuFor; setMenuFor(null);
+                  setRemoveTarget(id); setTransferTo(null); setMessage(null); setError(null);
+                }}
+                testID="menu-remove-member"
+              >
+                <Ionicons name="person-remove-outline" size={19} color={colors.negative} />
+                <Text style={[styles.menuTxt, { color: colors.negative }]}>Evden çıkar</Text>
+              </Pressable>
+            </BottomSheet>
 
             {transferTo && (
               <Text style={styles.warnTxt}>
@@ -436,6 +468,11 @@ const styles = StyleSheet.create({
 
   transferLink: { ...T.captionSb, color: colors.accentDark },
   removeLink: { ...T.captionSb, color: colors.negative },
+  menuRow: {
+    flexDirection: "row", alignItems: "center", gap: spacing.md,
+    paddingHorizontal: spacing.lg, paddingVertical: spacing.md, minHeight: 52,
+  },
+  menuTxt: { ...T.body, color: colors.ink },
   actionsCol: { alignItems: "flex-end", gap: 6 },
   removeConfirm: { backgroundColor: colors.negative, paddingHorizontal: spacing.md, paddingVertical: 7, borderRadius: radius.pill },
   confirmRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },

@@ -156,15 +156,19 @@ export const CATEGORY_ICONS: Record<string, { icon: string; color: string; bg: s
   // söylüyor. Bu yüzden birbirinden ayırt edilebilir ve canlı olmaları şart —
   // önceki ton seti kâğıtta hoştu ama 9 dilim yan yana gelince griye çalıyordu.
   // "diger" bilerek soluk: bir kategori değil, kalanların adı.
-  sut_urunleri: { icon: "cup-outline",         color: "#06B6D4", bg: "#CFFAFE" },
-  meyve_sebze:  { icon: "food-apple-outline",  color: "#22C55E", bg: "#DCFCE7" },
-  et_balik:     { icon: "food-steak",          color: "#EF4444", bg: "#FEE2E2" },
-  firin:        { icon: "bread-slice-outline", color: "#FBBF24", bg: "#FEF3C7" },
-  icecek:       { icon: "bottle-soda-outline", color: "#3B82F6", bg: "#DBEAFE" },
-  atistirmalik: { icon: "candy-outline",       color: "#EC4899", bg: "#FCE7F3" },
-  temel_gida:   { icon: "sack",                color: "#F97316", bg: "#FFEDD5" },
-  ev_urunleri:  { icon: "spray-bottle",        color: "#8B5CF6", bg: "#EDE9FE" },
-  diger:        { icon: "basket-outline",      color: "#64748B", bg: "#EEF2F7" },
+  // Tonlar %22 beyaza kaydirildi. Once tam doygundu ve halka tek bir canli
+  // kirmiziyla dolunca finans baglaminda "uyari" gibi okunuyordu -- oysa et
+  // kategorisinin kirmizi olmasi DOGRU, sorun rengin secimi degil doygunlugu.
+  // Ayirt edilebilirlik korundu: hue'lar ve aralari degismedi.
+  sut_urunleri: { icon: "cup-outline",         color: "#3DC6DD", bg: "#CFFAFE" },
+  meyve_sebze:  { icon: "food-apple-outline",  color: "#53D281", bg: "#DCFCE7" },
+  et_balik:     { icon: "food-steak",          color: "#F36D6D", bg: "#FEE2E2" },
+  firin:        { icon: "bread-slice-outline", color: "#FCCD54", bg: "#FEF3C7" },
+  icecek:       { icon: "bottle-soda-outline", color: "#669EF8", bg: "#DBEAFE" },
+  atistirmalik: { icon: "candy-outline",       color: "#F070AF", bg: "#FCE7F3" },
+  temel_gida:   { icon: "sack",                color: "#FA9249", bg: "#FFEDD5" },
+  ev_urunleri:  { icon: "spray-bottle",        color: "#A580F8", bg: "#EDE9FE" },
+  diger:        { icon: "basket-outline",      color: "#8693A5", bg: "#EEF2F7" },
 };
 
 export const CATEGORY_LABEL_TR: Record<string, string> = {
@@ -228,6 +232,25 @@ export function merchantColor(name?: string | null): string {
   let hash = 0;
   for (let i = 0; i < key.length; i++) hash = (hash * 31 + key.charCodeAt(i)) >>> 0;
   return FALLBACK_COLORS[hash % FALLBACK_COLORS.length];
+}
+
+/**
+ * Marka rengini PASTEL zemin + koyu yazıya çevirir.
+ *
+ * Rozetler önce tam doygun dolguydu ve tek kartta yedi renk yarışıyordu.
+ * Üstelik renk kimlik işini zaten yapamıyor: Lidl ile Aldi ikisi de mavi,
+ * REWE/Penny/Kaufland üçü de kırmızı — ayırt eden şey **isim**. Renk bir
+ * *tanıma* yardımcısı, bir *ayırt edici* değil; o yüzden ağırlığı düştü.
+ */
+const _mix = (a: string, b: string, t: number) => {
+  const h = (s: string, i: number) => parseInt(s.slice(1 + i * 2, 3 + i * 2), 16);
+  const k = (i: number) => Math.round(h(a, i) * (1 - t) + h(b, i) * t);
+  return `#${[0, 1, 2].map((i) => k(i).toString(16).padStart(2, "0")).join("")}`;
+};
+
+export function merchantTint(name?: string | null): { bg: string; fg: string } {
+  const base = merchantColor(name);
+  return { bg: _mix(base, "#FFFFFF", 0.86), fg: _mix(base, "#000000", 0.38) };
 }
 
 /** 8 hazır avatar — fotoğraf yüklenmediğinde kullanılır. */

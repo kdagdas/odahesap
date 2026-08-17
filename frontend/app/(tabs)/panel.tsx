@@ -208,7 +208,6 @@ export default function Panel() {
                         leading={<Avatar name={m.name} avatarId={(m as any).avatar_id}
                                          userId={m.user_id} photoVersion={(m as any).photo_version} />}
                         title={`${m.name}${m.user_id === user?.user_id ? " (sen)" : ""}`}
-                        subtitle="ev harcaması"
                         right={<Money value={totalsPaid[m.user_id] || 0} />}
                       />
                       {i < members.length - 1 && <Divider />}

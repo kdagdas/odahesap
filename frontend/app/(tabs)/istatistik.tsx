@@ -38,7 +38,8 @@ type Monthly = {
   prev_total: number; prev_month?: string; change_pct: number | null;
   fixed: number; variable: number; per_person: number; member_count: number;
   my_share: number; my_personal: number;
-  categories: { key: string; total: number; prev_total: number; change_pct: number | null }[];
+  categories: { key: string; total: number; prev_total: number;
+                change_pct: number | null; is_new?: boolean }[];
   merchants: { name: string; total: number }[];
   by_member: { user_id: string; total: number }[];
   bills: { recurring_id: string; name: string; amount_fixed: boolean;
@@ -265,11 +266,17 @@ export default function Istatistik() {
                           <Text style={styles.catName} numberOfLines={1}>
                             {categoryLabel(cat.key)}
                           </Text>
-                          {cat.change_pct === null ? (
+                          {/* Rozet ISTISNA icindir. Once `change_pct === null`
+                              yeterliydi ve gecen ay hic veri yoksa sekiz
+                              kategorinin sekizi birden "yeni" oluyordu --
+                              o noktada rozet kurali isaretliyor, istisnayi
+                              degil. Sunucu artik karsilastirilacak gecmis
+                              varsa `is_new` diyor. */}
+                          {cat.is_new ? (
                             <View style={[styles.deltaTag, { backgroundColor: colors.infoSoft }]}>
                               <Text style={[styles.deltaTxt, { color: colors.onInfo }]}>yeni</Text>
                             </View>
-                          ) : Math.abs(cat.change_pct) >= 5 ? (
+                          ) : cat.change_pct !== null && Math.abs(cat.change_pct) >= 5 ? (
                             <View style={[styles.deltaTag, {
                               backgroundColor: cat.change_pct > 0 ? colors.negativeSoft : colors.accentSoft,
                             }]}>

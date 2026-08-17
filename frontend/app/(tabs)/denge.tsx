@@ -26,7 +26,11 @@ import {
 import { colors, spacing, radius, type as T, overline, fontFamily, metrics } from "@/src/theme";
 
 type Transfer = { from: string; to: string; amount: number };
-type Period = { period_id: string; started_at: string; closed_at: string | null; status: string };
+type Period = {
+  period_id: string; started_at: string; closed_at: string | null; status: string;
+  first_expense?: string | null; last_expense?: string | null;
+  expense_count?: number; expense_total?: number;
+};
 type Settlement = {
   settlement_id: string; from_user_id: string; to_user_id: string;
   amount: number; recorded_by: string; created_at: string;
@@ -40,20 +44,39 @@ type Stats = {
 };
 
 /**
- * Dönem etiketi — bir ARALIK, tek tarih değil.
+ * Dönem etiketi — HARCAMA aralığı, dönem kaydının damgası değil.
  *
- * Önce yalnızca başlangıç ayı yazılıyordu; aynı ay içinde açılıp kapanan iki
- * dönem ekranda birebir aynı görünüyordu ("Dönem #1 (08.2026)" ve
- * "Dönem #2 (08.2026)") ve hangisine baktığın anlaşılmıyordu.
+ * `started_at` bir muhasebe damgası: ev kurulup ilk dönem aynı gün kapandıysa
+ * "3 Ağu – 3 Ağu" çıkıyor ve iki dönem ayırt edilemiyor. İnsanın hatırladığı
+ * şey alışveriş yapılan günler. Aynı ay içindeyse ay bir kez yazılıyor
+ * (banka ekstrelerindeki gibi), harcama yoksa tek tarih.
  */
-const gunAy = (iso: string) =>
-  new Date(iso).toLocaleDateString("tr-TR", { day: "numeric", month: "short" });
+const AY_KISA = ["Oca", "Şub", "Mar", "Nis", "May", "Haz",
+                 "Tem", "Ağu", "Eyl", "Eki", "Kas", "Ara"];
+const AY_UZUN = ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran",
+                 "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"];
 
-const periodLabel = (p: Period) =>
-  `${gunAy(p.started_at)} – ${p.closed_at ? gunAy(p.closed_at) : "bugün"}`;
+const periodLabel = (p: Period) => {
+  const ilk = p.first_expense, son = p.last_expense;
+  if (!ilk) {
+    const d = new Date(p.started_at);
+    return `${d.getDate()} ${AY_UZUN[d.getMonth()]}`;
+  }
+  const [, ay1, g1] = ilk.split("-").map(Number);
+  const bitis = p.status === "active" ? null : son;
+  if (!bitis || bitis === ilk) return `${g1} ${AY_UZUN[ay1 - 1]}`;
+  const [, ay2, g2] = bitis.split("-").map(Number);
+  // Ayni ay: "3 - 16 Agustos". Farkli ay: "28 Tem - 2 Agustos".
+  return ay1 === ay2
+    ? `${g1} – ${g2} ${AY_UZUN[ay2 - 1]}`
+    : `${g1} ${AY_KISA[ay1 - 1]} – ${g2} ${AY_UZUN[ay2 - 1]}`;
+};
 
-const periodHint = (p: Period, i: number, total: number) =>
-  `Dönem #${total - i}${p.status === "active" ? " · sürüyor" : ""}`;
+const periodHint = (p: Period) => {
+  const durum = p.status === "active" ? "Sürüyor" : "Kapandı";
+  if (!p.expense_count) return `${durum} · harcama yok`;
+  return `${durum} · ${p.expense_count} harcama · ${formatEUR(p.expense_total)}`;
+};
 
 const relativeDay = (iso: string) => {
   const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
@@ -309,10 +332,17 @@ export default function Denge() {
             <Text style={styles.heroHint}>
               {myNet > 0.01 ? "Ev sana borçlu" : myNet < -0.01 ? "Eve borcun var" : "Ödeşmiş durumdasın"}
             </Text>
-            <HeaderSplit items={[
-              { label: "Sana borçlu", value: formatEUR(owedToMe), accent: owedToMe > 0.01 },
-              { label: "Senin borcun", value: formatEUR(iOwe) },
-            ]} />
+            {/* Sifir olan sutun GOSTERILMIYOR. "Sana borçlu 0,00 €" gerçek
+                bir sayıyla aynı yeri kaplayıp hiçbir şey söylemiyordu; iki
+                kişilik bir borçta ayrıca üstteki net rakamın tekrarıydı. */}
+            {(owedToMe > 0.005 || iOwe > 0.005) && (
+              <HeaderSplit items={[
+                ...(owedToMe > 0.005
+                  ? [{ label: "Sana borçlu", value: formatEUR(owedToMe), accent: true }] : []),
+                ...(iOwe > 0.005
+                  ? [{ label: "Senin borcun", value: formatEUR(iOwe) }] : []),
+              ]} />
+            )}
             {/* Süzgeç *içerik* değil BAĞLAM: "neye bakıyorum" sorusunun
                 parçası, başlık ve toplamlarla aynı yerde durmalı. Beyaz
                 yüzeyde kart olarak içerikle aynı ağırlığa giriyordu. */}
@@ -323,7 +353,7 @@ export default function Denge() {
                   options={periods.map((p, i) => ({
                     value: p.period_id,
                     label: periodLabel(p),
-                    hint: periodHint(p, i, periods.length),
+                    hint: periodHint(p),
                     icon: p.status === "active" ? "flash" : "archive-outline",
                     iconAccent: p.status === "active",
                   }))}
@@ -539,8 +569,26 @@ export default function Denge() {
                       </View>
                     ) : (
                       <>
+                        {/* Boyutu KORUNUYOR -- yaptigi is buyuk ve bulunmasi
+                            kolay olmali. Ama ortada odenmemis borc varken
+                            kendini "hazir" gostermiyor.
+                            PROJE-DOKUMANI §12'de yazan endise tam da bu:
+                            "kolayca basilan bir dugme insanlari odesmeden
+                            arsivlemeye iter". Bugun bu dugme ekranin en koyu,
+                            en genis ogesi ve basparmagin en rahat ulastigi
+                            yerde duruyor. Artik agirligini hak ettigi anda
+                            kazaniyor: herkes odestiyse koyu ve davetkar,
+                            borc varken sonuk. */}
                         <PrimaryButton label="Dönemi Kapat & Denkleştir" icon="checkmark-done"
-                                       onPress={() => setMode("close")} testID="close-period-btn" />
+                                       onPress={() => setMode("close")} testID="close-period-btn"
+                                       tone={ordered.length > 0 ? "muted" : undefined} />
+                        {ordered.length > 0 && (
+                          <Text style={styles.footNote}>
+                            {ordered.length === 1
+                              ? "Bir borç henüz ödenmedi"
+                              : `${ordered.length} borç henüz ödenmedi`}
+                          </Text>
+                        )}
                         {canReopen && (
                           <Pressable style={styles.undoBtn} onPress={() => setMode("reopen")}
                                      testID="reopen-period-btn">
@@ -550,11 +598,7 @@ export default function Denge() {
                         )}
                       </>
                     )}
-                    {activePeriod && (
-                      <Text style={styles.footNote}>
-                        Aktif dönem · {new Date(activePeriod.started_at).toLocaleDateString("tr-TR")}'ten beri
-                      </Text>
-                    )}
+
                   </View>
                 )}
               </View>

@@ -3087,10 +3087,14 @@ async def stats(period_id: Optional[str] = None, user=Depends(get_current_user))
             cats["diger"] = cats.get("diger", 0) + float(e["total"])
 
     merchants: Dict[str, float] = {}
+    merchant_names: Dict[str, str] = {}
     for e in exps:
-        merchants[(e.get("merchant") or "Diğer").strip() or "Diğer"] = (
-            merchants.get((e.get("merchant") or "Diğer").strip() or "Diğer", 0) + float(e["total"])
-        )
+        ham = (e.get("merchant") or "Diğer").strip() or "Diğer"
+        anahtar = normalize_merchant(ham) or ham.casefold()
+        onceki = merchant_names.get(anahtar)
+        if onceki is None or len(ham) < len(onceki):
+            merchant_names[anahtar] = ham
+        merchants[anahtar] = merchants.get(anahtar, 0) + float(e["total"])
 
     # Kim ne kadar ödedi. Aynı listeden çıkıyor — ek sorgu yok.
     by_member: Dict[str, float] = {m: 0.0 for m in members}
@@ -3165,7 +3169,8 @@ async def stats(period_id: Optional[str] = None, user=Depends(get_current_user))
             key=lambda x: -x["total"],
         ),
         "merchants": sorted(
-            [{"name": k, "total": round(v, 2)} for k, v in merchants.items()],
+            [{"name": merchant_names.get(k, k), "total": round(v, 2)}
+             for k, v in merchants.items()],
             key=lambda x: -x["total"],
         )[:6],
     }
@@ -3246,6 +3251,7 @@ async def _month_expenses(
 def _breakdown(exps: List[dict]) -> dict:
     cats: Dict[str, float] = {}
     merchants: Dict[str, float] = {}
+    merchant_names: Dict[str, str] = {}
     for e in exps:
         total = float(e["total"])
         items = e.get("items") or []
@@ -3260,9 +3266,19 @@ def _breakdown(exps: List[dict]) -> dict:
                 cats[key] = cats.get(key, 0) + line / item_sum * total
         else:
             cats["diger"] = cats.get("diger", 0) + total
-        name = (e.get("merchant") or "Diğer").strip() or "Diğer"
-        merchants[name] = merchants.get(name, 0) + total
-    return {"cats": cats, "merchants": merchants}
+        # Gruplama NORMALIZE anahtarla; ekranda gosterilen ad ham hali.
+        # Once ham adla gruplaniyordu, yani "BIZIM FLEISCHER GMBH" ile
+        # "BIZIM FLEISCHER" ayri satirlar halinde duruyordu -- birlestirme
+        # `normalize_merchant()` icinde zaten vardi, burada cagrilmiyordu.
+        ham = (e.get("merchant") or "Diğer").strip() or "Diğer"
+        anahtar = normalize_merchant(ham) or ham.casefold()
+        # Gosterilecek ad: en KISA hali. Ticari unvan ekleri temizlenmis
+        # olani insanlarin kullandigi addir ("BIZIM FLEISCHER", "… GMBH" degil).
+        onceki = merchant_names.get(anahtar)
+        if onceki is None or len(ham) < len(onceki):
+            merchant_names[anahtar] = ham
+        merchants[anahtar] = merchants.get(anahtar, 0) + total
+    return {"cats": cats, "merchants": merchants, "merchant_names": merchant_names}
 
 
 def _cumulative(exps: List[dict], lo: str, days: int) -> List[dict]:
@@ -3348,6 +3364,10 @@ async def monthly_stats(
     pbd = _breakdown(prev)
     # Kategori ay-ay değişimi. Geçen ay hiç yoksa "yeni", vardı ve şimdi yoksa
     # listede görünmüyor -- olmayan bir şeyin yüzdesi yanıltıcı olur.
+    # Rozet ISTISNA icindir. Gecen ay hic veri yoksa her kategori "yeni"
+    # olurdu ve sekiz satirin sekizinde rozet gorunurdu; o noktada rozet
+    # bilgi tasimayi birakip gurultuye donusuyor.
+    gecmis_var = prev_total > 0.005
     cat_rows = []
     for k, v in bd["cats"].items():
         if v <= 0.005:
@@ -3356,6 +3376,8 @@ async def monthly_stats(
         cat_rows.append({
             "key": k, "total": round(v, 2), "prev_total": round(pv, 2),
             "change_pct": round((v - pv) / pv * 100) if pv > 0.005 else None,
+            # Yalnizca karsilastirilacak bir gecmis varken "yeni" denebilir.
+            "is_new": bool(gecmis_var and pv <= 0.005),
         })
     cat_rows.sort(key=lambda x: -x["total"])
 
@@ -3429,7 +3451,8 @@ async def monthly_stats(
         "months": months,
         "categories": cat_rows,
         "merchants": sorted(
-            [{"name": k, "total": round(v, 2)} for k, v in bd["merchants"].items()],
+            [{"name": bd["merchant_names"].get(k, k), "total": round(v, 2)}
+             for k, v in bd["merchants"].items()],
             key=lambda x: -x["total"])[:8],
         # Senin toplam çıkışın: ev harcamalarındaki payın + kişisel harcaman.
         # Oran değil toplam: "kişiselin evin %35'i" garip bir sayı, "bu ay
@@ -3449,6 +3472,35 @@ async def list_periods(user=Depends(get_current_user)):
     periods = await db.periods.find({"household_id": hh["household_id"]}, {"_id": 0}).sort(
         "started_at", -1
     ).to_list(200)
+
+    # Donemin HARCAMA araligi ve hacmi.
+    #
+    # Etikette `started_at` kullanmak yetmiyor: ev kurulup ilk donem kapatildigi
+    # gun ayni gunse "3 Agu - 3 Agu" ciKiyor ve iki donem ayirt edilemiyor.
+    # Insanin hatirladigi sey donem kaydinin damgasi degil, alisveris yapilan
+    # gunler. Toplam da geliyor cunku tarih araligi tek basina hafizayi
+    # tetiklemiyor -- bankacilik uygulamalarinin ekstre secicileri de araligin
+    # yanina tutari koyuyor.
+    ozet: Dict[str, dict] = {}
+    async for row in db.expenses.aggregate([
+        {"$match": {"household_id": hh["household_id"]}},
+        {"$group": {
+            "_id": "$period_id",
+            "ilk": {"$min": "$expense_date"},
+            "son": {"$max": "$expense_date"},
+            "adet": {"$sum": 1},
+            "toplam": {"$sum": "$total"},
+        }},
+    ]):
+        ozet[row["_id"]] = row
+
+    for p in periods:
+        o = ozet.get(p["period_id"])
+        p["first_expense"] = (o or {}).get("ilk")
+        p["last_expense"] = (o or {}).get("son")
+        p["expense_count"] = (o or {}).get("adet", 0)
+        p["expense_total"] = round(float((o or {}).get("toplam") or 0), 2)
+
     return {"periods": periods}
 
 

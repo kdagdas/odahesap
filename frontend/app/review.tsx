@@ -17,8 +17,9 @@ import { popNext, remaining, totalCount, currentIndex, clearQueue } from "@/src/
 import { useAuth } from "@/src/auth";
 import { useHousehold } from "@/src/household";
 import {
-  CategoryPicker, MerchantBadge, ScreenHeader, formatEUR, formatDateTR, todayISO,
-  nextUnit, UnitPicker, HintCard, SplitPicker, splitAll, type Split,
+  CategoryPicker, CategoryIcon, MerchantBadge, ScreenHeader, formatEUR, formatDateTR,
+  todayISO, nextUnit, UnitPicker, HintCard, SplitPicker, splitAll, splitSummary,
+  type Split,
 } from "@/src/ui";
 import {
   colors, spacing, radius, type as T, overline, fontFamily, CATEGORY_ICONS, CATEGORY_LABEL_TR,
@@ -45,6 +46,9 @@ export default function Review() {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const { members } = useHousehold();
+  const meId = user?.user_id || "";
+  /** Acik olan kalem. Tek satir acik kalir: iki kalem birden duzenlenmiyor. */
+  const [acikSatir, setAcikSatir] = useState<number | null>(null);
 
   // Batch progress (multi-receipt gallery pick)
   const batchN = Number(batchTotal || totalCount() || 0);
@@ -320,10 +324,44 @@ export default function Review() {
             </View>
           )}
 
+          {/* Kalemler AYRI KART degil, tek kabin icinde satir.
+              `ui.tsx`in kendi kurali bunu zaten soyluyordu ("liste satirlari
+              ayri ayri kartlara konmaz") ama bu ekran onu ciğniyordu: 15
+              kalemli bir fiste 15 kart, ~2850 piksel. Simdi kapali satir
+              ~48 piksel ve cogu kalemde zaten duzeltilecek bir sey yok --
+              tarama dogru okuduysa bakip geciliyor. */}
+          <View style={styles.itemsWrap}>
           {rows.map((r, i) => {
-            const CAT = CATEGORY_ICONS[r.category] || CATEGORY_ICONS.diger;
+            const acik = acikSatir === i;
+            if (!acik) {
+              // Bolusum yalnizca TOPLU ayardan farkliysa yaziliyor: ustte
+              // zaten "Tumune uygula" duruyor, her kalemde tekrarlamak
+              // kullanicinin bildigini yeniden anlatmak olurdu.
+              const farkli = splitSummary(r.split, members, meId)
+                !== splitSummary(bulkSplit, members, meId);
+              return (
+                <Pressable key={i} onPress={() => setAcikSatir(i)}
+                           style={[styles.satir, i > 0 && styles.satirCizgi]}
+                           testID={`review-item-${i}`}>
+                  <CategoryIcon category={r.category} size={30} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.satirAd} numberOfLines={1}>
+                      {r.name || "Adsız kalem"}
+                    </Text>
+                    {farkli && (
+                      <Text style={styles.satirBolusum} numberOfLines={1}>
+                        {splitSummary(r.split, members, meId)}
+                      </Text>
+                    )}
+                  </View>
+                  <Text style={styles.satirTutar}>{formatEUR(rowTotal(r))}</Text>
+                  <Ionicons name="chevron-down" size={16} color={colors.inkTertiary} />
+                </Pressable>
+              );
+            }
             return (
-              <View key={i} style={styles.itemCard} testID={`review-item-${i}`}>
+              <View key={i} style={[styles.itemCard, i > 0 && styles.satirCizgi]}
+                    testID={`review-item-${i}`}>
                 <View style={styles.itemHeader}>
                   <CategoryPicker
                     category={r.category} size={36}
@@ -378,9 +416,15 @@ export default function Review() {
                 </View>
                 <Text style={styles.catLabel}>{CATEGORY_LABEL_TR[r.category]}</Text>
                 {renderSplit(r.split, (sp) => updateRow(i, { split: sp }), "BÖLÜŞÜM", rowTotal(r), `item-${i}`)}
+                <Pressable onPress={() => setAcikSatir(null)} style={styles.kapatSatir}
+                           testID={`review-item-${i}-close`}>
+                  <Ionicons name="chevron-up" size={16} color={colors.inkSecondary} />
+                  <Text style={styles.kapatTxt}>Kapat</Text>
+                </Pressable>
               </View>
             );
           })}
+          </View>
           <Pressable style={styles.addBtn} onPress={addRow} testID="review-add-item">
             <Ionicons name="add-circle-outline" size={20} color={colors.brand} />
             <Text style={styles.addTxt}>Kalem ekle</Text>
@@ -466,9 +510,28 @@ const styles = StyleSheet.create({
   empty: { alignItems: "center", padding: spacing.xxl, gap: spacing.sm },
   emptyTitle: { ...T.emph, color: colors.ink },
   emptyDesc: { ...T.body, color: colors.inkSecondary },
+  // Tek kap: kalemler kart degil satir.
+  itemsWrap: {
+    backgroundColor: colors.surface, borderRadius: radius.lg,
+    borderWidth: 1, borderColor: colors.border, overflow: "hidden",
+  },
+  satirCizgi: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.divider },
+  satir: {
+    flexDirection: "row", alignItems: "center", gap: spacing.md,
+    paddingHorizontal: spacing.md, paddingVertical: spacing.sm, minHeight: 52,
+  },
+  satirAd: { ...T.body, color: colors.ink },
+  satirBolusum: { ...T.caption, color: colors.accentDark, marginTop: 1 },
+  satirTutar: { ...T.bodySb, color: colors.ink },
+  kapatSatir: {
+    flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5,
+    paddingTop: spacing.sm,
+  },
+  kapatTxt: { ...T.captionSb, color: colors.inkSecondary },
+  // Acik kalem: kendi cercevesi YOK, tek kabin icinde vurgulu bir bolge.
   itemCard: {
-    backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.lg,
-    gap: spacing.md, borderWidth: 1, borderColor: colors.border,
+    backgroundColor: colors.surfaceAlt, padding: spacing.md,
+    gap: spacing.md,
   },
   itemHeader: { flexDirection: "row", alignItems: "center", gap: spacing.md },
   nameInput: {

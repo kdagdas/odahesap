@@ -22,7 +22,7 @@ import { useSafeAreaInsets, type EdgeInsets } from "react-native-safe-area-conte
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 
 import {
-  colors, spacing, radius, type as T, overline, fontFamily, metrics, merchantColor,
+  colors, spacing, radius, type as T, overline, fontFamily, metrics, merchantTint,
   CATEGORY_ICONS, CATEGORY_LABEL_TR, getAvatar,
 } from "./theme";
 
@@ -736,8 +736,13 @@ export function BottomSheet({
      tam olarak bunu yapiyor: dialog da kenardan kenara ciziliyor. */
   const insets = useSafeAreaInsets();
   return (
+    /* `animationType="slide"` KULLANILMIYOR: o, pencerenin TAMAMINI
+       kaydiriyordu -- karartma da dahil. Sonuc ekranda goruluyordu: karartma
+       alttan yukari suzuluyor, kapanirken yukaridan asagi dusuyor ve bir
+       titreme birakiyordu. Dogrusu karartmanin YERINDE durup sonumlenmesi,
+       yalnizca sayfanin kaymasi. Ikisi de asagida elle yapiliyor. */
     <Modal
-      visible={visible} transparent animationType="slide" onRequestClose={onClose}
+      visible={visible} transparent animationType="none" onRequestClose={onClose}
       statusBarTranslucent navigationBarTranslucent
     >
       <SheetBody onClose={onClose} maxHeight={maxHeight} insets={insets} testID={testID}>
@@ -758,15 +763,23 @@ function SheetBody({
 }) {
   const kb = useKeyboardHeight();
   const win = useWindowDimensions();
+  /** Surukleme kaydirmasi. */
   const y = React.useRef(new Animated.Value(0)).current;
+  /** Giris/cikis: 0 = kapali, 1 = acik. Karartmanin opakligi da bundan. */
+  const giris = React.useRef(new Animated.Value(0)).current;
   const height = React.useRef(0);
 
+  React.useEffect(() => {
+    Animated.timing(giris, {
+      toValue: 1, duration: 220, useNativeDriver: true,
+    }).start();
+  }, [giris]);
+
   const kapat = React.useCallback(() => {
-    Animated.timing(y, {
-      toValue: Math.max(height.current, 400),
-      duration: 180, useNativeDriver: true,
-    }).start(() => { y.setValue(0); onClose(); });
-  }, [onClose]);
+    Animated.timing(giris, {
+      toValue: 0, duration: 180, useNativeDriver: true,
+    }).start(() => { giris.setValue(0); y.setValue(0); onClose(); });
+  }, [onClose, giris, y]);
 
   const pan = React.useRef(
     PanResponder.create({
@@ -778,10 +791,9 @@ function SheetBody({
       onPanResponderRelease: (_, g) => {
         const yeter = g.dy > Math.max(height.current * 0.35, 90) || g.vy > 0.8;
         if (yeter) {
-          Animated.timing(y, {
-            toValue: Math.max(height.current, 400),
-            duration: 160, useNativeDriver: true,
-          }).start(() => { y.setValue(0); onClose(); });
+          Animated.timing(giris, {
+            toValue: 0, duration: 160, useNativeDriver: true,
+          }).start(() => { giris.setValue(0); y.setValue(0); onClose(); });
         } else {
           Animated.spring(y, {
             toValue: 0, useNativeDriver: true, bounciness: 0, speed: 18,
@@ -796,8 +808,11 @@ function SheetBody({
   const yuzuyor = kb > 0;
 
   return (
-    <View style={styles.sheetScrim}>
-      <Pressable style={StyleSheet.absoluteFill} onPress={kapat} testID="sheet-scrim" />
+    <View style={styles.sheetWrap}>
+      {/* Karartma YERINDE durur, yalnizca sonumlenir. */}
+      <Animated.View style={[styles.sheetScrim, { opacity: giris }]}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={kapat} testID="sheet-scrim" />
+      </Animated.View>
       <Animated.View
         style={[
           styles.pickSheet,
@@ -805,7 +820,13 @@ function SheetBody({
           {
             marginBottom: kb,
             maxHeight: maxHeight ?? (win.height - kb - insets.top - spacing.xxl),
-            transform: [{ translateY: y }],
+            // Surukleme kaydirmasi + giris kaymasi birlikte.
+            transform: [{
+              translateY: Animated.add(
+                y,
+                giris.interpolate({ inputRange: [0, 1], outputRange: [560, 0] }),
+              ),
+            }],
           },
         ]}
         onLayout={(e) => { height.current = e.nativeEvent.layout.height; }}
@@ -1047,6 +1068,16 @@ export function SplitPicker({
 
   const hepsiSecili = picked.length === members.length && members.length > 0;
   const benSecili = picked.length === 1 && picked[0] === meId;
+  /**
+   * Kisayol etkinken kisi kutulari BOS durur.
+   *
+   * Once liste kisayolu birebir yansitiyordu: "Tum ev" secince ucu de
+   * isaretli geliyordu ve "yalniz Salih" demek icin ikisini tek tek
+   * kaldirmak gerekiyordu. Oysa kullanici ikisini AYRI arac olarak
+   * kullaniyor -- biri kisayol, oteki elle secim. Artik listeye ilk dokunus
+   * kisayolu birakip yalnizca o kisiyi seciyor.
+   */
+  const kisayolAktif = hepsiSecili || benSecili;
 
   /**
    * Varis noktasi secimi. `allowExact` kapaliysa (fis kalemi) sayfa kapanir --
@@ -1145,8 +1176,11 @@ export function SplitPicker({
                 "temizle" diye kullaniyordu. Digerleriyle ayni boyda durmasi
                 yaniltiyordu; basligin yanina kucuk bir yaziya indi. */}
             <View style={styles.kisilerHead}>
-              <Text style={overline}>KİŞİLER</Text>
-              {picked.length > 0 && (
+              {/* "Ya da" kasitli: kisayollarla listenin AYRI oldugunu, denemeden
+                  once soyluyor. Bos kutucuklar da ayni seyi gosteriyor ama
+                  yazi onu bir kesinlige baglıyor. */}
+              <Text style={overline}>YA DA KİŞİ SEÇ</Text>
+              {!kisayolAktif && picked.length > 0 && (
                 <Pressable onPress={() => { setErr(null); setPicked([]); }} hitSlop={10}
                            testID={testID ? `${testID}-quick-none` : undefined}>
                   <Text style={styles.temizle}>Temizle</Text>
@@ -1172,13 +1206,18 @@ export function SplitPicker({
             )}
 
             {members.map((m, i) => {
-              const on = picked.includes(m.user_id);
+              const on = !kisayolAktif && picked.includes(m.user_id);
               return (
                 <React.Fragment key={m.user_id}>
                   {i > 0 && <View style={[styles.divider, { marginLeft: spacing.lg }]} />}
                   <Pressable
                     style={styles.pickRow}
-                    onPress={() => toggle(m.user_id)}
+                    onPress={() => {
+                      // Kisayoldan geliniyorsa liste sifirdan baslar: tek
+                      // dokunusla "yalniz bu kisi".
+                      if (kisayolAktif) { setErr(null); setPicked([m.user_id]); return; }
+                      toggle(m.user_id);
+                    }}
                     testID={testID ? `${testID}-member-${m.user_id}` : undefined}
                   >
                     <Ionicons
@@ -1213,8 +1252,10 @@ export function SplitPicker({
             })}
 
             <View style={[styles.splitFoot, err ? styles.splitFootErr : null]}>
+              {/* Kisayol etkinken sayiyi tekrarlamiyoruz: "Tum ev" satirinda
+                  zaten "3 kisi" yaziyor. */}
               <Text style={[styles.splitFootTxt, err ? styles.splitFootTxtErr : null]}>
-                {err || `${picked.length} kişi bölüşüyor`}
+                {err || (kisayolAktif ? "" : `${picked.length} kişi bölüşüyor`)}
               </Text>
               {!err && mode === "exact" && (
                 <Text style={[styles.splitFootTxt, Math.abs(remaining) > 0.01 && styles.splitFootTxtErr]}>
@@ -1245,9 +1286,12 @@ export function Tag({
 
 export function MerchantBadge({ name }: { name?: string | null }) {
   if (!name) return null;
+  const { bg, fg } = merchantTint(name);
   return (
-    <View style={[styles.merchant, { backgroundColor: merchantColor(name) }]}>
-      <Text style={styles.merchantTxt} numberOfLines={1}>{name.toUpperCase()}</Text>
+    <View style={[styles.merchant, { backgroundColor: bg }]}>
+      <Text style={[styles.merchantTxt, { color: fg }]} numberOfLines={1}>
+        {name.toUpperCase()}
+      </Text>
     </View>
   );
 }
@@ -1267,16 +1311,26 @@ export function Chip({
 }
 
 export function PrimaryButton({
-  label, onPress, disabled, testID, style, icon,
+  label, onPress, disabled, testID, style, icon, tone,
 }: {
   label: string; onPress?: () => void; disabled?: boolean; testID?: string;
   style?: StyleProp<ViewStyle>; icon?: any;
+  /**
+   * `muted`: boyut aynı, ağırlık düşük.
+   *
+   * "Devre dışı" DEĞİL — basılabilir. Amaç engellemek değil, ciddi ve geri
+   * alınması zor bir eylemin doğru anı gelmeden davetkâr görünmemesi.
+   */
+  tone?: "muted";
 }) {
+  const kisik = tone === "muted";
+  const fg = kisik ? colors.inkSecondary : colors.onBrand;
   return (
     <Pressable onPress={onPress} disabled={disabled}
-               style={[styles.primary, disabled && { opacity: 0.5 }, style]} testID={testID}>
-      {icon && <Ionicons name={icon} size={18} color={colors.onBrand} style={{ marginRight: 8 }} />}
-      <Text style={styles.primaryTxt}>{label}</Text>
+               style={[styles.primary, kisik && styles.primaryMuted,
+                       disabled && { opacity: 0.5 }, style]} testID={testID}>
+      {icon && <Ionicons name={icon} size={18} color={fg} style={{ marginRight: 8 }} />}
+      <Text style={[styles.primaryTxt, { color: fg }]}>{label}</Text>
     </Pressable>
   );
 }
@@ -1444,10 +1498,8 @@ const styles = StyleSheet.create({
   pillTxt: { ...T.captionSb, color: colors.onDark, flexShrink: 1 },
   selectLabel: { ...T.caption, color: colors.inkTertiary },
   selectValue: { ...T.bodySb, color: colors.ink, marginTop: 1 },
-  sheetScrim: {
-    ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(12,22,38,0.45)",
-    justifyContent: "flex-end",
-  },
+  sheetWrap: { ...StyleSheet.absoluteFillObject, justifyContent: "flex-end" },
+  sheetScrim: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(12,22,38,0.45)" },
   pickSheet: {
     backgroundColor: colors.surface, borderTopLeftRadius: radius.xl,
     borderTopRightRadius: radius.xl, paddingTop: spacing.lg,
@@ -1541,7 +1593,9 @@ const styles = StyleSheet.create({
   tag: { paddingHorizontal: spacing.sm + 2, paddingVertical: 3, borderRadius: radius.pill, alignSelf: "flex-start" },
   tagTxt: { fontSize: 11, lineHeight: 14, fontFamily: fontFamily.medium },
   merchant: { alignSelf: "flex-start", paddingHorizontal: spacing.sm, paddingVertical: 3, borderRadius: radius.sm },
-  merchantTxt: { color: colors.onDark, fontSize: 10, lineHeight: 13, fontFamily: fontFamily.semibold, letterSpacing: 0.4 },
+  // Renk `merchantTint` ile satir icinde veriliyor; buradaki sabit renk
+  // pastel zeminde okunmuyordu.
+  merchantTxt: { fontSize: 10, lineHeight: 13, fontFamily: fontFamily.semibold, letterSpacing: 0.4 },
   chip: {
     flexDirection: "row", alignItems: "center", height: 38, paddingHorizontal: spacing.lg,
     borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border,
@@ -1554,6 +1608,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.brand, borderRadius: radius.pill, minHeight: 54,
     alignItems: "center", justifyContent: "center", flexDirection: "row",
     paddingHorizontal: spacing.xl,
+  },
+  primaryMuted: {
+    backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.borderStrong,
   },
   primaryTxt: { ...T.emph, color: colors.onBrand },
 });

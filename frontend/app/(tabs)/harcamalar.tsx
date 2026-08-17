@@ -9,7 +9,7 @@ import { useAuth } from "@/src/auth";
 import { useHousehold } from "@/src/household";
 import {
   ScreenHeader, HeaderSplit, Sheet, Card, Divider, Avatar, CategoryIcon,
-  MerchantBadge, Tag, Money, splitBadge, formatEUR, formatDateTR, formatQty,
+  MerchantBadge, Money, splitBadge, formatEUR, formatQty,
   HeaderPills, HeaderPill, useScrollPad,
 } from "@/src/ui";
 import { colors, spacing, radius, type as T, overline, metrics } from "@/src/theme";
@@ -22,21 +22,59 @@ type Expense = {
   created_at: string; expense_date?: string;
   items?: Item[]; notes?: string;
 };
-type Period = { period_id: string; started_at: string; closed_at: string | null; status: string };
+type Period = {
+  period_id: string; started_at: string; closed_at: string | null; status: string;
+  first_expense?: string | null; last_expense?: string | null;
+  expense_count?: number; expense_total?: number;
+};
 
 /**
- * Dönem etiketi — bir ARALIK. Kasa'daki ile aynı biçim; yalnızca başlangıç
- * ayını yazmak, aynı ay içinde açılıp kapanan iki dönemi ayırt edilemez
- * yapıyordu.
+ * Dönem etiketi — HARCAMA aralığı, dönem kaydının damgası değil.
+ *
+ * `started_at` bir muhasebe damgası: ev kurulup ilk dönem aynı gün kapandıysa
+ * "3 Ağu – 3 Ağu" çıkıyor ve iki dönem ayırt edilemiyor. İnsanın hatırladığı
+ * şey alışveriş yapılan günler. Aynı ay içindeyse ay bir kez yazılıyor
+ * (banka ekstrelerindeki gibi), harcama yoksa tek tarih.
  */
-const gunAy = (iso: string) =>
-  new Date(iso).toLocaleDateString("tr-TR", { day: "numeric", month: "short" });
+const AY_KISA = ["Oca", "Şub", "Mar", "Nis", "May", "Haz",
+                 "Tem", "Ağu", "Eyl", "Eki", "Kas", "Ara"];
+const AY_UZUN = ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran",
+                 "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"];
 
-const periodLabel = (p: Period) =>
-  `${gunAy(p.started_at)} – ${p.closed_at ? gunAy(p.closed_at) : "bugün"}`;
+const GUNLER = ["Pazar", "Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi"];
 
-const periodHint = (p: Period, idx: number, total: number) =>
-  `Dönem #${total - idx}${p.status === "active" ? " · sürüyor" : ""}`;
+/** "15 AĞUSTOS · CUMARTESİ" — bugün ve dün ayrıca adlandırılır. */
+const gunBasligi = (iso: string) => {
+  const d = new Date(iso);
+  const bugun = new Date();
+  const ayni = (a: Date, b: Date) => a.toDateString() === b.toDateString();
+  if (ayni(d, bugun)) return "BUGÜN";
+  if (ayni(d, new Date(bugun.getTime() - 86400000))) return "DÜN";
+  return `${d.getDate()} ${AY_UZUN[d.getMonth()]} · ${GUNLER[d.getDay()]}`
+    .toLocaleUpperCase("tr");
+};
+
+const periodLabel = (p: Period) => {
+  const ilk = p.first_expense, son = p.last_expense;
+  if (!ilk) {
+    const d = new Date(p.started_at);
+    return `${d.getDate()} ${AY_UZUN[d.getMonth()]}`;
+  }
+  const [, ay1, g1] = ilk.split("-").map(Number);
+  const bitis = p.status === "active" ? null : son;
+  if (!bitis || bitis === ilk) return `${g1} ${AY_UZUN[ay1 - 1]}`;
+  const [, ay2, g2] = bitis.split("-").map(Number);
+  // Ayni ay: "3 - 16 Agustos". Farkli ay: "28 Tem - 2 Agustos".
+  return ay1 === ay2
+    ? `${g1} – ${g2} ${AY_UZUN[ay2 - 1]}`
+    : `${g1} ${AY_KISA[ay1 - 1]} – ${g2} ${AY_UZUN[ay2 - 1]}`;
+};
+
+const periodHint = (p: Period) => {
+  const durum = p.status === "active" ? "Sürüyor" : "Kapandı";
+  if (!p.expense_count) return `${durum} · harcama yok`;
+  return `${durum} · ${p.expense_count} harcama · ${formatEUR(p.expense_total)}`;
+};
 
 // Was a tab; the shopping list earns that slot because it is used daily while
 // this history is opened occasionally. Reached from "Tümü" on the home screen.
@@ -123,7 +161,7 @@ export default function Harcamalar() {
               options={periods.map((p, i) => ({
                 value: p.period_id,
                 label: periodLabel(p),
-                hint: periodHint(p, i, periods.length),
+                hint: periodHint(p),
                 icon: p.status === "active" ? "flash" : "archive-outline",
                 iconAccent: p.status === "active",
               }))}
@@ -158,9 +196,16 @@ export default function Harcamalar() {
                 const author = members.find((m) => m.user_id === e.added_by);
                 const targetChip = splitBadge(e, members, user?.user_id);
                 const expanded = expandedId === e.expense_id;
+                // Tarih GUN BASLIGINA cikti: 21 satirin 21'inde tekrar
+                // ediyordu. Banka ekstrelerinin cozumu bu -- gun bir kez
+                // yazilir, altina o gunun satirlari dizilir.
+                const gun = e.expense_date || "";
+                const yeniGun = !!gun && gun !== (expenses[idx - 1]?.expense_date || "");
                 return (
                   <View key={e.expense_id}>
-                    {idx > 0 && <Divider />}
+                    {yeniGun ? (
+                      <Text style={styles.gunBaslik}>{gunBasligi(gun)}</Text>
+                    ) : idx > 0 ? <Divider inset={spacing.lg + 46} /> : null}
                     <Pressable
                       onPress={() => setExpandedId(expanded ? null : e.expense_id)}
                       testID={`expense-item-${e.expense_id}`}
@@ -186,12 +231,15 @@ export default function Harcamalar() {
                                   {e.category || (e.source === "receipt" ? "Fiş" : "Manuel")}
                                 </Text>}
                           </View>
-                          <View style={styles.metaRow}>
-                            <Tag label={targetChip.txt} tint={targetChip.bg} color={targetChip.color} />
-                            {e.expense_date && (
-                              <Text style={styles.expSubtle}>· {formatDateTR(e.expense_date)}</Text>
-                            )}
-                          </View>
+                          {/* Bolusum artik dolgu rozet degil duz yazi ve
+                              yalnizca ISTISNA vurgulu: "Ev" herkesin
+                              bekledigi durum, sessiz kalir. Tarih satirdan
+                              cikti, gun basliginda. */}
+                          <Text style={[styles.splitTxt,
+                                        targetChip.txt !== "Ev" && { color: colors.accentDark }]}
+                                numberOfLines={1}>
+                            {targetChip.txt}
+                          </Text>
                         </View>
                         <Money value={e.total} />
                       </View>
@@ -270,6 +318,11 @@ const styles = StyleSheet.create({
   titleRow: { flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" },
   expTitle: { ...T.bodySb, color: colors.ink },
   metaRow: { flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" },
+  gunBaslik: {
+    ...overline, paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg, paddingBottom: spacing.xs,
+  },
+  splitTxt: { ...T.caption, color: colors.inkTertiary },
   expSubtle: { ...T.caption, color: colors.inkTertiary },
   expDetails: {
     backgroundColor: colors.surfaceAlt, paddingHorizontal: spacing.lg,

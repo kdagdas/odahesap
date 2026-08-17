@@ -8,6 +8,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useLocalSearchParams } from "expo-router";
 
 import { apiGet, apiPost, apiDelete, api } from "@/src/api";
+import { Swipeable } from "react-native-gesture-handler";
 import { useAuth } from "@/src/auth";
 import { useHousehold } from "@/src/household";
 import {
@@ -172,29 +173,40 @@ export default function Liste() {
               <View style={{ gap: metrics.cardGap, marginTop: spacing.lg }}>
                 {pending.length > 0 && (
                   <Card style={styles.mx}>
+                    {/* Silme artik SAGA KAYDIRARAK. Her satirda duran bir X
+                        hem listeyi kalabaliklastiriyor hem yanlis dokunmayi
+                        kolaylastiriyordu -- Todoist ve Apple Hatirlatmalar da
+                        bu yuzden jeste gecmis. Dokunmak "aldim" demeye devam
+                        ediyor, yani en sik eylem hala tek dokunus. */}
                     {pending.map((it, i) => (
                       <View key={it.item_id}>
-                        <Row
-                          minHeight={52}
-                          onPress={() => toggle(it)}
-                          testID={`liste-item-${it.item_id}`}
-                          leading={<View style={styles.check} />}
-                          title={<Text style={styles.itemTxt}>{it.text}</Text>}
-                          right={
-                            <View style={styles.itemRight}>
-                              {scope === "household" && (
+                        <Swipeable
+                          overshootRight={false}
+                          rightThreshold={44}
+                          renderRightActions={() => (
+                            <Pressable style={styles.silAlan} onPress={() => remove(it)}
+                                       testID={`liste-del-${it.item_id}`}>
+                              <Ionicons name="trash-outline" size={19} color={colors.onBrand} />
+                              <Text style={styles.silTxt}>Sil</Text>
+                            </Pressable>
+                          )}
+                        >
+                          <Row
+                            minHeight={52}
+                            onPress={() => toggle(it)}
+                            testID={`liste-item-${it.item_id}`}
+                            leading={<View style={styles.check} />}
+                            title={<Text style={styles.itemTxt}>{it.text}</Text>}
+                            right={
+                              scope === "household" ? (
                                 <Avatar name={first(it.added_by)} size={24}
                                         avatarId={(member(it.added_by) as any)?.avatar_id}
                                         userId={it.added_by}
                                         photoVersion={(member(it.added_by) as any)?.photo_version} />
-                              )}
-                              <Pressable onPress={() => remove(it)} hitSlop={12}
-                                         testID={`liste-del-${it.item_id}`}>
-                                <Ionicons name="close" size={18} color={colors.inkTertiary} />
-                              </Pressable>
-                            </View>
-                          }
-                        />
+                              ) : undefined
+                            }
+                          />
+                        </Swipeable>
                         {i < pending.length - 1 && <Divider inset={58} />}
                       </View>
                     ))}
@@ -255,6 +267,11 @@ const styles = StyleSheet.create({
   check: { width: 21, height: 21, borderRadius: 11, borderWidth: 1.5, borderColor: colors.borderStrong },
   itemTxt: { ...T.body, color: colors.ink },
   itemDone: { ...T.body, color: colors.inkTertiary, textDecorationLine: "line-through" },
+  silAlan: {
+    backgroundColor: colors.negative, justifyContent: "center", alignItems: "center",
+    width: 84, gap: 3,
+  },
+  silTxt: { ...T.caption, color: colors.onBrand },
   itemRight: { flexDirection: "row", alignItems: "center", gap: spacing.md },
   itemWho: { ...T.caption, color: colors.inkTertiary },
   doneHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
