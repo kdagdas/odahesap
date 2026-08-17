@@ -23,7 +23,10 @@ export default function TabsLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: colors.dark,
+        // `colors.dark` DEGIL: o bir ZEMIN rengi ve karanlik temada zeminle
+        // ayni tona duser. `ink` ise "yuzey uzerindeki en koyu murekkep"
+        // demek ve karanlikta acik oluyor.
+        tabBarActiveTintColor: colors.ink,
         tabBarInactiveTintColor: colors.inkTertiary,
         tabBarStyle: {
           backgroundColor: colors.surface,
@@ -115,13 +118,13 @@ const styles = StyleSheet.create({
   centerIcon: {
     width: 50, height: 50, borderRadius: 25,
     alignItems: "center", justifyContent: "center",
-    backgroundColor: colors.dark,
+    backgroundColor: colors.brand,
     // The circle is twice the height of the other icons, so at the default
     // position its lower edge grazed the "Fiş Tara" label. Lift the whole
     // thing — circle and glyph together — clear of the text.
     marginTop: -22,
     marginBottom: 6,
-    shadowColor: colors.dark, shadowOffset: { width: 0, height: 4 },
+    shadowColor: colors.black, shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.28, shadowRadius: 10, elevation: 6,
   },
   centerIconFocused: { backgroundColor: colors.accent },

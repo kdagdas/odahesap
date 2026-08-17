@@ -124,7 +124,7 @@ export default function Harcamalar() {
         contentContainerStyle={[styles.page, altPay]}
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={colors.dark} />
+          <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={colors.ink} />
         }
       >
         <ScreenHeader
@@ -182,7 +182,7 @@ export default function Harcamalar() {
           )}
 
           {loading ? (
-            <ActivityIndicator color={colors.dark} style={{ marginTop: spacing.xl }} />
+            <ActivityIndicator color={colors.ink} style={{ marginTop: spacing.xl }} />
           ) : expenses.length === 0 ? (
             <View style={styles.empty} testID="expenses-empty">
               <View style={styles.emptyRing}>
@@ -267,7 +267,7 @@ export default function Harcamalar() {
                               onPress={() => router.push({ pathname: "/expense-edit", params: { expenseId: e.expense_id } })}
                               testID={`edit-expense-${e.expense_id}`}
                             >
-                              <Ionicons name="create-outline" size={14} color={colors.dark} />
+                              <Ionicons name="create-outline" size={14} color={colors.ink} />
                               <Text style={styles.editTxt}>Düzenle</Text>
                             </Pressable>
                             <Pressable style={styles.deleteBtn} onPress={() => onDelete(e.expense_id)} testID={`delete-expense-${e.expense_id}`}>
@@ -339,7 +339,7 @@ const styles = StyleSheet.create({
     paddingVertical: 7, borderRadius: radius.pill, backgroundColor: colors.surface,
     borderWidth: 1, borderColor: colors.border,
   },
-  editTxt: { ...T.captionSb, color: colors.dark },
+  editTxt: { ...T.captionSb, color: colors.ink },
   deleteBtn: {
     flexDirection: "row", alignItems: "center", gap: 4, alignSelf: "flex-start",
     paddingHorizontal: spacing.md, paddingVertical: 7, borderRadius: radius.pill,

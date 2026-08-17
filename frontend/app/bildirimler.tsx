@@ -80,12 +80,6 @@ export default function Bildirimler() {
               ))}
             </Card>
 
-            <View style={styles.note}>
-              <Ionicons name="lock-closed-outline" size={16} color={colors.inkSecondary} />
-              <Text style={styles.noteTxt}>
-                Eve katılma istekleri ve onayları her zaman gönderilir; kapatılamaz.
-              </Text>
-            </View>
 
             {error && <Text style={styles.err} testID="bildirim-error">{error}</Text>}
           </View>
@@ -110,10 +104,5 @@ const styles = StyleSheet.create({
   },
   prefLabel: { ...T.body, color: colors.ink },
   prefDesc: { ...T.caption, color: colors.inkTertiary, marginTop: 1, lineHeight: 17 },
-  note: {
-    flexDirection: "row", gap: spacing.sm, backgroundColor: colors.surfaceSecondary,
-    borderRadius: 12, padding: spacing.md,
-  },
-  noteTxt: { ...T.caption, color: colors.inkSecondary, flex: 1, lineHeight: 18 },
   err: { ...T.captionSb, color: colors.negative, textAlign: "center" },
 });

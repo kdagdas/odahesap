@@ -117,7 +117,7 @@ export default function Liste() {
           keyboardShouldPersistTaps="handled"
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }}
-                            tintColor={colors.dark} progressBackgroundColor={colors.surface} />
+                            tintColor={colors.ink} progressBackgroundColor={colors.surface} />
           }
         >
           <ScreenHeader
@@ -158,7 +158,7 @@ export default function Liste() {
             {error && <Text style={[styles.err, styles.mx]} testID="liste-error">{error}</Text>}
 
             {loading ? (
-              <ActivityIndicator color={colors.dark} style={{ marginTop: spacing.xxl }} />
+              <ActivityIndicator color={colors.ink} style={{ marginTop: spacing.xxl }} />
             ) : items.length === 0 ? (
               <Card style={[styles.mx, { marginTop: spacing.lg }]} testID="liste-empty">
                 <Row

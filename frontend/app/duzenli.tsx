@@ -148,7 +148,7 @@ export default function Duzenli() {
             />
 
             {loading ? (
-              <ActivityIndicator color={colors.dark} style={{ marginTop: spacing.xxl }} />
+              <ActivityIndicator color={colors.ink} style={{ marginTop: spacing.xxl }} />
             ) : shown.length === 0 ? (
               <View style={styles.empty}>
                 <Ionicons name="repeat" size={38} color={colors.inkTertiary} />

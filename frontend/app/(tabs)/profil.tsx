@@ -142,7 +142,7 @@ export default function Profil() {
                     {i > 0 && <Divider inset={spacing.lg} />}
                     <Pressable style={styles.photoOpt} onPress={() => doPhoto(opt.run)}
                                disabled={photoBusy} testID={`photo-${opt.icon}`}>
-                      <Ionicons name={opt.icon as any} size={19} color={colors.dark} />
+                      <Ionicons name={opt.icon as any} size={19} color={colors.ink} />
                       <Text style={styles.photoOptTxt}>{opt.label}</Text>
                     </Pressable>
                   </View>
@@ -177,7 +177,7 @@ export default function Profil() {
                           <Ionicons name={a.icon as any} size={24} color={colors.onDark} />
                           {active && (
                             <View style={styles.avatarCheck}>
-                              <Ionicons name="checkmark" size={12} color={colors.dark} />
+                              <Ionicons name="checkmark" size={12} color={colors.ink} />
                             </View>
                           )}
                         </Pressable>
@@ -185,7 +185,7 @@ export default function Profil() {
                     })}
                   </View>
                   {savingAvatar && (
-                    <ActivityIndicator color={colors.dark} size="small" style={{ marginTop: spacing.sm }} />
+                    <ActivityIndicator color={colors.ink} size="small" style={{ marginTop: spacing.sm }} />
                   )}
                 </View>
               </Card>
@@ -208,67 +208,6 @@ export default function Profil() {
                 <View style={{ flex: 1 }}>
                   <Text style={styles.navTitle}>Ödeme bilgilerim</Text>
                   <Text style={styles.navDesc}>IBAN ve PayPal · telefonunda saklanır</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={20} color={colors.inkTertiary} />
-              </Pressable>
-              <Divider inset={spacing.lg} />
-              <Pressable style={styles.navRow} onPress={() => router.push("/bildirimler")}
-                         testID="open-notifications" android_ripple={{ color: colors.divider }}>
-                <IconPill name="notifications-outline" color={colors.onInfo} tint={colors.infoSoft} size={38} />
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.navTitle}>Bildirimler</Text>
-                </View>
-                <Text style={styles.navState}>{acikBildirim} açık</Text>
-                <Ionicons name="chevron-forward" size={20} color={colors.inkTertiary} />
-              </Pressable>
-            </Card>
-
-            <Text style={styles.grup}>EVE AİT</Text>
-            <Card>
-              <Pressable style={styles.navRow} onPress={() => router.push("/ev-ayarlari")}
-                         testID="open-household-settings" android_ripple={{ color: colors.divider }}>
-                <IconPill name="home" color={colors.accentDark} tint={colors.accentSoft} size={38} />
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.navTitle}>Ev ayarları</Text>
-                </View>
-                <Text style={styles.navState}>
-                  {household ? `${members.length} üye` : "yok"}
-                </Text>
-                {pendingMembers.length > 0 && isAdmin && (
-                  <View style={styles.badge}>
-                    <Text style={styles.badgeTxt}>{pendingMembers.length}</Text>
-                  </View>
-                )}
-                <Ionicons name="chevron-forward" size={20} color={colors.inkTertiary} />
-              </Pressable>
-              <Divider inset={spacing.lg} />
-              {/* Düzenli giderlerin TEK kapısı. Ev ayarlarında ikinci bir
-                  bağlantı vardı; aynı ekrana iki yerden gitmek "kirayı nereye
-                  eklemiştim" sorusunu doğuruyordu. Ev/Kişisel ayrımı zaten
-                  ekranın kendi sekmesinde. */}
-              <Pressable style={styles.navRow}
-                         onPress={() => router.push("/duzenli")}
-                         testID="open-recurring" android_ripple={{ color: colors.divider }}>
-                <IconPill name="repeat" color={colors.onWarning} tint={colors.warningSoft} size={38} />
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.navTitle}>Düzenli giderler</Text>
-                </View>
-                {vadesiGelen > 0 && (
-                  <Text style={[styles.navState, { color: colors.onWarning }]}>
-                    {vadesiGelen} vadesi geldi
-                  </Text>
-                )}
-                <Ionicons name="chevron-forward" size={20} color={colors.inkTertiary} />
-              </Pressable>
-            </Card>
-
-            <Text style={styles.grup}>UYGULAMA</Text>
-            <Card>
-              <Pressable style={styles.navRow} onPress={() => router.push("/ayarlar")}
-                         testID="open-app-settings" android_ripple={{ color: colors.divider }}>
-                <IconPill name="settings-outline" color={colors.onInfo} tint={colors.infoSoft} size={38} />
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.navTitle}>Ülke, para birimi, dil</Text>
                 </View>
                 <Ionicons name="chevron-forward" size={20} color={colors.inkTertiary} />
               </Pressable>
@@ -349,6 +288,70 @@ export default function Profil() {
                 </View>
               ))}
             </Card>
+
+            <Text style={styles.grup}>EVE AİT</Text>
+            <Card>
+              <Pressable style={styles.navRow} onPress={() => router.push("/ev-ayarlari")}
+                         testID="open-household-settings" android_ripple={{ color: colors.divider }}>
+                <IconPill name="home" color={colors.accentDark} tint={colors.accentSoft} size={38} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.navTitle}>Ev ayarları</Text>
+                </View>
+                <Text style={styles.navState}>
+                  {household ? `${members.length} üye` : "yok"}
+                </Text>
+                {pendingMembers.length > 0 && isAdmin && (
+                  <View style={styles.badge}>
+                    <Text style={styles.badgeTxt}>{pendingMembers.length}</Text>
+                  </View>
+                )}
+                <Ionicons name="chevron-forward" size={20} color={colors.inkTertiary} />
+              </Pressable>
+              <Divider inset={spacing.lg} />
+              {/* Düzenli giderlerin TEK kapısı. Ev ayarlarında ikinci bir
+                  bağlantı vardı; aynı ekrana iki yerden gitmek "kirayı nereye
+                  eklemiştim" sorusunu doğuruyordu. Ev/Kişisel ayrımı zaten
+                  ekranın kendi sekmesinde. */}
+              <Pressable style={styles.navRow}
+                         onPress={() => router.push("/duzenli")}
+                         testID="open-recurring" android_ripple={{ color: colors.divider }}>
+                <IconPill name="repeat" color={colors.onWarning} tint={colors.warningSoft} size={38} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.navTitle}>Düzenli giderler</Text>
+                </View>
+                {vadesiGelen > 0 && (
+                  <Text style={[styles.navState, { color: colors.onWarning }]}>
+                    {vadesiGelen} vadesi geldi
+                  </Text>
+                )}
+                <Ionicons name="chevron-forward" size={20} color={colors.inkTertiary} />
+              </Pressable>
+            </Card>
+
+            <Text style={styles.grup}>UYGULAMA</Text>
+            <Card>
+              {/* Bildirimler burada: uygulamanin nasil davranacagini
+                  belirliyor, ev ya da hesap bilgisi degil. */}
+              <Pressable style={styles.navRow} onPress={() => router.push("/bildirimler")}
+                         testID="open-notifications" android_ripple={{ color: colors.divider }}>
+                <IconPill name="notifications-outline" color={colors.onInfo} tint={colors.infoSoft} size={38} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.navTitle}>Bildirimler</Text>
+                </View>
+                <Text style={styles.navState}>{acikBildirim} açık</Text>
+                <Ionicons name="chevron-forward" size={20} color={colors.inkTertiary} />
+              </Pressable>
+              <Divider inset={spacing.lg} />
+              <Pressable style={styles.navRow} onPress={() => router.push("/ayarlar")}
+                         testID="open-app-settings" android_ripple={{ color: colors.divider }}>
+                <IconPill name="settings-outline" color={colors.onInfo} tint={colors.infoSoft} size={38} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.navTitle}>Uygulama ayarları</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color={colors.inkTertiary} />
+              </Pressable>
+            </Card>
+
 
 
             {message && <Text style={styles.message}>{message}</Text>}

@@ -68,14 +68,14 @@ export default function Onboarding() {
         <Sheet>
           <View style={styles.pendingWrap}>
             <View style={styles.pendingIcon}>
-              <Ionicons name="hourglass-outline" size={38} color={colors.dark} />
+              <Ionicons name="hourglass-outline" size={38} color={colors.ink} />
             </View>
             <Text style={styles.pendingTitle}>Onay bekleniyor…</Text>
             <Text style={styles.pendingDesc}>
               "<Text style={{ fontFamily: fontFamily.bold }}>{pendingHousehold.name}</Text>" evine katılma isteğin gönderildi.
               Ev üyelerinden birinin onaylaması gerekiyor.
             </Text>
-            <ActivityIndicator color={colors.dark} style={{ marginTop: spacing.lg }} />
+            <ActivityIndicator color={colors.ink} style={{ marginTop: spacing.lg }} />
             <Pressable
               style={styles.pendingCancelBtn}
               onPress={async () => { await apiPost("/households/leave", {}); await refresh(); }}

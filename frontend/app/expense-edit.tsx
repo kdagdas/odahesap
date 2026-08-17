@@ -160,7 +160,7 @@ export default function ExpenseEdit() {
     return (
       <View style={styles.root}>
         <ScreenHeader overline="DÜZENLE" title="Harcama" />
-        <Sheet><ActivityIndicator color={colors.dark} style={{ marginTop: spacing.xxl }} /></Sheet>
+        <Sheet><ActivityIndicator color={colors.ink} style={{ marginTop: spacing.xxl }} /></Sheet>
       </View>
     );
   }

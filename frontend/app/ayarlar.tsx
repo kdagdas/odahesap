@@ -117,7 +117,7 @@ export default function Ayarlar() {
               />
               {busy && (
                 <View style={{ alignItems: "center", padding: spacing.md }}>
-                  <ActivityIndicator size="small" color={colors.dark} />
+                  <ActivityIndicator size="small" color={colors.ink} />
                 </View>
               )}
             </Card>

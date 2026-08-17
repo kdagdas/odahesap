@@ -193,7 +193,7 @@ export default function Tara() {
       <SafeAreaView style={styles.rootLight} edges={["top", "bottom"]} testID="camera-permission">
         <View style={styles.permCenter}>
           <View style={styles.permIconWrap}>
-            <Ionicons name="camera-outline" size={40} color={colors.dark} />
+            <Ionicons name="camera-outline" size={40} color={colors.ink} />
           </View>
           <Text style={styles.permTitle}>Kamera izni gerekli</Text>
           <Text style={styles.permDesc}>Fişleri taramak için kameraya erişim izni ver. İstemezsen galeriden de seçebilirsin.</Text>
@@ -244,7 +244,7 @@ export default function Tara() {
         </Pressable>
         <Pressable style={styles.shutter} onPress={takePhoto} disabled={processing} testID="shutter-btn">
           <View style={styles.shutterInner}>
-            <Ionicons name="camera" size={28} color={colors.dark} />
+            <Ionicons name="camera" size={28} color={colors.ink} />
           </View>
         </Pressable>
         <Pressable style={styles.sideBtn} onPress={() => router.push("/manual")} testID="manual-from-camera">

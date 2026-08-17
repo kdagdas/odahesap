@@ -80,7 +80,7 @@ export default function MemberDetail() {
       <Sheet>
         <View style={styles.scroll}>
           {loading ? (
-            <ActivityIndicator color={colors.dark} style={{ marginTop: spacing.xl }} />
+            <ActivityIndicator color={colors.ink} style={{ marginTop: spacing.xl }} />
           ) : expenses.length === 0 ? (
             <View style={styles.empty}>
               <View style={styles.emptyRing}>

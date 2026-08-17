@@ -115,7 +115,9 @@ const KARANLIK: typeof AYDINLIK = {
   inkSecondary: "#9BA6B4",
   inkTertiary: "#6B7887",
 
-  brand: "#1B2740",
+  // Karanlikta birincil dugme zeminden ACIK durur; #1B2740 yuzeyle (#161B22)
+  // neredeyse ayni tondu ve dugme kayboluyordu.
+  brand: "#2E4372",
   onBrand: "#E8EDF4",
   // Yesil koyu zeminde biraz aciliyor ki okunurlugu dussun istemiyoruz.
   accentDark: "#6EE7B7",

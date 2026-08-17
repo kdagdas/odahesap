@@ -202,7 +202,7 @@ export default function EvAyarlari() {
                         <Text style={styles.email}>{p.email}</Text>
                       </View>
                       {busy === p.user_id ? (
-                        <ActivityIndicator color={colors.dark} />
+                        <ActivityIndicator color={colors.ink} />
                       ) : (
                         <View style={styles.pendingActions}>
                           <Pressable style={styles.rejectBtn} onPress={() => reject(p.user_id)}
@@ -324,7 +324,7 @@ export default function EvAyarlari() {
                       </View>
                       {canHandOver && (
                         busy === m.user_id ? (
-                          <ActivityIndicator color={colors.dark} />
+                          <ActivityIndicator color={colors.ink} />
                         ) : transferTo === m.user_id ? (
                           <View style={styles.confirmRow}>
                             <Pressable onPress={() => setTransferTo(null)} hitSlop={8}

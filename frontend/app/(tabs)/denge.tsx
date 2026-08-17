@@ -38,6 +38,7 @@ type Settlement = {
 type Stats = {
   total: number; per_person: number; daily_average: number; expense_count: number;
   item_count: number; avg_expense: number; member_count: number;
+  my_share: number; my_paid: number;
   by_member: { user_id: string; total: number }[];
   daily_series: { day: string; total: number }[];
   merchants: { name: string; total: number }[];
@@ -203,7 +204,14 @@ export default function Denge() {
     return [...transfers].sort((a, b) => rank(a) - rank(b) || b.amount - a.amount);
   }, [transfers, me]);
 
-  const myPaid = stats?.by_member.find((b) => b.user_id === me)?.total ?? 0;
+  // `by_member` yalnizca EV harcamalarini sayiyor; bu satir ise bakiyeyi
+  // acikliyor, yani Salih icin odedigin de dahil olmali.
+  const myPaid = stats?.my_paid ?? 0;
+  // Pencere KART BASLIGINDA: ayni kelime ("payin") Istatistik'te de
+  // geciyor ama orasi takvim ayi. Basliga yazmak karsilastirma
+  // sorusunu bastan kapatiyor.
+  const currentDonem = periods.find((p) => p.period_id === currentId);
+  const currentDonemTxt = currentDonem ? periodLabel(currentDonem) : "";
   const sayanNet = useCountUp(myNet);
 
   /**
@@ -321,7 +329,7 @@ export default function Denge() {
           keyboardShouldPersistTaps="handled"
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }}
-                            tintColor={colors.dark} progressBackgroundColor={colors.surface} />
+                            tintColor={colors.ink} progressBackgroundColor={colors.surface} />
           }
         >
           <ScreenHeader overline="KASA" title="Senin Hesabın">
@@ -338,7 +346,10 @@ export default function Denge() {
             {/* Sifir olan sutun GOSTERILMIYOR. "Sana borçlu 0,00 €" gerçek
                 bir sayıyla aynı yeri kaplayıp hiçbir şey söylemiyordu; iki
                 kişilik bir borçta ayrıca üstteki net rakamın tekrarıydı. */}
-            {(owedToMe > 0.005 || iOwe > 0.005) && (
+            {/* Tek tarafli borcta bu satir ustteki net rakamin TEKRARI olur
+                (net −40,60 · senin borcun 40,60 · kopruden 40,60 = uc kez).
+                Yalnizca iki taraf da doluysa bilgi tasiyor. */}
+            {owedToMe > 0.005 && iOwe > 0.005 && (
               <HeaderSplit items={[
                 ...(owedToMe > 0.005
                   ? [{ label: "Sana borçlu", value: formatEUR(owedToMe), accent: true }] : []),
@@ -369,7 +380,7 @@ export default function Denge() {
 
           <Sheet>
             {loading ? (
-              <ActivityIndicator color={colors.dark} style={{ marginTop: spacing.xxl }} />
+              <ActivityIndicator color={colors.ink} style={{ marginTop: spacing.xxl }} />
             ) : (
               <View style={{ gap: metrics.cardGap }}>
                 {archived && (
@@ -386,7 +397,7 @@ export default function Denge() {
                     ucuz; Kasa'yı açma sebebi zaten bu blok. Beni
                     ilgilendirmeyen borç aynı kutunun altında tek satıra iniyor
                     ki ev büyürse blok şişmesin. */}
-                <Card title="Kim Kime Borçlu" style={styles.mx}>
+                <Card title={`Kim Kime Borçlu · ${currentDonemTxt}`} style={styles.mx}>
                   {/* Bir istatistik degil, odesmenin girdisi: "ben ne odedim,
                       payim neydi" sorusu borcun kendisiyle ayni yerde durmali.
                       Istatistik karti bu ekrandan kalkti; sayfasi ayri. */}
@@ -394,8 +405,11 @@ export default function Denge() {
                     <View style={styles.paidLine}>
                       <Text style={styles.paidLabel}>Senin ödediğin</Text>
                       <Text style={styles.paidValue}>{formatEUR(myPaid)}</Text>
+                      {/* GERCEK pay: once `per_person` (toplam/uye sayisi)
+                          gosteriliyordu ve kisiye ozel bolusmede yanlisti --
+                          "odedigin - payin" ustteki net durumu tutmuyordu. */}
                       <Text style={styles.paidLabel}>· payın</Text>
-                      <Text style={styles.paidValue}>{formatEUR(stats.per_person)}</Text>
+                      <Text style={styles.paidValue}>{formatEUR(stats.my_share)}</Text>
                     </View>
                   )}
                   {ordered.length === 0 ? (

@@ -70,7 +70,7 @@ export default function Aktivite() {
         refreshControl={
           <RefreshControl refreshing={refreshing}
                           onRefresh={() => { setRefreshing(true); load(); }}
-                          tintColor={colors.dark} />
+                          tintColor={colors.ink} />
         }
       >
         <ScreenHeader
@@ -87,7 +87,7 @@ export default function Aktivite() {
         <Sheet>
           <View style={styles.scroll}>
             {loading ? (
-              <ActivityIndicator color={colors.dark} style={{ marginTop: spacing.xxl }} />
+              <ActivityIndicator color={colors.ink} style={{ marginTop: spacing.xxl }} />
             ) : rows.length === 0 ? (
               <View style={styles.empty}>
                 <View style={styles.emptyRing}>

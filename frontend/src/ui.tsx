@@ -1541,7 +1541,11 @@ const styles = StyleSheet.create({
     flexDirection: "row", alignItems: "center", gap: spacing.md,
     paddingHorizontal: spacing.lg, paddingVertical: spacing.md, minHeight: metrics.rowHeight,
   },
-  selectMark: { fontSize: 22, lineHeight: 28, width: 30, textAlign: "center" },
+  // Renk ACIKCA veriliyor: verilmeyince varsayilan siyah geliyor ve
+  // karanlik temada € isareti kayboluyordu.
+  selectMark: {
+    fontSize: 22, lineHeight: 28, width: 30, textAlign: "center", color: colors.ink,
+  },
   // Koyu basligin altinda, kavisin hemen ustunde duran secici seridi.
   pillRow: { flexDirection: "row", gap: spacing.sm, marginTop: spacing.lg, flexWrap: "wrap" },
   pill: {
@@ -1579,7 +1583,7 @@ const styles = StyleSheet.create({
     flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center",
     gap: 6, paddingVertical: spacing.sm, borderRadius: radius.pill,
   },
-  tabActive: { backgroundColor: colors.dark },
+  tabActive: { backgroundColor: colors.ink },
   tabOnDarkActive: { backgroundColor: colors.onDark },
   tabTxt: { ...T.captionSb },
   pickTitle: { ...overline, paddingHorizontal: spacing.lg, marginBottom: spacing.sm },
@@ -1620,7 +1624,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill, padding: 3,
   },
   segBtn: { flex: 1, alignItems: "center", paddingVertical: spacing.sm, borderRadius: radius.pill },
-  segBtnOn: { backgroundColor: colors.dark },
+  segBtnOn: { backgroundColor: colors.ink },
   segTxt: { ...T.captionSb, color: colors.inkSecondary },
   segTxtOn: { color: colors.onDark },
   splitShare: { ...T.captionSb, color: colors.inkSecondary, minWidth: 74, textAlign: "right" },

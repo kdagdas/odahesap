@@ -3075,7 +3075,8 @@ async def price_memory(body: PriceMemoryReq, user=Depends(get_current_user)):
 # Ev ya da dönem yoksa dönen iskelet. Alanların hepsi burada da bulunmalı:
 # istemci eksik anahtarı undefined okuyup grafiği boş yerine çökmüş çiziyordu.
 EMPTY_STATS = {
-    "total": 0, "per_person": 0, "daily_average": 0, "projected_30d": 0,
+    "total": 0, "per_person": 0, "my_share": 0, "my_paid": 0,
+    "daily_average": 0, "projected_30d": 0,
     "change_pct": None, "expense_count": 0, "item_count": 0, "avg_expense": 0,
     "member_count": 0, "by_member": [], "daily_series": [],
     "categories": [], "merchants": [],
@@ -3102,15 +3103,46 @@ async def stats(period_id: Optional[str] = None, user=Depends(get_current_user))
     if not period:
         return EMPTY_STATS
 
-    exps = await db.expenses.find(
-        {"household_id": hh["household_id"], "period_id": period["period_id"],
-         "target_type": {"$in": ["household", "custom"]}},
+    # Kapsam ETIKETTEN degil bolusme LISTESINDEN cikiyor.
+    #
+    # Once `target_type in ["household", "custom"]` suzuluyordu. Uc kisilik bir
+    # evde "sen + Salih" bolusmesi `custom` etiketi tasidigi icin EV harcamasi
+    # sayiliyordu -- oysa ev onu almadi. `/stats/monthly` Tur 9'da bu kurala
+    # gecmisti, burasi kalmisti; iki uc ayni olayi farkli sayiyordu.
+    #
+    # Ekranda IKI ayri kapsam var ve ikisi de dogru:
+    #   `total`, kategoriler, marketler, kim-ne-odedi -> yalnizca EVIN
+    #     tamaminin bolustugu harcamalar ("BU DONEM EV HARCAMASI" o demek)
+    #   `my_paid`, `my_share` -> bakiyeyi ilgilendiren her sey; Salih icin
+    #     aldigin parayi sen cikardin, o satirda gorunmeli
+    tumu = await db.expenses.find(
+        {"household_id": hh["household_id"], "period_id": period["period_id"]},
         {"_id": 0},
     ).to_list(5000)
+    members = await period_participants(hh["household_id"], period["period_id"], hh["member_ids"])
+    uyeler = set(members)
+    me_id = user["user_id"]
+
+    exps: List[dict] = []
+    my_paid = 0.0
+    my_share = 0.0
+    for e in tumu:
+        shares = expense_shares(e, members)
+        if not shares:
+            continue
+        # Kisisel harcama hicbir yere girmez: dengeye de, istatistige de.
+        if e.get("target_type") == "self" and set(shares) == {e["added_by"]}:
+            continue
+        if uyeler and uyeler <= set(shares):
+            exps.append(e)
+        if e["added_by"] == me_id:
+            my_paid += float(e["total"])
+        my_share += shares.get(me_id, 0.0)
 
     total = round(sum(float(e["total"]) for e in exps), 2)
-    members = await period_participants(hh["household_id"], period["period_id"], hh["member_ids"])
     per_person = round(total / max(len(members), 1), 2)
+    my_paid = round(my_paid, 2)
+    my_share = round(my_share, 2)
 
     cats: Dict[str, float] = {}
     for e in exps:
@@ -3192,6 +3224,8 @@ async def stats(period_id: Optional[str] = None, user=Depends(get_current_user))
         "days": days,
         "total": total,
         "per_person": per_person,
+        "my_share": my_share,
+        "my_paid": my_paid,
         "daily_average": daily,
         "projected_30d": projected,
         "change_pct": change_pct,

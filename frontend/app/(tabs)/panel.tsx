@@ -95,7 +95,7 @@ export default function Panel() {
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }}
-                          tintColor={colors.dark} progressBackgroundColor={colors.surface} />
+                          tintColor={colors.ink} progressBackgroundColor={colors.surface} />
         }
       >
         <ScreenHeader
@@ -156,7 +156,7 @@ export default function Panel() {
 
         <Sheet>
           {loading ? (
-            <ActivityIndicator color={colors.dark} style={{ marginTop: spacing.xxl }} />
+            <ActivityIndicator color={colors.ink} style={{ marginTop: spacing.xxl }} />
           ) : (
             <View style={{ gap: metrics.cardGap }}>
               {/* Vadesi gelen düzenli ödemeler. Onaylanmadan hiçbir kayıt

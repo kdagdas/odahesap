@@ -141,6 +141,38 @@ check("kalemsiz harcama 'diger'e dustu",
       any(x["key"] == "diger" and abs(x["total"] - 240) < 0.01 for x in s2["categories"]),
       str(s2["categories"]))
 
+print("\n-- payin: DUZ ORTALAMA degil GERCEK pay --")
+# Kasa ekrani `per_person`i "payin" diye gosteriyordu; o ise
+# `toplam / uye_sayisi`, yani kisiye ozel bolusmede yanlis. Bakiye
+# `expense_shares` ile hesaplandigi icin ekranda "odedigin - payin" ustteki
+# net durumu tutmuyordu. `my_share` ayni yontemi kullaniyor.
+kira = c.post(f"{API}/expenses", headers=hdr(alice), json={
+    "target_type": "household", "total": 300.0, "source": "manual",
+    "split_mode": "exact", "split_with": {alice_id: 100.0, bob_id: 200.0},
+    "items": []})
+check("kisiye ozel bolusme kaydedildi", kira.status_code == 200, kira.text[:120])
+
+sa = c.get(f"{API}/stats", headers=hdr(alice)).json()
+sb = c.get(f"{API}/stats", headers=hdr(bob)).json()
+# Duz ortalama iki tarafta da AYNI; gercek pay farkli olmali.
+check("duz ortalama iki kisi icin ayni",
+      abs(sa["per_person"] - sb["per_person"]) < 0.01,
+      f'{sa["per_person"]} / {sb["per_person"]}')
+check("payin kisiye gore DEGISIYOR",
+      abs(sa["my_share"] - sb["my_share"]) > 0.01,
+      f'{sa["my_share"]} / {sb["my_share"]}')
+check("Bob'un payi Alice'inkinden buyuk (200 > 100)",
+      sb["my_share"] > sa["my_share"], f'{sb["my_share"]} / {sa["my_share"]}')
+
+# Paylarin toplami harcama toplamina esit olmali: kimsenin payi kaybolmuyor.
+# Paylarin toplami TUM donem toplamina esit: kimsenin payi kaybolmuyor,
+# fazladan da uretilmiyor. (240 esit bolusuldu -> 120+120, ustune 100/200.)
+check("paylarin toplami donem toplamina esit",
+      abs((sa["my_share"] + sb["my_share"]) - sa["total"]) < 0.02,
+      f'{sa["my_share"]} + {sb["my_share"]} vs {sa["total"]}')
+check("Alice 120 + 100 = 220", abs(sa["my_share"] - 220) < 0.02, str(sa["my_share"]))
+check("Bob 120 + 200 = 320", abs(sb["my_share"] - 320) < 0.02, str(sb["my_share"]))
+
 print("\n-- temizlik --")
 for t in (alice, bob):
     c.post(f"{API}/households/leave", headers=hdr(t))

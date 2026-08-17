@@ -71,7 +71,7 @@ export default function LoginScreen() {
           >
             <View style={styles.header}>
               <View style={styles.logoWrap}>
-                <Ionicons name="wallet" size={20} color={colors.dark} />
+                <Ionicons name="wallet" size={20} color={colors.ink} />
               </View>
               <Text style={styles.brand}>KaSa</Text>
             </View>

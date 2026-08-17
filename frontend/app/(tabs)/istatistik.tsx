@@ -99,9 +99,9 @@ function Curve({ now, prev, height = 132 }: {
         <Path d={path(prev)} fill="none" stroke={colors.inkTertiary}
               strokeWidth={1.6} strokeDasharray="4 4" />
       )}
-      <Path d={path(now, shown)} fill="none" stroke={colors.dark}
+      <Path d={path(now, shown)} fill="none" stroke={colors.ink}
             strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" />
-      {last && <Circle cx={lastX} cy={lastY} r={4} fill={colors.dark} />}
+      {last && <Circle cx={lastX} cy={lastY} r={4} fill={colors.ink} />}
       <SvgText x={padL} y={H - 4} fontSize={9} fill={colors.inkTertiary}>1</SvgText>
       <SvgText x={W - 8} y={H - 4} textAnchor="end" fontSize={9} fill={colors.inkTertiary}>
         {now.length}
@@ -225,7 +225,7 @@ export default function Istatistik() {
             </View>
 
             {loading ? (
-              <ActivityIndicator color={colors.dark} style={{ marginTop: spacing.xxl }} />
+              <ActivityIndicator color={colors.ink} style={{ marginTop: spacing.xxl }} />
             ) : !data || data.expense_count === 0 ? (
               <View style={styles.empty}>
                 <Ionicons name="calendar-outline" size={38} color={colors.inkTertiary} />
@@ -298,7 +298,7 @@ export default function Istatistik() {
                   <Curve now={data.cumulative} prev={data.prev_cumulative} />
                   <View style={styles.curveLegend}>
                     <View style={styles.legendItem}>
-                      <View style={[styles.legendLine, { backgroundColor: colors.dark }]} />
+                      <View style={[styles.legendLine, { backgroundColor: colors.ink }]} />
                       <Text style={styles.legendLabel}>bu ay {formatEURShort(data.total)}</Text>
                     </View>
                     {data.prev_total > 0 && (
@@ -475,7 +475,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.md, borderWidth: 1, borderColor: colors.border,
     backgroundColor: colors.surface,
   },
-  ayHucreOn: { backgroundColor: colors.dark, borderColor: colors.dark },
+  ayHucreOn: { backgroundColor: colors.brand, borderColor: colors.brand },
   ayHucreBos: { opacity: 0.35 },
   ayTxt: { ...T.captionSb, color: colors.inkSecondary },
   ayTxtOn: { color: colors.onDark },
