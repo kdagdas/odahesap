@@ -48,9 +48,20 @@ yeniden yazmaya gerek yok.
 
 Yani mekanizma duruyor, kapanma koşulu değişiyor:
 
-- **Kapatma düğmesi kalkar.** Dönem elle kapanmaz.
+- **"Dönemi kapat" düğmesi kalkar**, yerine **"Ödeştik"** gelir. Fark
+  kritik: eskisi bakiyeleri **siliyordu**, yenisi önerilen transferleri
+  **gerçek ödeme kaydı olarak yazıyor.** Aynı insan jesti ("nakit ödeştik,
+  bitti"), dürüst defter.
 - **Dönem yalnızca bakiye sıfıra değince, kendiliğinden kapanır.** Kapanınca
   kaybolacak bir borç kalmaz — asıl hatanın kökü buydu.
+
+> **Neden "Ödeştik" şart oldu.** Önce yalnızca otomatik kapanma planlanmıştı:
+> herkes kendi ödemesini işaretler, bakiye sıfırlanır, dönem kapanır. Ama
+> ödeme kaydını yalnızca *tarafları* girebiliyor, yani kapanma herkesin tek
+> tek uygulamayı açmasına bağlı kalıyordu. Yedek ölçüldü: `settlements`
+> koleksiyonunda **sıfır kayıt** — bu evde bugüne kadar hiç ödeme
+> işaretlenmemiş. Yani o kapanma hiçbir zaman gerçekleşmezdi. Düğme bir
+> *insan mutabakatıydı* ve onu kaldırmak gerçek bir kayıptı.
 - Ödeşilmezse dönem **açık kalır** ve aylarca sürebilir. Kasa o tek açık
   dönemi gösterir, "önceki aylardan devir" satırı da o uzun dönemin içindeki
   harcamaların **tarihlerinden** çıkar.
