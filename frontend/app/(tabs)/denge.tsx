@@ -122,6 +122,15 @@ export default function Denge() {
   const [ekstre, setEkstre] = useState<Ekstre | null>(null);
   const [transfers, setTransfers] = useState<Transfer[]>([]);
   const [settlements, setSettlements] = useState<Settlement[]>([]);
+  /**
+   * Dönemin KATILIMCILARI — bugünkü üyeler değil.
+   *
+   * Ayrılmak borcu silmiyor: kişi dönemde katılımcı kalıyor ve borcu burada
+   * görünmeye devam ediyor. Ev listesinden okunsaydı adı çözülemez, ekranda
+   * "Bilinmeyen → Sen 48,20" yazardı. `/balances` ayrılanları `ayrildi` ile
+   * işaretliyor.
+   */
+  const [katilimcilar, setKatilimcilar] = useState<any[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -173,6 +182,7 @@ export default function Denge() {
         apiGet<Stats>(`/stats${q}`),
       ]);
       setPeriods(pers.periods || []);
+      setKatilimcilar(bal.members || []);
       setNet(bal.net || {});
       setEkstre(bal.statement || null);
       setTransfers(bal.transfers || []);
@@ -218,8 +228,12 @@ export default function Denge() {
   };
 
   const me = user?.user_id || "";
-  const member = (id: string) => members.find((m) => m.user_id === id);
+  /* Önce katılımcılar, sonra bugünkü üyeler: ayrılmış birinin adı yalnızca
+     ilkinde var. */
+  const member = (id: string) =>
+    katilimcilar.find((m) => m.user_id === id) || members.find((m) => m.user_id === id);
   const nameOf = (id: string) => member(id)?.name || "Bilinmeyen";
+  const ayrildiMi = (id: string) => !!(member(id) as any)?.ayrildi;
   const first = (id: string) => (id === me ? "Sen" : nameOf(id).split(" ")[0]);
 
   /** Ekstre satırını aç/kapa. Aynı anda tek satır açık: iki açılım yan yana
@@ -349,6 +363,9 @@ export default function Denge() {
                 userId={id}
                 photoVersion={(member(id) as any)?.photo_version} />
         <Text style={styles.sideName} numberOfLines={1}>{first(id)}</Text>
+        {/* Ayrılmış biri hâlâ borçlu olabilir. Rozet olmasa "niye listede
+            yok" ile "niye burada duruyor" aynı anda sorulur. */}
+        {ayrildiMi(id) && <Text style={styles.ayrildiRozet}>ayrıldı</Text>}
       </View>
     );
     return (
@@ -1150,6 +1167,10 @@ const styles = StyleSheet.create({
   },
   shareAgainTxt: { ...T.caption, color: colors.inkTertiary },
   // Başkalarının arasındaki borç: aynı kutuda ama sessiz ve tek satır.
+  ayrildiRozet: {
+    ...T.caption, fontSize: 9, color: colors.inkTertiary,
+    fontFamily: fontFamily.medium, marginTop: 1,
+  },
   otherRow: {
     flexDirection: "row", alignItems: "center", gap: spacing.md,
     paddingHorizontal: spacing.lg, minHeight: 44,

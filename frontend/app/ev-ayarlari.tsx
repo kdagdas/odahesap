@@ -15,9 +15,10 @@ import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@/src/auth";
 import { useHousehold } from "@/src/household";
-import { apiPost, api } from "@/src/api";
+import { apiPost, apiGet, api } from "@/src/api";
 import {
   Avatar, BottomSheet, Card, Divider, ScreenHeader, Sheet, Tag, useScrollPad,
+  formatEUR,
 } from "@/src/ui";
 import { colors, spacing, radius, type as T, overline, metrics, fontFamily } from "@/src/theme";
 
@@ -136,9 +137,44 @@ export default function EvAyarlari() {
     try { await apiPost("/households/reject", { user_id: userId }); await refresh(); }
     finally { setBusy(null); }
   };
-  const leave = async () => {
+  const cikis = async () => {
     try { await apiPost("/households/leave", {}); await refresh(); router.replace("/onboarding"); }
     catch (e) { console.log(e); }
+  };
+
+  /**
+   * Ayrılma ONAY İSTİYOR ve borcu SÖYLÜYOR.
+   *
+   * Önce tek dokunuştu: düğmeye basan anında evden çıkıyordu. Geri dönüşü de
+   * kolay değil — yeniden katılmak davet kodu ve yöneticinin onayı demek.
+   *
+   * Tutar uyarının içinde, çünkü asıl yanlış anlaşılma orada: ayrılmak borcu
+   * SİLMİYOR. Kişi dönemde katılımcı kalıyor ve borcu kalanların Kasa'sında
+   * yaşamaya devam ediyor. "Emin misin?" bunu söylemiyor, "48,20 € borcun
+   * silinmiyor" söylüyor.
+   */
+  const ayril = async () => {
+    let satir = "";
+    try {
+      const bal = await apiGet<any>("/balances");
+      const net = Number(bal?.net?.[user?.user_id || ""] ?? 0);
+      if (net < -0.01) {
+        satir = `\n\nÖdeşilmemiş ${formatEUR(Math.abs(net))} borcun var. `
+          + "Ayrılmak bu borcu silmiyor — ev arkadaşlarının Kasa'sında "
+          + "görünmeye devam edecek.";
+      } else if (net > 0.01) {
+        satir = `\n\nEvden ${formatEUR(net)} alacağın var. `
+          + "Ayrıldıktan sonra bunu takip etmen zorlaşır.";
+      }
+    } catch { /* bakiye okunamadıysa uyarı kısalır, çıkış engellenmez */ }
+    Alert.alert(
+      "Evden ayrıl",
+      `${household?.name || "Ev"} evinden ayrılacaksın.${satir}`,
+      [
+        { text: "Vazgeç", style: "cancel" },
+        { text: "Ayrıl", style: "destructive", onPress: cikis },
+      ],
+    );
   };
 
   if (!household) {
@@ -413,7 +449,7 @@ export default function EvAyarlari() {
             {message && <Text style={styles.message}>{message}</Text>}
             {error && <Text style={styles.errorMsg} testID="settings-error">{error}</Text>}
 
-            <Pressable style={styles.leaveBtn} onPress={leave} testID="leave-household-btn">
+            <Pressable style={styles.leaveBtn} onPress={ayril} testID="leave-household-btn">
               <Ionicons name="exit-outline" size={18} color={colors.negative} />
               <Text style={styles.leaveTxt}>Evden ayrıl</Text>
             </Pressable>

@@ -1044,6 +1044,20 @@ async def my_household(user=Depends(get_current_user)):
 async def leave_household(user=Depends(get_current_user)):
     hh = await get_user_household(user["user_id"])
     if hh:
+        # Ayrılanın ödeşilmemiş bakiyesi — ayrılmadan ÖNCE ölçülüyor.
+        #
+        # Ayrılmak borcu silmiyor: `period_participants()` kişiyi dönemde
+        # tuttuğu için borç kalanların Kasa'sında yaşamaya devam ediyor. Bunu
+        # hem ayrılana (istemcideki onay ekranı) hem kalanlara söylemek
+        # gerekiyor, yoksa insanlar "ayrıldı, borç da gitti" sanıyor.
+        kalan = 0.0
+        aktif = await get_active_period(hh["household_id"])
+        if aktif:
+            try:
+                bak = await _compute_balances(hh["household_id"], aktif["period_id"])
+                kalan = float((bak.get("net") or {}).get(user["user_id"], 0.0))
+            except Exception:   # bakiye okunamazsa ayrılma engellenmemeli
+                kalan = 0.0
         await db.households.update_one(
             {"household_id": hh["household_id"]}, {"$pull": {"member_ids": user["user_id"]}}
         )
@@ -1062,11 +1076,20 @@ async def leave_household(user=Depends(get_current_user)):
         # (`period_participants` onu dönemde tutuyor). Ayrıca bu andan sonra
         # ev harcamaları bir kişi eksiğe bölünmeye başlıyor -- kalanların
         # bunu bir yerden görmesi gerekiyor.
+        # Tutar bildirimin İÇİNDE. "Bir ev arkadaşı ayrıldı" tek başına
+        # eyleme geçirmiyor; "48,20 € borcu duruyor" geçiriyor.
+        if kalan < -0.01:
+            durum = (f"{money_str(abs(kalan), hh)} borcu duruyor ve ödeşene kadar "
+                     "Kasa'da görünmeye devam edecek.")
+        elif kalan > 0.01:
+            durum = f"Eve {money_str(kalan, hh)} alacağı kaldı."
+        else:
+            durum = "Ödeşmiş durumdaydı."
         await notify(
             [m for m in hh.get("member_ids", []) if m != user["user_id"]],
             "Bir ev arkadaşı ayrıldı",
-            f"{user['name']} evden ayrıldı. Bundan sonraki ev harcamaları "
-            "kalan üyeler arasında bölüşülecek.",
+            f"{user['name']} evden ayrıldı. {durum} Bundan sonraki ev "
+            "harcamaları kalan üyeler arasında bölüşülecek.",
             "member_left",
             {"household_id": hh["household_id"], "user_id": user["user_id"]},
         )
@@ -3015,6 +3038,13 @@ async def balances(period_id: Optional[str] = None, user=Depends(get_current_use
     members = await db.users.find(
         {"user_id": {"$in": participants}}, PUBLIC_USER_PROJECTION
     ).to_list(50)
+    # AYRILANLAR işaretleniyor. Ayrılmak borcu silmiyor — kişi dönemde
+    # katılımcı olarak kalıyor ve borcu Kasa'da görünmeye devam ediyor. İsmi
+    # rozetsiz durursa hâlâ ev arkadaşı sanılıyor ve "niye listede yok" ile
+    # "niye borçlu görünüyor" aynı anda sorulmuş oluyor.
+    bugunku = set(hh.get("member_ids", []))
+    for m in members:
+        m["ayrildi"] = m["user_id"] not in bugunku
     result["members"] = members
     result["period"] = period
     # Ekstre: bakiyenin ay ay dökümü. Kapalı dönemde hesaplanmıyor — orada

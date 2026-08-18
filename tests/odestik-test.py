@@ -172,6 +172,27 @@ check("Carol hala bakiyede", carol_id in son["net"], str(son["net"]))
 uyeler = [m["user_id"] for m in c.get(f"{API}/households/me", headers=hdr(alice)).json()["members"]]
 check("ama uye listesinde degil", carol_id not in uyeler, str(uyeler))
 
+# Adi COZULEBILMELI ve AYRILDIGI belli olmali. Ev listesinden okunsaydi ekranda
+# "Bilinmeyen -> Sen 48,20" yazardi; rozet olmasaydi hala ev arkadasi sanilir
+# ve "niye listede yok" ile "niye borclu gorunuyor" ayni anda sorulurdu.
+kat = {m["user_id"]: m for m in son.get("members", [])}
+check("ayrilan kisi bakiye katilimcilarinda", carol_id in kat, str(list(kat)))
+check("adi cozulebiliyor", bool(kat.get(carol_id, {}).get("name")), str(kat.get(carol_id)))
+check("ayrildi olarak isaretli", kat.get(carol_id, {}).get("ayrildi") is True,
+      str(kat.get(carol_id)))
+check("kalanlar isaretli DEGIL", kat.get(alice_id, {}).get("ayrildi") is False,
+      str(kat.get(alice_id)))
+
+# Ayrilma bildirimi TUTARI soyluyor: "bir ev arkadasi ayrildi" tek basina
+# eyleme gecirmiyor, "48,20 EUR borcu duruyor" geciriyor.
+bildirimler = c.get(f"{API}/notifications", headers=hdr(alice)).json()["notifications"]
+ayrilma = [n for n in bildirimler if n.get("kind") == "member_left"]
+check("ayrilma bildirimi gitti", len(ayrilma) == 1, str(bildirimler)[:200])
+check("bildirimde borc durumu yazili",
+      bool(ayrilma) and any(x in ayrilma[0]["body"]
+                            for x in ("borcu duruyor", "alacağı kaldı", "Ödeşmiş")),
+      str(ayrilma)[:300])
+
 print("\n-- ayrildiktan sonra kalanlara bolunuyor --")
 c.post(f"{API}/expenses", headers=hdr(alice), json={
     "target_type": "household", "total": 40.0, "source": "manual", "items": []})
