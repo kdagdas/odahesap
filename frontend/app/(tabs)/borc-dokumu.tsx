@@ -65,6 +65,8 @@ export default function BorcDokumu() {
   const [acik, setAcik] = useState<string | null>(null);
   /** Ay → o ayın harcamaları. Açıldığında bir kez çekiliyor. */
   const [harcamalar, setHarcamalar] = useState<Record<string, Harcama[]>>({});
+  /** Açık hareket satırı: 2026-08/pay gibi. Aynı anda tek satır açık. */
+  const [acikTur, setAcikTur] = useState<string | null>(null);
 
   const ayiAc = useCallback(async (ay: string) => {
     if (harcamalar[ay]) return;
@@ -76,6 +78,18 @@ export default function BorcDokumu() {
       setHarcamalar((h) => ({ ...h, [ay]: dizi }));
     } catch (e) { console.log(e); }
   }, [harcamalar]);
+
+  /** Hareket türüne göre o ayın fişleri — hangi satır hangi fişten geliyor. */
+  const fisleriSuz = (dizi: Harcama[], tur: string) => dizi.filter((h) => {
+    const kadro = Object.keys(h.split_with || {}).length;
+    const benOdedim = h.added_by === user?.user_id;
+    const bendeVar = !!(h.split_with || {})[user?.user_id || ""];
+    if (tur === "baskasi_icin") return kadro === 1 && !bendeVar && benOdedim;
+    if (tur === "senin_icin") return kadro === 1 && bendeVar && !benOdedim;
+    if (tur === "ev_odedigin") return kadro > 1 && benOdedim;
+    if (tur === "pay") return kadro > 1 && bendeVar;
+    return false;   // ödeme kayıtlarının altında fiş yok
+  });
 
   const load = useCallback(async () => {
     try {
@@ -165,59 +179,70 @@ export default function BorcDokumu() {
                             azaltır. "Kemal için aldıkların −12,00" satırı en
                             çok merak edilen soruyu kapatıyor — o parayı
                             ayrıca almana gerek yok, düşüm burada oldu. */}
-                        {(a.lines || []).map((l) => (
-                          <View key={l.tur} style={styles.detayRow}>
-                            <Text style={styles.detayLabel}>{TUR_ADI[l.tur] || l.tur}</Text>
-                            <Text style={[styles.detayVal, !l.artiran && styles.detayEksi]}>
-                              {l.artiran ? "" : "−"}{formatEUR(l.tutar)}
-                            </Text>
-                          </View>
-                        ))}
-
-                        {/* O ayın fişleri. Bölüşme kadrosu değiştiği yerde
-                            başlık düşüyor — dönem sınırının taşıdığı bilgi
-                            zaten her harcamanın `split_with` listesinde
-                            donmuş durumda, ayrı bir kayda gerek yok. */}
-                        {(harcamalar[a.month] || []).map((h, hi, dizi) => {
-                          const oncekiKadro = hi > 0
-                            ? Object.keys(dizi[hi - 1].split_with || {}).length : -1;
-                          const kadro = Object.keys(h.split_with || {}).length;
+                        {(a.lines || []).map((l) => {
+                          const fisler = fisleriSuz(harcamalar[a.month] || [], l.tur);
+                          const anahtar = `${a.month}/${l.tur}`;
+                          const turAcik = acikTur === anahtar;
                           return (
-                            <View key={h.expense_id}>
-                              {kadro !== oncekiKadro && kadro > 0 && (
-                                <Text style={styles.kadroBaslik}>
-                                  {kadro} KİŞİ BÖLÜŞTÜ
+                            <View key={l.tur}>
+                              {/* Fişi olan satır açılabilir, olmayan değil.
+                                  Ödeme kayıtlarının altında fiş yok. */}
+                              <Pressable
+                                style={styles.detayRow}
+                                disabled={fisler.length === 0}
+                                onPress={() => setAcikTur(turAcik ? null : anahtar)}
+                                testID={`dokum-tur-${l.tur}`}
+                              >
+                                <Text style={styles.detayLabel}>{TUR_ADI[l.tur] || l.tur}</Text>
+                                <Text style={[styles.detayVal, !l.artiran && styles.detayEksi]}>
+                                  {l.artiran ? "" : "−"}{formatEUR(l.tutar)}
                                 </Text>
-                              )}
-                              <Pressable style={styles.fisRow}
-                                         onPress={() => router.push(
-                                           `/expense-edit?id=${h.expense_id}`)}>
-                                <View style={{ flex: 1, minWidth: 0 }}>
-                                  <Text style={styles.fisAd} numberOfLines={1}>
-                                    {h.merchant || "Harcama"}
-                                  </Text>
-                                  <Text style={styles.fisAlt} numberOfLines={1}>
-                                    {(h.expense_date || "").slice(8, 10)}
-                                    {" "}{ayAdi(a.month).split(" ")[0]}
-                                    {" · "}{isim(h.added_by)} ödedi
-                                  </Text>
-                                </View>
-                                <View style={{ alignItems: "flex-end" }}>
-                                  {/* Senin payin BUYUK, fisin tamami kucuk.
-                                      Karistirilan tam olarak bu ikisiydi. */}
-                                  <Money value={h.my_share ?? 0} style={styles.fisPay} />
-                                  {Math.abs((h.my_share ?? 0) - h.total) > 0.005 && (
-                                    <Text style={styles.fisTam}>
-                                      {formatEUR(h.total)} içinde
-                                    </Text>
-                                  )}
-                                </View>
-                                <Ionicons name="chevron-forward" size={14}
-                                          color={colors.onSurfaceTertiary} />
+                                {fisler.length > 0 && (
+                                  <Ionicons name={turAcik ? "chevron-down" : "chevron-forward"}
+                                            size={13} color={colors.onSurfaceTertiary}
+                                            style={{ marginLeft: 4 }} />
+                                )}
                               </Pressable>
+                              {turAcik && fisler.map((h, hi, dizi) => {
+                                const onceki = hi > 0
+                                  ? Object.keys(dizi[hi - 1].split_with || {}).length : -1;
+                                const kadro = Object.keys(h.split_with || {}).length;
+                                return (
+                                  <View key={h.expense_id}>
+                                    {kadro !== onceki && kadro > 1 && (
+                                      <Text style={styles.kadroBaslik}>{kadro} KİŞİ BÖLÜŞTÜ</Text>
+                                    )}
+                                    <Pressable style={styles.fisRow}
+                                               onPress={() => router.push(
+                                                 `/expense-edit?id=${h.expense_id}`)}>
+                                      <View style={{ flex: 1, minWidth: 0 }}>
+                                        <Text style={styles.fisAd} numberOfLines={1}>
+                                          {h.merchant || "Harcama"}
+                                        </Text>
+                                        <Text style={styles.fisAlt} numberOfLines={1}>
+                                          {(h.expense_date || "").slice(8, 10)}
+                                          {" "}{ayAdi(a.month).split(" ")[0]}
+                                          {" · "}{isim(h.added_by)} ödedi
+                                        </Text>
+                                      </View>
+                                      <View style={{ alignItems: "flex-end" }}>
+                                        <Money value={h.my_share ?? 0} style={styles.fisPay} />
+                                        {Math.abs((h.my_share ?? 0) - h.total) > 0.005 && (
+                                          <Text style={styles.fisTam}>
+                                            {formatEUR(h.total)} içinde
+                                          </Text>
+                                        )}
+                                      </View>
+                                      <Ionicons name="chevron-forward" size={13}
+                                                color={colors.onSurfaceTertiary} />
+                                    </Pressable>
+                                  </View>
+                                );
+                              })}
                             </View>
                           );
                         })}
+
                       </View>
                     )}
                   </View>
