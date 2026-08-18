@@ -17,7 +17,7 @@ import {
   ScreenHeader, Sheet, Card, Row, Divider, Avatar, Money,
   IconPill, PrimaryButton, BottomSheet, PulseDot,
   useCountUp, formatEUR, currencySign, ayAdi,
-  useScrollPad,
+  useScrollPad, useBasaSar,
 } from "@/src/ui";
 import {
   getPaymentFor, getMyPayment, hasSharedPayment, markPaymentShared,
@@ -113,6 +113,7 @@ export default function Denge() {
   // Elle yazilan 120/130 sabitleri cubuk yuksekligiyle birlikte
   // degismiyordu; olcu artik tek yerden geliyor.
   const altPay = useScrollPad({ tabs: true });
+  useBasaSar(scrollRef);
 
   const [periods, setPeriods] = useState<Period[]>([]);
   const [selected, setSelected] = useState<string | undefined>(undefined);
@@ -235,7 +236,7 @@ export default function Denge() {
    *  başlıkta ve kaldırılabilir; görünmezse insan "Sana düşen 62,60"yı ayın
    *  tamamı sanır. */
   const fisleriAc = (tur: string, ay: string) =>
-    router.push(`/harcamalar?akis=${tur}&ay=${ay}`);
+    router.push(`/harcamalar?akis=${tur}&ay=${ay}&geri=/(tabs)/denge`);
 
   const activeId = activePeriod?.period_id;
   const currentId = selected || activeId;

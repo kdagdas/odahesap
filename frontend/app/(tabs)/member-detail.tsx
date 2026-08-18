@@ -8,7 +8,7 @@ import { useHousehold } from "@/src/household";
 import {
   ScreenHeader, HeaderSplit, Sheet, Card, Divider, Avatar, CategoryIcon,
   MerchantBadge, Tag, Money, splitBadge, formatEUR, formatDateTR, formatQty,
-  useScrollPad,
+  useScrollPad, useGeriDon,
 } from "@/src/ui";
 import { colors, spacing, type as T, metrics } from "@/src/theme";
 
@@ -25,6 +25,8 @@ export default function MemberDetail() {
   const altPay = useScrollPad({ tabs: true, extra: 0 });
   const { memberId, periodId } = useLocalSearchParams<{ memberId: string; periodId?: string }>();
   const router = useRouter();
+  /* Geri, geldiği yere. Sekme gezgininde `back()` Anasayfa'ya düşüyor. */
+  const geriDon = useGeriDon();
   const { members } = useHousehold();
 
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -56,7 +58,7 @@ export default function MemberDetail() {
         overline="EV ARKADAŞI"
         title={member?.name || "—"}
         right={
-          <Pressable onPress={() => router.back()} testID="member-detail-back" hitSlop={12} style={styles.headBtn}>
+          <Pressable onPress={geriDon} testID="member-detail-back" hitSlop={12} style={styles.headBtn}>
             <Ionicons name="close" size={20} color={colors.onDark} />
           </Pressable>
         }

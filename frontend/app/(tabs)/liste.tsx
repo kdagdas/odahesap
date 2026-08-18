@@ -1,5 +1,5 @@
 /** Alınacaklar — Ev (herkes görür) ve Kendim (sadece sen). */
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import {
   View, Text, StyleSheet, ScrollView, TextInput, Pressable,
   ActivityIndicator, KeyboardAvoidingView, Platform, RefreshControl,
@@ -13,7 +13,7 @@ import { useAuth } from "@/src/auth";
 import { useHousehold } from "@/src/household";
 import {
   ScreenHeader, Sheet, Card, Row, Divider, Avatar, IconPill, Overline, TabSwitch,
-  animateNextLayout, useScrollPad,
+  animateNextLayout, useScrollPad, useBasaSar,
 } from "@/src/ui";
 import { colors, spacing, radius, type as T, metrics } from "@/src/theme";
 
@@ -28,6 +28,8 @@ export default function Liste() {
   // Elle yazilan 120/130 sabitleri cubuk yuksekligiyle birlikte
   // degismiyordu; olcu artik tek yerden geliyor.
   const altPay = useScrollPad({ tabs: true });
+  const scrollRef = useRef<ScrollView>(null);
+  useBasaSar(scrollRef);
   const { user } = useAuth();
   const { members } = useHousehold();
   const [scope, setScope] = useState<Scope>("household");
@@ -112,6 +114,7 @@ export default function Liste() {
     <View style={styles.root} testID="liste-screen">
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
         <ScrollView
+          ref={scrollRef}
           contentContainerStyle={[styles.scroll, altPay]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"

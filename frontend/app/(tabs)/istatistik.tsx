@@ -27,7 +27,7 @@ import { useHousehold } from "@/src/household";
 import {
   ScreenHeader, Sheet, Card, Row, Divider, Avatar, Money, CategoryIcon,
   categoryLabel, MerchantBadge, Donut, TabSwitch, BottomSheet,
-  formatEUR, formatEURShort, useScrollPad,
+  formatEUR, formatEURShort, useScrollPad, useGeriDon,
 } from "@/src/ui";
 import {
   colors, spacing, radius, type as T, overline, fontFamily, metrics, CATEGORY_ICONS,
@@ -136,6 +136,8 @@ export default function Istatistik() {
   const [data, setData] = useState<Monthly | null>(null);
   const [loading, setLoading] = useState(true);
   const [aySecici, setAySecici] = useState(false);
+  /* Geri, geldiği yere. Sekme gezgininde `back()` Anasayfa'ya düşüyor. */
+  const geriDon = useGeriDon();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -167,7 +169,7 @@ export default function Istatistik() {
           title={ayAdi(month)}
           onTitlePress={() => setAySecici(true)}
           right={
-            <Pressable onPress={() => router.back()} hitSlop={12} testID="stat-back" style={styles.headBtn}>
+            <Pressable onPress={geriDon} hitSlop={12} testID="stat-back" style={styles.headBtn}>
               <Ionicons name="close" size={20} color={colors.onDark} />
             </Pressable>
           }

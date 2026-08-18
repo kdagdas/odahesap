@@ -10,7 +10,7 @@ import { useHousehold } from "@/src/household";
 import {
   ScreenHeader, HeaderSplit, Sheet, Card, Divider, Avatar, CategoryIcon,
   MerchantBadge, Money, splitBadge, formatEUR, formatQty,
-  HeaderPills, HeaderPill, HeaderClearPill, useScrollPad, ayAdi, buAy,
+  HeaderPills, HeaderPill, HeaderClearPill, useScrollPad, useGeriDon, ayAdi, buAy,
 } from "@/src/ui";
 import { colors, spacing, radius, type as T, overline, metrics } from "@/src/theme";
 
@@ -78,6 +78,9 @@ export default function Harcamalar() {
   const altPay = useScrollPad({ tabs: true, extra: 0 });
   const { user } = useAuth();
   const router = useRouter();
+  /* Geri, geldiği yere: Kasa'dan girildiyse Kasa'ya. Sekme gezgininde
+     `back()` yığının dibindeki Anasayfa'ya düşüyor. */
+  const geriDon = useGeriDon();
   const { members } = useHousehold();
   /* Kasa'daki bir ekstre satırından gelinmişse süzgeç hazır geliyor. */
   const params = useLocalSearchParams<{ akis?: string; ay?: string }>();
@@ -134,7 +137,7 @@ export default function Harcamalar() {
           overline="GEÇMİŞ"
           title="Harcamalar"
           right={
-            <Pressable onPress={() => router.back()} hitSlop={12} testID="harcamalar-back" style={styles.headBtn}>
+            <Pressable onPress={geriDon} hitSlop={12} testID="harcamalar-back" style={styles.headBtn}>
               <Ionicons name="close" size={20} color={colors.onDark} />
             </Pressable>
           }

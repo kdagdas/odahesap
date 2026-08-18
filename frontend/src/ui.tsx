@@ -21,6 +21,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import Svg, { Circle } from "react-native-svg";
 import { useSafeAreaInsets, type EdgeInsets } from "react-native-safe-area-context";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 
 import {
   colors, spacing, radius, type as T, overline, fontFamily, metrics, merchantTint,
@@ -255,6 +256,45 @@ export const tabBarHeight = (bottomInset: number) => 60 + Math.max(bottomInset, 
  * `tabs: true` sekme cubugu olan ekranlar icin; digerlerinde yalnizca
  * telefonun kendi cubugu kadar pay birakilir.
  */
+/**
+ * Sekme yığınında "geri" — `router.back()` YETMİYOR.
+ *
+ * Harcamalar, İstatistik ve üye dökümü `(tabs)` grubunda `href: null` ile
+ * duruyor: bunlar *gezilen* ekranlar, sekme çubuğu kalmalı (bkz. DEVAM.md
+ * "Sekme çubuğu hangi ekranda kalır"). Ama sekme gezgininde bir ekrandan
+ * diğerine geçmek yığına EKLEME değil sekme DEĞİŞTİRME; `back()` o yüzden
+ * yığının dibindeki ilk sekmeye, yani Anasayfa'ya düşüyor. Kasa'dan girip
+ * geri çıkan insan Kasa'ya dönmüyordu.
+ *
+ * Çözüm gideni değil GELDİĞİ YERİ taşımak: çağıran `?geri=` yazıyor.
+ */
+export function useGeriDon(varsayilan = "/(tabs)/panel") {
+  const router = useRouter();
+  const { geri } = useLocalSearchParams<{ geri?: string }>();
+  return React.useCallback(() => {
+    const hedef = typeof geri === "string" && geri.startsWith("/") ? geri : varsayilan;
+    router.replace(hedef as any);
+  }, [geri, varsayilan, router]);
+}
+
+/**
+ * Sekme her odaklandığında listeyi başa sarar.
+ *
+ * Sekmeye dokunmak "buraya bakmak istiyorum" demektir, "bıraktığım yere
+ * dönmek istiyorum" değil — ekranın cevabı (borcun ne kadar, ev ne harcadı)
+ * en üstte duruyor ve yarısından açılan bir liste o cevabı gizliyordu.
+ *
+ * `animated: false` bilerek: odaklanma anındaki bir kaydırma animasyonu
+ * veri çekmeyle aynı kareye düşüyor ve titreme gibi görünüyor.
+ */
+export function useBasaSar(ref: React.RefObject<{ scrollTo: (o: any) => void } | null>) {
+  useFocusEffect(
+    React.useCallback(() => {
+      ref.current?.scrollTo({ y: 0, animated: false });
+    }, [ref]),
+  );
+}
+
 export function useScrollPad(opts?: { tabs?: boolean; extra?: number }) {
   const insets = useSafeAreaInsets();
   /* Sekme cubugu `position: absolute` DEGIL: React Navigation ekrani zaten

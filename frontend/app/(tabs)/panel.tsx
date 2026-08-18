@@ -1,6 +1,6 @@
 /** Anasayfa — ev odaklı. Kişisel bakiye Kasa'ya taşındı; burada evin
  *  toplamı, nereye gittiği, kimin ne ödediği ve günlük akış var. */
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { View, Text, StyleSheet, ScrollView, RefreshControl, Pressable, ActivityIndicator } from "react-native";
 import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -11,7 +11,7 @@ import { useHousehold } from "@/src/household";
 import {
   ScreenHeader, Sheet, Card, Row, Divider, Avatar,
   Money, IconPill, CategoryIcon, categoryLabel, splitBadge, splitSummary, PulseDot,
-  Donut, formatEUR, formatEURShort, useScrollPad, ayDe, buAy, degisimTxt,
+  Donut, formatEUR, formatEURShort, useScrollPad, useBasaSar, ayDe, buAy, degisimTxt,
 } from "@/src/ui";
 import { ConfirmSheet } from "@/app/duzenli";
 import {
@@ -47,6 +47,8 @@ export default function Panel() {
   // Elle yazilan 120/130 sabitleri cubuk yuksekligiyle birlikte
   // degismiyordu; olcu artik tek yerden geliyor.
   const altPay = useScrollPad({ tabs: true });
+  const scrollRef = useRef<ScrollView>(null);
+  useBasaSar(scrollRef);
   const { user } = useAuth();
   const { household, members, activePeriod, refresh: refreshHH } = useHousehold();
   const router = useRouter();
@@ -98,6 +100,7 @@ export default function Panel() {
   return (
     <View style={styles.root} testID="panel-screen">
       <ScrollView
+        ref={scrollRef}
         contentContainerStyle={[styles.scroll, altPay]}
         showsVerticalScrollIndicator={false}
         refreshControl={

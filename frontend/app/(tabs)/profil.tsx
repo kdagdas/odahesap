@@ -8,7 +8,7 @@
  *  (/ev-ayarlari), uygulamaya ait (/ayarlar). Bundan sonra eklenen her
  *  özelliğin yeri bu soruyla belli oluyor.
  */
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import {
   View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, TextInput,
 } from "react-native";
@@ -17,7 +17,9 @@ import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@/src/auth";
 import { useHousehold } from "@/src/household";
 import { apiPost, apiGet, api } from "@/src/api";
-import { Avatar, Card, Divider, ScreenHeader, Sheet, IconPill, useScrollPad } from "@/src/ui";
+import {
+  Avatar, Card, Divider, ScreenHeader, Sheet, IconPill, useScrollPad, useBasaSar,
+} from "@/src/ui";
 import { pickPhotoFromLibrary, takePhotoWithCamera, removePhoto } from "@/src/photo";
 import { colors, spacing, radius, type as T, metrics, AVATARS, fontFamily, overline } from "@/src/theme";
 
@@ -26,6 +28,8 @@ export default function Profil() {
   // Elle yazilan 120/130 sabitleri cubuk yuksekligiyle birlikte
   // degismiyordu; olcu artik tek yerden geliyor.
   const altPay = useScrollPad({ tabs: true });
+  const scrollRef = useRef<ScrollView>(null);
+  useBasaSar(scrollRef);
   const router = useRouter();
   const { user, logout, refresh: refreshAuth } = useAuth();
   const { household, members, pendingMembers, isAdmin, refresh } = useHousehold();
@@ -112,7 +116,8 @@ export default function Profil() {
 
   return (
     <View style={styles.root} testID="profil-screen">
-      <ScrollView contentContainerStyle={[styles.page, altPay]} showsVerticalScrollIndicator={false}>
+      <ScrollView ref={scrollRef} contentContainerStyle={[styles.page, altPay]}
+                  showsVerticalScrollIndicator={false}>
         <ScreenHeader overline="PROFİL" title={user?.name || "—"}>
           <View style={styles.heroRow}>
             <Pressable onPress={() => setPhotoMenu((v) => !v)} testID="profile-photo-btn">
