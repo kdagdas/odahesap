@@ -1653,13 +1653,24 @@ async def list_expenses(
     period_id: Optional[str] = None,
     member_id: Optional[str] = None,
     target_type: Optional[str] = None,
+    month: Optional[str] = None,
     user=Depends(get_current_user),
 ):
+    """Görünür harcamalar.
+
+    `month=YYYY-MM` verilirse dönem yerine **takvim ayı** süzülür ve her
+    kayda `my_share` eklenir — borç dökümünde "bu ayın hangi fişlerinden
+    geldi" katı bunu okuyor. Sağda iki sayı görünüyor: senin payın büyük,
+    fişin tamamı küçük. Karıştırılan tam olarak bu ikisiydi.
+    """
     hh = await get_user_household(user["user_id"])
     if not hh:
         return {"expenses": []}
     q: dict = {"household_id": hh["household_id"]}
-    if period_id:
+    aylik = bool(month) and len(month or "") == 7
+    if aylik:
+        pass  # ay süzgeci Python tarafında; `expense_date` boşsa `created_at`
+    elif period_id:
         q["period_id"] = period_id
     else:
         active = await get_active_period(hh["household_id"])
@@ -1671,6 +1682,21 @@ async def list_expenses(
     if target_type:
         q["target_type"] = target_type
     exps = await db.expenses.find(q, {"_id": 0}).sort("expense_date", -1).to_list(1000)
+
+    if aylik:
+        # Ay süzgeci burada, sorguda değil: `_expense_day()` tarihi boş olan
+        # eski kayıtlarda `created_at`'e düşüyor ve bu mantık Mongo sorgusuna
+        # çevrilemiyor.
+        exps = [e for e in exps if _expense_day(e)[:7] == month]
+        uyeler = await period_participants(
+            hh["household_id"],
+            (await get_active_period(hh["household_id"]) or {}).get("period_id", ""),
+            hh["member_ids"],
+        )
+        for e in exps:
+            e["my_share"] = round(
+                float(expense_shares(e, uyeler).get(user["user_id"], 0.0)), 2)
+
     # secondary sort by created_at desc for same date
     exps.sort(key=lambda e: (e.get("expense_date") or "", e.get("created_at")), reverse=True)
     return {"expenses": exps}

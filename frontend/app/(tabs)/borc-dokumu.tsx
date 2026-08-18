@@ -25,6 +25,7 @@ import { Ionicons } from "@expo/vector-icons";
 
 import { apiGet } from "@/src/api";
 import { useAuth } from "@/src/auth";
+import { useHousehold } from "@/src/household";
 import {
   ScreenHeader, Sheet, Card, Divider, Money, formatEUR, ayAdi, useScrollPad,
 } from "@/src/ui";
@@ -32,16 +33,37 @@ import { colors, spacing, radius, type as T, overline, fontFamily, metrics } fro
 
 type EkstreAy = { month: string; share: number; paid: number; delta: number };
 type Ekstre = { months: EkstreAy[]; carried: number; current_month: string };
+type Harcama = {
+  expense_id: string; merchant?: string | null; total: number;
+  my_share?: number; expense_date?: string; added_by: string;
+  split_with?: Record<string, number> | null;
+};
 
 export default function BorcDokumu() {
   const router = useRouter();
   const { user } = useAuth();
+  const { members } = useHousehold();
+  const isim = (id: string) => (id === user?.user_id ? "Sen"
+    : (members.find((m) => m.user_id === id)?.name || "?").split(" ")[0]);
   const altPay = useScrollPad({ tabs: true });
   const [ekstre, setEkstre] = useState<Ekstre | null>(null);
   const [net, setNet] = useState(0);
   const [loading, setLoading] = useState(true);
   /** Bulunduğun ay açık gelir, geçmiş aylar tek satıra kapanır. */
   const [acik, setAcik] = useState<string | null>(null);
+  /** Ay → o ayın harcamaları. Açıldığında bir kez çekiliyor. */
+  const [harcamalar, setHarcamalar] = useState<Record<string, Harcama[]>>({});
+
+  const ayiAc = useCallback(async (ay: string) => {
+    if (harcamalar[ay]) return;
+    try {
+      const r = await apiGet<{ expenses: Harcama[] }>(`/expenses?month=${ay}`);
+      // Eskiden yeniye: kadro değişimi başlığı kronolojik okunmalı.
+      const dizi = [...(r.expenses || [])].sort((a, b) =>
+        (a.expense_date || "").localeCompare(b.expense_date || ""));
+      setHarcamalar((h) => ({ ...h, [ay]: dizi }));
+    } catch (e) { console.log(e); }
+  }, [harcamalar]);
 
   const load = useCallback(async () => {
     try {
@@ -49,10 +71,10 @@ export default function BorcDokumu() {
       const st: Ekstre | null = bal.statement || null;
       setEkstre(st);
       setNet(bal.net?.[user?.user_id || ""] ?? 0);
-      if (st) setAcik(st.current_month);
+      if (st) { setAcik(st.current_month); ayiAc(st.current_month); }
     } catch (e) { console.log(e); }
     finally { setLoading(false); }
-  }, [user?.user_id]);
+  }, [user?.user_id, ayiAc]);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
@@ -104,7 +126,7 @@ export default function BorcDokumu() {
                 return (
                   <View key={a.month}>
                     {i > 0 && <Divider inset={spacing.lg} />}
-                    <Pressable style={styles.ayRow} onPress={() => setAcik(acikMi ? null : a.month)}
+                    <Pressable style={styles.ayRow} onPress={() => { const y = acikMi ? null : a.month; setAcik(y); if (y) ayiAc(y); }}
                                testID={`dokum-ay-${a.month}`}>
                       <Text style={[styles.ayAd, bu && styles.ayAdBu]}>
                         {ayAdi(a.month).split(" ")[0]}
@@ -134,6 +156,51 @@ export default function BorcDokumu() {
                             −{formatEUR(alacakli ? a.share : a.paid)}
                           </Text>
                         </View>
+
+                        {/* O ayın fişleri. Bölüşme kadrosu değiştiği yerde
+                            başlık düşüyor — dönem sınırının taşıdığı bilgi
+                            zaten her harcamanın `split_with` listesinde
+                            donmuş durumda, ayrı bir kayda gerek yok. */}
+                        {(harcamalar[a.month] || []).map((h, hi, dizi) => {
+                          const oncekiKadro = hi > 0
+                            ? Object.keys(dizi[hi - 1].split_with || {}).length : -1;
+                          const kadro = Object.keys(h.split_with || {}).length;
+                          return (
+                            <View key={h.expense_id}>
+                              {kadro !== oncekiKadro && kadro > 0 && (
+                                <Text style={styles.kadroBaslik}>
+                                  {kadro} KİŞİ BÖLÜŞTÜ
+                                </Text>
+                              )}
+                              <Pressable style={styles.fisRow}
+                                         onPress={() => router.push(
+                                           `/expense-edit?id=${h.expense_id}`)}>
+                                <View style={{ flex: 1, minWidth: 0 }}>
+                                  <Text style={styles.fisAd} numberOfLines={1}>
+                                    {h.merchant || "Harcama"}
+                                  </Text>
+                                  <Text style={styles.fisAlt} numberOfLines={1}>
+                                    {(h.expense_date || "").slice(8, 10)}
+                                    {" "}{ayAdi(a.month).split(" ")[0]}
+                                    {" · "}{isim(h.added_by)} ödedi
+                                  </Text>
+                                </View>
+                                <View style={{ alignItems: "flex-end" }}>
+                                  {/* Senin payin BUYUK, fisin tamami kucuk.
+                                      Karistirilan tam olarak bu ikisiydi. */}
+                                  <Money value={h.my_share ?? 0} style={styles.fisPay} />
+                                  {Math.abs((h.my_share ?? 0) - h.total) > 0.005 && (
+                                    <Text style={styles.fisTam}>
+                                      {formatEUR(h.total)} içinde
+                                    </Text>
+                                  )}
+                                </View>
+                                <Ionicons name="chevron-forward" size={14}
+                                          color={colors.onSurfaceTertiary} />
+                              </Pressable>
+                            </View>
+                          );
+                        })}
                       </View>
                     )}
                   </View>
@@ -197,6 +264,18 @@ const styles = StyleSheet.create({
   toplamLabel: { ...T.body, color: colors.inkSecondary, flex: 1 },
   toplamVal: { ...T.emph, fontSize: 17, color: colors.ink },
   empty: { alignItems: "center", gap: spacing.sm, paddingVertical: spacing.xxxl, paddingHorizontal: spacing.xl },
+  kadroBaslik: {
+    ...overline, fontSize: 10, color: colors.inkTertiary,
+    marginTop: spacing.md, marginBottom: 2, paddingLeft: spacing.md,
+  },
+  fisRow: {
+    flexDirection: "row", alignItems: "center", gap: spacing.sm,
+    paddingVertical: 7, paddingLeft: spacing.md,
+  },
+  fisAd: { ...T.caption, fontFamily: fontFamily.medium, color: colors.ink },
+  fisAlt: { ...T.caption, fontSize: 11, color: colors.inkTertiary },
+  fisPay: { ...T.caption, fontFamily: fontFamily.semibold, color: colors.ink },
+  fisTam: { ...T.caption, fontSize: 10, color: colors.inkTertiary },
   emptyTitle: { ...T.emph, color: colors.ink },
   emptyDesc: { ...T.caption, color: colors.inkTertiary, textAlign: "center" },
 });
