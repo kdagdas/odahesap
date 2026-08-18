@@ -431,6 +431,30 @@ Yeşil bu uygulamada "alacak" demek; senin toplam çıkışın alacak değil.
 
 ---
 
+## TASARIM İLKESİ — kademeli açılım
+
+> *"İnsanlar görmek istediği zaman görsün. Kimisi sadece son duruma bakar:
+> benim borcum ne kadar. Yirmi fişi birden göstermek hem ekranı büyütüyor hem
+> de ilgilenmeyene gereksiz bilgi veriyor."* — ev sahibi, 18 Ağustos 2026
+
+Bu **tüm ekranlar için** geçerli bir kural, yalnızca borç dökümü için değil:
+
+- Her ekran **tek bir cevapla** açılır (borcun ne kadar · ev ne harcadı)
+- Ayrıntı **dokunuşla** gelir, kendiliğinden değil
+- Her kat bir soruyu cevaplar ve bir sonrakini mümkün kılar:
+  **bakiye → ay → hareket türü → fişler → kalemler**
+- İlgilenmeyen kişi ilk katta durur ve ekranı kalabalık görmez
+
+Uygulandığı yerler: borç dökümü (ay satırı → hareketler → fişler → kalemler) ·
+Anasayfa'nın "Tüm istatistikler" kapısı · ödeme geçmişinin son 3'te durması ·
+Kasa'da seni ilgilendirmeyen borçların tek satıra inmesi.
+
+Karşıtı olan tasarım hatası: *bir ekranda her şeyi göstermek*. Bu turun
+başındaki şikâyet — aynı sayının üç ekranda üç kez görünmesi — aynı hatanın
+başka bir yüzüydü.
+
+---
+
 ## Elenenler ve NEDEN elendikleri
 
 Bir sonraki oturum bunları "eksik" sanıp geri getirmesin.
