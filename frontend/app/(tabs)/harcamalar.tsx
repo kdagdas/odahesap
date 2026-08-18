@@ -174,9 +174,17 @@ export default function Harcamalar() {
             <HeaderPill
               value={memberFilter ?? ""}
               options={[
-                { value: "", label: "Herkes", icon: "people", hint: `${members.length} kişi` },
+                { value: "", label: "Herkes", hint: `${members.length} kişi`,
+                  avatarlar: members.map((m) => ({
+                    name: m.name, avatarId: (m as any).avatar_id,
+                    userId: m.user_id, photoVersion: (m as any).photo_version,
+                  })) },
                 ...members.map((m) => ({
-                  value: m.user_id, label: m.name.split(" ")[0], icon: "person",
+                  value: m.user_id, label: m.name.split(" ")[0],
+                  avatar: {
+                    name: m.name, avatarId: (m as any).avatar_id,
+                    userId: m.user_id, photoVersion: (m as any).photo_version,
+                  },
                 })),
               ]}
               onSelect={(v) => setMemberFilter(v || undefined)}

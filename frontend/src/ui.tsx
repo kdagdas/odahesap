@@ -595,7 +595,37 @@ export type SelectOption<T extends string> = {
   iconAccent?: boolean;
   /** Henüz gelmedi — listede görünür ama seçilemez. */
   soon?: boolean;
+  /** Simge yerine bir kişinin avatarı — kişi süzgecinde her satır kendi
+   *  yüzünü taşısın diye. `avatarlar` verilirse (ör. "Herkes") üçü yığın
+   *  hâlinde çizilir. */
+  avatar?: { name?: string; avatarId?: number | null; userId?: string | null; photoVersion?: string | null };
+  avatarlar?: { name?: string; avatarId?: number | null; userId?: string | null; photoVersion?: string | null }[];
 };
+
+/** Üst üste binen avatarlar — "Herkes" seçeneğinin yüzü.
+ *  `ring` bindirmenin arkasındaki halka: koyu başlıkta `dark`, beyaz
+ *  sayfada `surface` — yoksa avatarlar birbirine yapışık görünür. */
+function AvatarYigin({
+  kisiler, size = 20, ring = colors.dark,
+}: {
+  kisiler: NonNullable<SelectOption<string>["avatarlar"]>;
+  size?: number; ring?: string;
+}) {
+  const gorunen = kisiler.slice(0, 3);
+  const bindirme = Math.round(size * 0.38);
+  return (
+    <View style={{ flexDirection: "row", width: size + (gorunen.length - 1) * (size - bindirme) }}>
+      {gorunen.map((k, i) => (
+        <View key={k.userId || i}
+              style={{ marginLeft: i === 0 ? 0 : -bindirme,
+                       borderRadius: size, borderWidth: 1.5, borderColor: ring }}>
+          <Avatar name={k.name} size={size} avatarId={k.avatarId}
+                  userId={k.userId} photoVersion={k.photoVersion} />
+        </View>
+      ))}
+    </View>
+  );
+}
 
 /**
  * Koyu başlığın altında, beyaz yüzeyin kavisinin hemen üstünde duran seçici hap.
@@ -651,7 +681,12 @@ export function HeaderPill<T extends string>({
   return (
     <>
       <Pressable style={styles.pill} onPress={() => setOpen(true)} testID={testID}>
-        {current?.icon ? (
+        {current?.avatarlar?.length ? (
+          <AvatarYigin kisiler={current.avatarlar} size={17} />
+        ) : current?.avatar ? (
+          <Avatar name={current.avatar.name} size={17} avatarId={current.avatar.avatarId}
+                  userId={current.avatar.userId} photoVersion={current.avatar.photoVersion} />
+        ) : current?.icon ? (
           <Ionicons
             name={current.icon as any} size={13}
             color={current.iconAccent ? colors.accentOnDark : colors.onDarkMuted}
@@ -670,7 +705,14 @@ export function HeaderPill<T extends string>({
               onPress={() => { setOpen(false); if (o.value !== value) onSelect(o.value); }}
               testID={testID ? `${testID}-${o.value}` : undefined}
             >
-              {o.icon ? (
+              {o.avatarlar?.length ? (
+                <View style={{ width: 30, alignItems: "center" }}>
+                  <AvatarYigin kisiler={o.avatarlar} size={22} ring={colors.surface} />
+                </View>
+              ) : o.avatar ? (
+                <Avatar name={o.avatar.name} size={26} avatarId={o.avatar.avatarId}
+                        userId={o.avatar.userId} photoVersion={o.avatar.photoVersion} />
+              ) : o.icon ? (
                 <Ionicons
                   name={o.icon as any} size={17}
                   color={o.iconAccent ? colors.accent : colors.inkTertiary}
