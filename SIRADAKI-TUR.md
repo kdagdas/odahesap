@@ -38,13 +38,40 @@ dönemi **sıfırdan** başlatıyor. Bildirim birebir şunu diyor:
 Yani biri ödeşmeden dönem kapanırsa **borç canlı ekrandan siliniyor.** Kayıt
 arşivde duruyor ama kimse bir daha bakmıyor. Sessiz bir kayıp.
 
-### Yeni model
+### Yeni model — ve onu uygulamanın ŞAŞIRTICI DERECEDE ucuz yolu
 
-- **Kasa ödeşilmemiş her şeye bakar.** Harcamalar tarihleriyle yaşar.
-- `period_id` alanı kayıtlarda **kalır** (eski APK'lar ve geriye dönük
-  uyumluluk için) ama **hesapta kullanılmaz.**
-- **Dönem kapatma düğmesi kalkar.** Bakiye sıfıra değince ödeşme çizgisi
-  kendiliğinden tarihe düşer ve herkese bildirim gider.
+Gerçek veriye bakarken çıktı (18 Ağustos 2026): `_compute_balances()`'ı
+yeniden yazmaya gerek yok.
+
+> **Açık dönem zaten "ödeşilmemiş her şey" demektir** — yeter ki dönem
+> *yalnızca ödeşildiğinde* kapansın.
+
+Yani mekanizma duruyor, kapanma koşulu değişiyor:
+
+- **Kapatma düğmesi kalkar.** Dönem elle kapanmaz.
+- **Dönem yalnızca bakiye sıfıra değince, kendiliğinden kapanır.** Kapanınca
+  kaybolacak bir borç kalmaz — asıl hatanın kökü buydu.
+- Ödeşilmezse dönem **açık kalır** ve aylarca sürebilir. Kasa o tek açık
+  dönemi gösterir, "önceki aylardan devir" satırı da o uzun dönemin içindeki
+  harcamaların **tarihlerinden** çıkar.
+- İstatistik dönemi zaten hiç kullanmıyor; takvim ayına geçer.
+
+Üç kazancı var:
+
+**Göç yok.** Bugün kapalı olan dönemler kapalı (ödeşilmiş) kalır, açık olan
+açık kalır. Hiçbir harcamanın dönemi değişmez. *(Ölçüldü: ev `hh_2ca8b3e81`,
+kapalı `per_a235730a` 19 harcama / 231,48 € test verisi; açık `per_a1fb4085`
+27 harcama / 496,55 € gerçek ve ödeşilmemiş. İkincisine hiçbir şey olmuyor.)*
+
+**Geriye uyumluluk bedava.** `_compute_balances(household_id, period_id)`
+imzası aynı; `/balances` ve `/periods` aynı biçimde cevap veriyor. Eski APK'lar
+(v42) çalışmaya devam ediyor.
+
+**Geri dönüş tek satır.** Beğenilmezse kapatma düğmesi geri konur; veri hiç
+ayrışmadığı için başka hiçbir şey gerekmez.
+
+Kapalı dönemin dokunulmazlığı da kendiliğinden doğru anlama gelir:
+**kapalı = ödeşilmiş**, ve ödeşmiş geçmiş değişmemeli.
 - Eşik **bir kuruş** (`|net| < 0,01`). Çizgi yalnızca **gerçekten silinen bir
   borç varsa** çizilir — yeni kurulmuş, hiç harcama girilmemiş bir evde
   "Ev ödeşti" yazmak saçma olurdu.
@@ -128,10 +155,19 @@ Kalan borcun             48,20 €
 Bu yüzden **FIFO gerekmiyor** — ödediğin 40 €'nun "hangi ayın borcu" olduğunu
 bilmeye gerek yok, zaman dilimi hesabı kendi kapatıyor.
 
-**Devir tek satırdır, ay ay veya kişi kişi dökülmez.** Sebep maliyet değil
-doğruluk: sadeleştirme her seferinde kimin kime ödeyeceğini yeniden
-hesapladığı için "Temmuz'dan Salih'e 18 €" diye bir şey yoktur — Ağustos'un
-harcamaları girince o borç Ayşe'ye ödenecek hale gelebilir.
+**Ekstre bloğunda devir tek satırdır** ("Önceki aylardan" = bütün geçmiş
+ayların toplamı). Ay ay ayrıntı ekstre bloğunda değil, **borç dökümü
+sayfasında** yaşar (aşağıda).
+
+**Devir KİŞİ bazında dökülmez.** Sebep maliyet değil doğruluk: sadeleştirme
+her seferinde kimin kime ödeyeceğini yeniden hesapladığı için "Temmuz'dan
+Salih'e 18 €" diye bir şey yoktur — Ağustos'un harcamaları girince o borç
+Ayşe'ye ödenecek hale gelebilir.
+
+**Ama AY bazında dökülür ve bu kurgu değil, kesin aritmetiktir:** her ayın
+satırı *o ay bakiyenin ne kadar değiştiği*. Toplamları borcu verir, FIFO
+gerekmez. Dil buna göre kurulur — "Haziran'dan kalan 48 €" kurgudur (hangi
+euro'nun kaldığı bilinemez), **"Haziran'da 48 € borçlandın"** olgudur.
 
 Blok **kendiliğinden dönüyor:** alacaklıda etiketler "önceki aylardan ·
 ödediklerin · senin payın · ev sana borçlu" olur. Aynı dört satır, ayrı bir
@@ -166,22 +202,35 @@ avatar ve çizgi duruyor çünkü yönü onlar söylüyor.
 **"Ödeme bilgini paylaş" kartın dibinde tek satır.** Bugün her borçlunun
 satırında ayrı ayrı duruyor, oysa paylaşılan IBAN hepsinde aynı.
 
-### Borç dökümü (satıra dokununca)
+### Borç dökümü (satıra dokununca) — AY AY
+
+Üç ay ödeşilmemişse üç ay da görünür. Bulunduğun ay açık gelir, geçmiş aylar
+tek satıra kapanır:
 
 ```
-ÖNCEKİ AYLARDAN
-  Temmuz sonu bakiyesi        18,00  >
-AĞUSTOS
-  Ev alışverişlerindeki payın 62,60  >
-  Ödediklerin                -40,00  >
-  Kemal'in sana borcu         -0,80  >
+Salih'e 40,60 € nereden geliyor
+3 aydır ödeşilmedi
+
+Haziran                       +48,00  >
+Temmuz                        -30,00  >
+Ağustos                       +22,60  v
+    Ev alışverişlerindeki payın 62,60  >
+    Kemal'in senin için aldıkları 8,40 >
+    14 Ağu · Salih'e ödedin    -40,00  >
+    2 Ağu · Kemal senin için ödedi -8,40 >
 -------------------------------------
-  Ödenecek                    39,80
+  Ödenecek                     40,60
 ```
 
-Oklu satırlar bir kat daha açılır: **harcamalar** (sağda iki sayı — senin
-payın büyük, fişin tamamı küçük) → **fiş kalemleri.** Borcun en dibinde havuç
-var; **hiçbir rakip bu katı gösteremez.**
+- **Değişimi sıfır olan ay hiç çizilmez.**
+- Bir ayda ödediğin borçlandığından fazlaysa satır **yeşil ve eksi** çıkar.
+- **Ara ödemeler kendi ayının içinde**, kendi satırları olarak durur — senin
+  yaptıkların da, bir başkasının senin yerine ödedikleri de.
+
+Bir aya dokununca o ayın içi açılır: fişler (sağda iki sayı — *senin payın*
+büyük, fişin tamamı küçük), düzenli ödemeler, ve o ayki ödemeler. Bir fişe
+dokununca **kalemlere** iner. Borcun en dibinde havuç var; **hiçbir rakip bu
+katı gösteremez.**
 
 Gizlilik sorunu yok: zaten bölüşme listesinde olduğun harcamalar.
 
