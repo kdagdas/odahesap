@@ -26,9 +26,28 @@ import {
 import { colors, spacing, radius, type as T, overline, fontFamily, metrics } from "@/src/theme";
 
 type Transfer = { from: string; to: string; amount: number };
+/** Bir ayın içindeki hareket türü — `artiran` borcu büyüten taraf. */
+type Hareket = { tur: string; tutar: number; artiran: boolean };
 /** Bakiyenin ay ay dökümü — `share` borcu artıran, `paid` azaltan taraf. */
-type EkstreAy = { month: string; share: number; paid: number; delta: number };
+type EkstreAy = {
+  month: string; share: number; paid: number; delta: number; lines?: Hareket[];
+};
 type Ekstre = { months: EkstreAy[]; carried: number; current_month: string };
+
+/**
+ * Hareket türlerinin ekrandaki adı. Sunucu yalnızca anahtar gönderiyor.
+ *
+ * `fisli` olanlar Harcamalar'a açılıyor; ödeme kayıtlarının altında fiş yok,
+ * onlar Ödeme Geçmişi'nde yaşıyor.
+ */
+const TUR_ADI: Record<string, { ad: string; fisli: boolean }> = {
+  pay: { ad: "Ev alışverişlerindeki payın", fisli: true },
+  ev_odedigin: { ad: "Senin ödediğin ev alışverişleri", fisli: true },
+  baskasi_icin: { ad: "Başkası için aldıkların", fisli: true },
+  senin_icin: { ad: "Senin için alınanlar", fisli: true },
+  odemelerin: { ad: "Kaydettiğin ödemeler", fisli: false },
+  sana_odenen: { ad: "Sana ödenenler", fisli: false },
+};
 type Period = {
   period_id: string; started_at: string; closed_at: string | null; status: string;
   first_expense?: string | null; last_expense?: string | null;
@@ -56,6 +75,35 @@ const relativeDay = (iso: string) => {
 };
 
 
+/**
+ * Ekstrenin tek satırı — lacivert başlığın içinde, dokunulabilir.
+ *
+ * Açıkken satır `darkSurface` ile vurgulanıyor ve ok aşağı dönüyor. Vurgu
+ * şart: açılım kavisin ALTINDA, beyaz alanda duruyor, yani dokunulan satır
+ * ile açılan kart arasında bir boşluk var. Vurgu olmasa hangi satırın
+ * karşılığı olduğu kaybolurdu.
+ *
+ * Açılım neden lacivertin içinde değil: satırlar 12 punto, orada altı satır
+ * daha açmak okunmaz bir yığın yapar. Ayrıca lacivert alan bu turda "L boy"
+ * olarak tanımlandı; içeriğe göre uzayınca üç boy sistemi anlamını yitirir.
+ */
+function EkstreSatir({
+  etiket, tutar, eksi, acik, onPress, testID,
+}: {
+  etiket: string; tutar: string; eksi?: boolean;
+  acik: boolean; onPress: () => void; testID: string;
+}) {
+  return (
+    <Pressable onPress={onPress} testID={testID}
+               style={[styles.ekstreRow, styles.ekstreTiklanir, acik && styles.ekstreAcik]}>
+      <Text style={styles.ekstreLabel}>{etiket}</Text>
+      <Text style={[styles.ekstreVal, eksi && styles.ekstreEksi]}>{tutar}</Text>
+      <Ionicons name={acik ? "chevron-down" : "chevron-forward"} size={14}
+                color={acik ? colors.onDark : colors.onDarkMuted} />
+    </Pressable>
+  );
+}
+
 export default function Denge() {
   const router = useRouter();
   const { user } = useAuth();
@@ -79,6 +127,16 @@ export default function Denge() {
   const [busy, setBusy] = useState(false);
   const [mode, setMode] = useState<"none" | "close" | "reopen">("none");
   const [gecmisAcik, setGecmisAcik] = useState(false);
+  /**
+   * Ekstrenin açık satırı — `carried` · `share` · `paid`, ya da kapalı.
+   *
+   * Kimlik ETİKETE değil VERİYE bağlı: alacaklıyken "Ağustos'ta ödediklerin"
+   * ile "Senin payın" yer değiştiriyor ama açılan şey satırın anlamını takip
+   * etmeli, ekrandaki sırasını değil.
+   */
+  const [acikSatir, setAcikSatir] = useState<"carried" | "share" | "paid" | null>(null);
+  /** Devir açıkken, içinde açılmış olan ay. */
+  const [acikAy, setAcikAy] = useState<string | null>(null);
   const [payFor, setPayFor] = useState<Transfer | null>(null);
   const [payAmount, setPayAmount] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -163,6 +221,22 @@ export default function Denge() {
   const nameOf = (id: string) => member(id)?.name || "Bilinmeyen";
   const first = (id: string) => (id === me ? "Sen" : nameOf(id).split(" ")[0]);
 
+  /** Ekstre satırını aç/kapa. Aynı anda tek satır açık: iki açılım yan yana
+   *  durursa "hangisi neyin cevabı" sorusu doğuyor. */
+  const ac = (k: "carried" | "share" | "paid") => {
+    setAcikSatir((v) => (v === k ? null : k));
+    setAcikAy(null);
+  };
+
+  /** Hareket satırı → Harcamalar, süzülmüş olarak.
+   *
+   *  Burada ayrı bir fiş listesi çizilmiyor: fişleri çizen bir ekran zaten
+   *  var ve orada tarih, market, kalemler, düzenleme — hepsi hazır. Süzgeç
+   *  başlıkta ve kaldırılabilir; görünmezse insan "Sana düşen 62,60"yı ayın
+   *  tamamı sanır. */
+  const fisleriAc = (tur: string, ay: string) =>
+    router.push(`/harcamalar?akis=${tur}&ay=${ay}`);
+
   const activeId = activePeriod?.period_id;
   const currentId = selected || activeId;
   const archived = currentId !== activeId;
@@ -171,10 +245,57 @@ export default function Denge() {
   /* Alacakliyken ekstrenin etiketleri yer degistiriyor: ayni dort satir,
      ters yon. `share` borcu artiran, `paid` azaltan taraf. */
   const alacakli = myNet > 0.005;
-  const buAyKutu = ekstre
+  const buAyKutu: EkstreAy = ekstre
     ? (ekstre.months.find((m) => m.month === ekstre.current_month)
-       || { month: ekstre.current_month, share: 0, paid: 0, delta: 0 })
-    : { month: "", share: 0, paid: 0, delta: 0 };
+       || { month: ekstre.current_month, share: 0, paid: 0, delta: 0, lines: [] })
+    : { month: "", share: 0, paid: 0, delta: 0, lines: [] };
+
+  /** Açılan kartın başlığı, dokunulan satırın etiketiyle birebir aynı —
+   *  başka bir kelime kullanmak "acaba başka bir şey mi açıldı" sorusu
+   *  doğurur. */
+  const acilimBaslik = !ekstre ? "" :
+    acikSatir === "carried" ? "Önceki Aylardan"
+      : acikSatir === (alacakli ? "paid" : "share")
+        ? `${ayAdi(ekstre.current_month).split(" ")[0]}${alacakli ? "'ta Ödediklerin" : "'ta Sana Düşen"}`
+        : alacakli ? "Senin Payın" : "Ödediklerin";
+
+  /** Devir satırının içi: bu aydan öncekiler, eskiden yeniye. */
+  const gecmisAylar = useMemo(
+    () => (ekstre?.months || [])
+      .filter((a) => a.month < (ekstre?.current_month || ""))
+      .sort((a, b) => a.month.localeCompare(b.month)),
+    [ekstre],
+  );
+
+  /** Bu ayın hareketleri, dokunulan satırın YÖNÜNE göre süzülmüş.
+   *  `artiran` borcu büyüten taraf (`share`), diğerleri azaltan (`paid`) —
+   *  ayrım sunucudaki tek tanımdan geliyor, burada yeniden hesaplanmıyor. */
+  const buAyHareketleri = useMemo(() => {
+    if (!acikSatir || acikSatir === "carried") return [];
+    return (buAyKutu.lines || []).filter((l) => l.artiran === (acikSatir === "share"));
+  }, [acikSatir, buAyKutu]);
+
+  /** Tek hareket satırı. Fişi olan açılır, ödeme kaydı olan açılmaz. */
+  const hareketSatiri = (l: Hareket, ay: string) => {
+    const meta = TUR_ADI[l.tur] || { ad: l.tur, fisli: false };
+    return (
+      <Pressable key={`${ay}-${l.tur}`} style={styles.hareketRow}
+                 disabled={!meta.fisli} testID={`hareket-${l.tur}`}
+                 onPress={() => fisleriAc(l.tur, ay)}>
+        <Text style={styles.hareketLabel}>{meta.ad}</Text>
+        {/* İşaret kuralı tek: artı borcu artırır, eksi azaltır. "Kemal için
+            aldıkların −12,00" en çok merak edilen soruyu kapatıyor — o parayı
+            ayrıca almana gerek yok, düşüm burada oldu. */}
+        <Text style={[styles.hareketVal, !l.artiran && styles.hareketEksi]}>
+          {l.artiran ? "" : "−"}{formatEUR(l.tutar)}
+        </Text>
+        {meta.fisli
+          ? <Ionicons name="chevron-forward" size={13} color={colors.onSurfaceTertiary} />
+          : <View style={{ width: 13 }} />}
+      </Pressable>
+    );
+  };
+
   const owedToMe = useMemo(
     () => transfers.filter((t) => t.to === me).reduce((s, t) => s + t.amount, 0),
     [transfers, me],
@@ -412,40 +533,47 @@ export default function Denge() {
                 "Onceki aylardan" satiri YALNIZCA devir varsa ciziliyor:
                 duzenli odesen bir evde ekran bugunkuyle ayni kaliyor. */}
             {ekstre ? (
-              /* BLOĞUN TAMAMI dokunulabilir, satır satır değil.
-                 Dört satırın her biri ~20 piksel; ayrı hedefler yapmak
-                 başparmak için isabetsiz olurdu. Üstelik dördü tek bir
-                 düşüncenin parçası: "bakiyen şöyle oluştu". Tek hedef, tek ok.
+              /* HER SATIR AYRI HEDEF, her satırın kendi oku var.
+                 Önce bloğun tamamı tek hedefti ve ayrı bir döküm sayfasına
+                 gidiyordu. O sayfa kaldırıldı: "Sana düşen 62,60" satırına
+                 dokunan insan zaten fişleri görmek istiyor ve fişleri çizen
+                 bir ekran (Harcamalar) zaten var — aynı listeyi ikinci kez
+                 çizmek aynı işi iki yerde yapmaktı.
 
-                 Kapı BURASI, köprü değil: ekstre satırları zaten dökümün
-                 özeti, döküm de onların açılmış hâli. Köprünün sorduğu soru
-                 ise "kime ödeyeceğim" — başka bir soru. */
-              <Pressable style={styles.ekstre} testID="open-dokum"
-                         onPress={() => router.push("/borc-dokumu")}>
+                 Ok kapalıyken sağa, açıkken aşağı bakıyor: hangi satırın
+                 açıldığı ok olmadan yalnızca vurgudan anlaşılıyordu ve
+                 vurgunun kendisi "seçili" ile "açık" arasında ayrım
+                 yapmıyor. */
+              <View style={styles.ekstre}>
                 {Math.abs(ekstre.carried) > 0.005 && (
-                  <View style={styles.ekstreRow}>
-                    <Text style={styles.ekstreLabel}>Önceki aylardan</Text>
-                    <Text style={styles.ekstreVal}>{formatEUR(alacakli ? -ekstre.carried : ekstre.carried)}</Text>
-                  </View>
+                  <EkstreSatir
+                    etiket="Önceki aylardan"
+                    tutar={formatEUR(alacakli ? -ekstre.carried : ekstre.carried)}
+                    acik={acikSatir === "carried"}
+                    onPress={() => ac("carried")}
+                    testID="ekstre-carried"
+                  />
                 )}
-                <View style={styles.ekstreRow}>
-                  <Text style={styles.ekstreLabel}>
-                    {ayAdi(ekstre.current_month).split(" ")[0]}
-                    {alacakli ? "'ta ödediklerin" : "'ta sana düşen"}
-                  </Text>
-                  <Text style={styles.ekstreVal}>
-                    {formatEUR(alacakli ? buAyKutu.paid : buAyKutu.share)}
-                  </Text>
-                </View>
-                <View style={styles.ekstreRow}>
-                  <Text style={styles.ekstreLabel}>
-                    {alacakli ? "Senin payın" : "Ödediklerin"}
-                  </Text>
-                  <Text style={[styles.ekstreVal, styles.ekstreEksi]}>
-                    −{formatEUR(alacakli ? buAyKutu.share : buAyKutu.paid)}
-                  </Text>
-                </View>
+                <EkstreSatir
+                  etiket={ayAdi(ekstre.current_month).split(" ")[0]
+                          + (alacakli ? "'ta ödediklerin" : "'ta sana düşen")}
+                  tutar={formatEUR(alacakli ? buAyKutu.paid : buAyKutu.share)}
+                  acik={acikSatir === (alacakli ? "paid" : "share")}
+                  onPress={() => ac(alacakli ? "paid" : "share")}
+                  testID="ekstre-ust"
+                />
+                <EkstreSatir
+                  etiket={alacakli ? "Senin payın" : "Ödediklerin"}
+                  tutar={"−" + formatEUR(alacakli ? buAyKutu.share : buAyKutu.paid)}
+                  eksi
+                  acik={acikSatir === (alacakli ? "share" : "paid")}
+                  onPress={() => ac(alacakli ? "share" : "paid")}
+                  testID="ekstre-alt"
+                />
                 <View style={styles.ekstreCizgi} />
+                {/* SONUÇ satırı tıklanmıyor: açılacak bir şeyi yok, üstündeki
+                    üç satırın toplamı zaten o. Ok da yok — dokunulamayan bir
+                    satırda ok, çalışmayan bir düğmedir. */}
                 <View style={styles.ekstreRow}>
                   <Text style={styles.ekstreLabel}>
                     {myNet > 0.01 ? "Ev sana borçlu"
@@ -457,13 +585,8 @@ export default function Denge() {
                                 { color: myNet >= 0 ? colors.accentOnDark : colors.negativeOnDark }]}>
                     {formatEUR(Math.abs(sayanNet))}
                   </Text>
-                  {/* Tek ok, blogun tamamini temsil ediyor. Dort satirin
-                      dordune ayri ok koymak "hangisi acilir" sorusu dogurur;
-                      oysa acilan sey hepsi. */}
-                  <Ionicons name="chevron-forward" size={16} color={colors.onDarkMuted}
-                            style={{ marginLeft: 4 }} />
                 </View>
-              </Pressable>
+              </View>
             ) : (
               <>
                 <Text style={styles.heroLabel}>NET DURUMUN</Text>
@@ -490,6 +613,63 @@ export default function Denge() {
               <ActivityIndicator color={colors.ink} style={{ marginTop: spacing.xxl }} />
             ) : (
               <View style={{ gap: metrics.cardGap }}>
+                {/* AÇILIM — kavisin hemen altında, dokunulan satırın karşılığı.
+                    Kartın ilk sırada olması bilinçli: yukarıda dokunulan
+                    satır ile arasında başka hiçbir şey yok. */}
+                {acikSatir && ekstre && (
+                  <Card title={acilimBaslik} style={styles.mx}
+                        action="Kapat" onAction={() => setAcikSatir(null)}
+                        testID="ekstre-acilim">
+                    {acikSatir === "carried" ? (
+                      /* DEVİR bir dağıtım değil bir enstantane: geçen ay
+                         sonundaki bakiyen. Ama ay ay dökülebilir ve bu kurgu
+                         değil kesin aritmetiktir — her ayın satırı o ay
+                         bakiyenin ne kadar değiştiği.
+
+                         Dil buna göre: "Haziran'dan kalan 48 €" kurgudur
+                         (hangi euro'nun kaldığı bilinemez), "Haziran'da 48 €
+                         borçlandın" olgudur. */
+                      gecmisAylar.length === 0 ? (
+                        <Row title="Ayrıntı yok"
+                             subtitle="Önceki aylarda kayıtlı hareket bulunmuyor" />
+                      ) : gecmisAylar.map((a, i) => (
+                        <View key={a.month}>
+                          {i > 0 && <Divider inset={spacing.lg} />}
+                          <Pressable style={styles.ayRow} testID={`acilim-ay-${a.month}`}
+                                     onPress={() => setAcikAy((v) => (v === a.month ? null : a.month))}>
+                            <Text style={styles.ayAd}>{ayAdi(a.month).split(" ")[0]}</Text>
+                            {/* Yeşil = borcu DÜŞÜREN ay: o ay ödediklerin
+                                borçlandıklarından fazla. */}
+                            <Text style={[styles.ayDelta,
+                                          (alacakli ? -a.delta : a.delta) < 0 && styles.ayDeltaEksi]}>
+                              {(alacakli ? -a.delta : a.delta) >= 0 ? "+" : "−"}
+                              {formatEUR(Math.abs(a.delta))}
+                            </Text>
+                            <Ionicons name={acikAy === a.month ? "chevron-down" : "chevron-forward"}
+                                      size={14} color={colors.onSurfaceTertiary} />
+                          </Pressable>
+                          {acikAy === a.month && (
+                            <View style={styles.hareketler}>
+                              {(a.lines || []).map((l) => hareketSatiri(l, a.month))}
+                            </View>
+                          )}
+                        </View>
+                      ))
+                    ) : (
+                      /* BU AYIN hareketleri. Ay katı atlanıyor çünkü satırın
+                         kendisi zaten bir ay: "Ağustos'ta sana düşen". */
+                      buAyHareketleri.length === 0 ? (
+                        <Row title="Ayrıntı yok"
+                             subtitle="Bu ayda kayıtlı hareket bulunmuyor" />
+                      ) : (
+                        <View style={styles.hareketler}>
+                          {buAyHareketleri.map((l) => hareketSatiri(l, ekstre.current_month))}
+                        </View>
+                      )
+                    )}
+                  </Card>
+                )}
+
                 {archived && (
                   <View style={[styles.banner, styles.mx]} testID="denge-archived-banner">
                     <Ionicons name="archive-outline" size={16} color={colors.inkSecondary} />
@@ -859,12 +1039,41 @@ const styles = StyleSheet.create({
   heroLabel: { ...overline, color: colors.onDarkMuted },
   heroValue: { ...T.hero, marginTop: spacing.xs },
   heroHint: { ...T.body, color: colors.onDarkMuted, marginTop: 2 },
-  ekstre: { marginTop: spacing.md, gap: 6 },
-  ekstreRow: { flexDirection: "row", alignItems: "baseline", gap: spacing.md },
+  ekstre: { marginTop: spacing.md, gap: 2 },
+  ekstreRow: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  /* Dokunulabilir satır biraz nefes alıyor ve içeri kayıyor: vurgu bir kutu
+     olarak çizildiğinde etiketin kutuya yapışmaması için. Negatif kenar
+     boşluğu vurgunun bloğun hizasından taşmasını sağlıyor — kutu satırı
+     sarmalı, satır kutunun içine sıkışmamalı. */
+  ekstreTiklanir: {
+    paddingVertical: 5, paddingHorizontal: spacing.sm,
+    marginHorizontal: -spacing.sm, borderRadius: radius.sm,
+  },
+  ekstreAcik: { backgroundColor: colors.darkSurface },
   ekstreLabel: { ...T.caption, color: colors.onDarkMuted, flex: 1 },
   ekstreVal: { ...T.bodySb, color: colors.onDark },
   ekstreEksi: { color: colors.accentOnDark },
-  ekstreCizgi: { height: 1, backgroundColor: colors.darkSurface, marginVertical: 3 },
+  ekstreCizgi: { height: 1, backgroundColor: colors.darkSurface, marginVertical: 5 },
+  ayRow: {
+    flexDirection: "row", alignItems: "center", gap: spacing.md,
+    paddingHorizontal: spacing.lg, paddingVertical: spacing.md, minHeight: 46,
+  },
+  ayAd: { ...T.body, color: colors.ink, flex: 1 },
+  ayDelta: { ...T.bodySb, fontSize: 15, color: colors.ink },
+  ayDeltaEksi: { color: colors.accentDark },
+  /* Hareketler ayın ALTINDA ve içeri girintili: sol çizgi "bunlar o satırın
+     içi" diyor, başlıksız bir liste olsa aynı düzeyde okunurdu. */
+  hareketler: {
+    paddingHorizontal: spacing.lg, paddingBottom: spacing.sm,
+    marginLeft: spacing.md, borderLeftWidth: 2, borderLeftColor: colors.divider,
+  },
+  hareketRow: {
+    flexDirection: "row", alignItems: "center", gap: spacing.sm,
+    paddingVertical: 7, paddingLeft: spacing.md,
+  },
+  hareketLabel: { ...T.caption, color: colors.inkSecondary, flex: 1 },
+  hareketVal: { ...T.caption, fontFamily: fontFamily.medium, color: colors.ink },
+  hareketEksi: { color: colors.accentDark },
   /* 34 değil 27.
      Hiyerarşi GÖRELİDİR: 34 punto, ekranda başka sayı yokken tasarlanmıştı.
      Ekstre gelince etrafı 14 puntoluk üç sayıyla çevrildi, yani baskın olmak
