@@ -32,7 +32,12 @@ function Gate() {
 
   useEffect(() => {
     if (authLoading || (user && hhLoading)) return;
-    const first = segments[0] || "";
+    // Tip ELLE yazılıyor: `segments[0]` union bir rota adı olarak
+    // çıkarılıyor ve derleyici aşağıdaki `first === ""` karşılaştırmasını
+    // "hiç tutmaz" diye işaretliyordu. Oysa kök rotada dizi BOŞ ve
+    // `segments[0]` çalışma anında `undefined` — karşılaştırma tam da o
+    // durumu yakalıyor.
+    const first: string = segments[0] || "";
     if (!user) {
       if (first !== "login") router.replace("/login");
       return;
