@@ -272,6 +272,12 @@ export default function Panel() {
                 </Card>
               )}
 
+              {/* Satıra dokununca o kişinin O AYKİ dökümü açılıyor. Kart
+                  ayın rakamını veriyor, sayfa onun neyden oluştuğunu; ay
+                  parametre olarak taşınıyor ki iki ekran aynı pencereye
+                  baksın. Üye dökümü Tur 10'a kadar hiçbir yerden
+                  açılmıyordu — dönem seçicisiyle birlikte kapısı da
+                  kaybolmuştu. */}
               {members.length > 0 && (
                 <Card title="Kim Ne Kadar Ödedi" style={styles.mx}>
                   {members.map((m, i) => (
@@ -281,6 +287,13 @@ export default function Panel() {
                                          userId={m.user_id} photoVersion={(m as any).photo_version} />}
                         title={`${m.name}${m.user_id === user?.user_id ? " (sen)" : ""}`}
                         right={<Money value={totalsPaid[m.user_id] || 0} />}
+                        chevron
+                        onPress={() => router.push({
+                          pathname: "/(tabs)/member-detail",
+                          params: { memberId: m.user_id, ay: stats?.month || buAy(),
+                                    geri: "/(tabs)/panel" },
+                        })}
+                        testID={`member-row-${m.user_id}`}
                       />
                       {i < members.length - 1 && <Divider />}
                     </View>

@@ -8,7 +8,7 @@ import { useHousehold } from "@/src/household";
 import {
   ScreenHeader, HeaderSplit, Sheet, Card, Divider, Avatar, CategoryIcon,
   MerchantBadge, Tag, Money, splitBadge, formatEUR, formatDateTR, formatQty,
-  useScrollPad, useGeriDon,
+  HeaderPills, HeaderPill, useScrollPad, useGeriDon, ayAdi, buAy, sonAylar,
 } from "@/src/ui";
 import { colors, spacing, type as T, metrics } from "@/src/theme";
 
@@ -23,28 +23,34 @@ type Expense = {
 export default function MemberDetail() {
   // Gezinme cubugu payi -- ic dolgu zaten var, buraya yalnizca cihazin payi.
   const altPay = useScrollPad({ tabs: true, extra: 0 });
-  const { memberId, periodId } = useLocalSearchParams<{ memberId: string; periodId?: string }>();
+  const params = useLocalSearchParams<{ memberId: string; ay?: string }>();
+  const memberId = params.memberId;
   const router = useRouter();
   /* Geri, geldiği yere. Sekme gezgininde `back()` Anasayfa'ya düşüyor. */
   const geriDon = useGeriDon();
   const { members } = useHousehold();
 
+  /* Dönem değil AY. Görüntülemenin her yeri takvim ayı: bu ekranın penceresi
+     Anasayfa'daki "Kim Ne Kadar Ödedi" ile aynı olmak zorunda, yoksa
+     satırdaki rakam ile açılan sayfadaki rakam tutmuyor. */
+  const [ay, setAy] = useState<string>(
+    typeof params.ay === "string" && params.ay.length === 7 ? params.ay : buAy());
   const [expenses, setExpenses] = useState<Expense[]>([]);
-  const [householdTotal, setHouseholdTotal] = useState(0);
-  const [roommateTotal, setRoommateTotal] = useState(0);
+  const [evToplam, setEvToplam] = useState(0);
+  const [kisiselToplam, setKisiselToplam] = useState(0);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     try {
-      const q = new URLSearchParams();
-      if (periodId) q.set("period_id", periodId as string);
-      const res = await apiGet<any>(`/members/${memberId}/expenses?${q.toString()}`);
+      const res = await apiGet<any>(`/members/${memberId}/expenses?month=${ay}`);
       setExpenses(res.expenses || []);
-      setHouseholdTotal(res.household_total || 0);
-      setRoommateTotal(res.roommate_total || 0);
+      setEvToplam(res.household_total || 0);
+      // `personal_total` GERÇEKTEN kişisel. Önce `roommate_total` okunuyordu
+      // ve "Kişisel" diye yazılıyordu, oysa o başkası İÇİN alınandı.
+      setKisiselToplam(res.personal_total || 0);
     } catch (e) { console.log(e); }
     finally { setLoading(false); }
-  }, [memberId, periodId]);
+  }, [memberId, ay]);
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
   const member = members.find((m) => m.user_id === memberId);
@@ -70,14 +76,26 @@ export default function MemberDetail() {
             userId={member?.user_id}
             photoVersion={(member as any)?.photo_version}
           />
-          <Text style={styles.heroCaption}>Bu dönemdeki katkısı ve harcamaları</Text>
+          <Text style={styles.heroCaption}>{ayAdi(ay)} harcamaları</Text>
         </View>
         <HeaderSplit
           items={[
-            { label: "Ev için", value: formatEUR(householdTotal), accent: true },
-            { label: "Kişisel", value: formatEUR(roommateTotal) },
+            { label: "Ev için", value: formatEUR(evToplam), accent: true },
+            { label: "Kişisel", value: formatEUR(kisiselToplam) },
           ]}
         />
+        <HeaderPills>
+          <HeaderPill
+            value={ay}
+            options={sonAylar().map((m) => ({
+              value: m, label: ayAdi(m).split(" ")[0],
+              hint: ayAdi(m), icon: "calendar-outline",
+              iconAccent: m === buAy(),
+            }))}
+            onSelect={setAy}
+            testID="member-ay"
+          />
+        </HeaderPills>
       </ScreenHeader>
 
       <Sheet>
@@ -89,7 +107,7 @@ export default function MemberDetail() {
               <View style={styles.emptyRing}>
                 <Ionicons name="file-tray-outline" size={30} color={colors.inkTertiary} />
               </View>
-              <Text style={styles.emptyTxt}>Bu dönemde bir harcaması yok.</Text>
+              <Text style={styles.emptyTxt}>{ayAdi(ay)} ayında bir harcaması yok.</Text>
             </View>
           ) : (
             <Card title="Harcama Detayı">

@@ -401,10 +401,14 @@ export function Card({
 
 /** Kap içindeki tek satır. Sol yuva 40, ortada metin, sağda değer. */
 export function Row({
-  leading, title, subtitle, right, onPress, testID, minHeight = metrics.rowHeight,
+  leading, title, subtitle, right, onPress, testID, chevron,
+  minHeight = metrics.rowHeight,
 }: {
   leading?: React.ReactNode; title?: React.ReactNode; subtitle?: React.ReactNode;
   right?: React.ReactNode; onPress?: () => void; testID?: string; minHeight?: number;
+  /** Satırın bir yere GİTTİĞİNİ söyleyen ok. Dokunulabilir ama hiçbir yere
+   *  gitmeyen satırlarda (onay, seçim) konmaz — orada ok yalan söyler. */
+  chevron?: boolean;
 }) {
   const body = (
     <View style={[styles.row, { minHeight }]}>
@@ -416,6 +420,10 @@ export function Row({
           : subtitle}
       </View>
       {right}
+      {chevron ? (
+        <Ionicons name="chevron-forward" size={16} color={colors.onSurfaceTertiary}
+                  style={{ marginLeft: spacing.sm }} />
+      ) : null}
     </View>
   );
   return onPress
@@ -1591,6 +1599,25 @@ export function ayDe(m: string) {
 export function buAy(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+/**
+ * Seçilebilir aylar: bu ay ve geriye doğru 11 ay.
+ *
+ * Dönem çiplerinin yerini aldı. Dönem para hesabından çıktı ve
+ * görüntülemenin her yeri takvim ayı; Harcamalar ile üye dökümünün penceresi
+ * aynı listeden gelmek zorunda, yoksa iki ekran farklı aralıklar gösterir.
+ *
+ * Veri olan aylar SORULMUYOR: boş bir ay seçmek zararsız (ekran "kayıt yok"
+ * der) ama hangi ayların dolu olduğunu öğrenmek her açılışta fazladan bir
+ * istek demek.
+ */
+export function sonAylar(adet = 12): string[] {
+  const d = new Date();
+  return Array.from({ length: adet }, (_, i) => {
+    const x = new Date(d.getFullYear(), d.getMonth() - i, 1);
+    return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, "0")}`;
+  });
 }
 
 /**

@@ -10,7 +10,8 @@ import { useHousehold } from "@/src/household";
 import {
   ScreenHeader, HeaderSplit, Sheet, Card, Divider, Avatar, CategoryIcon,
   MerchantBadge, Money, splitBadge, formatEUR, formatQty,
-  HeaderPills, HeaderPill, HeaderClearPill, useScrollPad, useGeriDon, ayAdi, buAy,
+  HeaderPills, HeaderPill, HeaderClearPill, useScrollPad, useGeriDon,
+  ayAdi, buAy, sonAylar,
 } from "@/src/ui";
 import { colors, spacing, radius, type as T, overline, metrics } from "@/src/theme";
 
@@ -45,20 +46,6 @@ const AKIS_ADI: Record<string, string> = {
 const AY_UZUN = ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran",
                  "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"];
 const GUNLER = ["Pazar", "Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi"];
-
-/** Seçilebilir aylar: bu ay ve geriye doğru 11 ay.
- *
- *  Dönem çipleri yerine bunlar geldi. Dönem artık para hesabında yok ve
- *  görüntülemenin her yeri takvim ayı; harcamaların penceresi de aynı
- *  pencere olmak zorunda, yoksa Kasa'daki "Ağustos'ta sana düşen" ile bu
- *  ekrandaki liste farklı iki aralığı gösterir. */
-const sonAylar = (): string[] => {
-  const d = new Date();
-  return Array.from({ length: 12 }, (_, i) => {
-    const x = new Date(d.getFullYear(), d.getMonth() - i, 1);
-    return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, "0")}`;
-  });
-};
 
 /** "15 AĞUSTOS · CUMARTESİ" — bugün ve dün ayrıca adlandırılır. */
 const gunBasligi = (iso: string) => {

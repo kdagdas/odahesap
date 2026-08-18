@@ -1764,16 +1764,30 @@ async def list_expenses(
 @api.get("/members/{member_id}/expenses")
 async def member_expenses(
     member_id: str,
+    month: Optional[str] = None,
     period_id: Optional[str] = None,
     user=Depends(get_current_user),
 ):
-    """Drill-down: expenses added by a given member visible to the caller.
-    Used on Denge (settle-up) screen to show what they bought for the household."""
+    """Bir ev arkadaşının o ay ne aldığı — çağırana görünen kadarıyla.
+
+    `month=YYYY-MM` verilirse takvim ayı süzülür. Görüntülemenin her yeri
+    takvim ayı olduğu için varsayılan da budur; `period_id` yalnızca eski
+    APK'lar için duruyor.
+
+    **İki toplam düzeltildi.** Önce `household_total` / `roommate_total`
+    dönüyordu ve ekran ikincisini "Kişisel" diye yazıyordu — oysa `roommate`
+    *bir başkası için* alınan demek, kişisel değil. Yani "Kemal'in kişiseli"
+    yazan satır aslında Kemal'in BAŞKASI için aldıklarıydı. Üç sayı da ayrı
+    dönüyor; adları neyi saydıklarını söylüyor.
+    """
     hh = await get_user_household(user["user_id"])
     if not hh or member_id not in hh["member_ids"]:
         raise HTTPException(status_code=404, detail="Üye bulunamadı")
     q: dict = {"household_id": hh["household_id"], "added_by": member_id}
-    if period_id:
+    aylik = bool(month) and len(month or "") == 7
+    if aylik:
+        pass  # ay süzgeci Python tarafında; `expense_date` boşsa `created_at`
+    elif period_id:
         q["period_id"] = period_id
     else:
         active = await get_active_period(hh["household_id"])
@@ -1781,10 +1795,33 @@ async def member_expenses(
             q["period_id"] = active["period_id"]
     q.update(_visible_filter(user["user_id"]))
     exps = await db.expenses.find(q, {"_id": 0}).to_list(1000)
+    if aylik:
+        exps = [e for e in exps if _expense_day(e)[:7] == month]
     exps.sort(key=lambda e: (e.get("expense_date") or "", e.get("created_at")), reverse=True)
-    total = sum(float(e["total"]) for e in exps if e["target_type"] == "household")
-    total_roommate = sum(float(e["total"]) for e in exps if e["target_type"] == "roommate")
-    return {"expenses": exps, "household_total": round(total, 2), "roommate_total": round(total_roommate, 2)}
+
+    uyeler = await period_participants(
+        hh["household_id"],
+        (await get_active_period(hh["household_id"]) or {}).get("period_id", ""),
+        hh["member_ids"],
+    )
+    ev = kisisel = baskasi = 0.0
+    for e in exps:
+        shares = expense_shares(e, uyeler)
+        tutar = float(e.get("total") or 0)
+        if len(shares) > 1:
+            ev += tutar
+        elif set(shares) == {member_id}:
+            kisisel += tutar
+        else:
+            baskasi += tutar
+    return {
+        "expenses": exps,
+        "household_total": round(ev, 2),
+        "personal_total": round(kisisel, 2),
+        "for_others_total": round(baskasi, 2),
+        # Eski APK'lar bu adı okuyor; anlamı değişmedi (başkası için alınan).
+        "roommate_total": round(baskasi, 2),
+    }
 
 
 async def _get_editable_expense(expense_id: str, user: dict) -> dict:
