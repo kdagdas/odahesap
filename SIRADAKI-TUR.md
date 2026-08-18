@@ -584,6 +584,17 @@ cd D:\SettleUp\OdaHesap\frontend
 npx expo run:android
 ```
 
+**Metro'yu yeniden başlattıktan sonra `adb reverse` yeniden kurulmalı:**
+
+```
+adb reverse tcp:8081 tcp:8081
+```
+
+`expo run:android` bunu kendisi yapıyor ama `expo start` yapmıyor. Yönlendirme
+olmadan uygulama JS paketini alamıyor ve **logo ekranında takılı kalıyor** —
+görüntü bir çökmeye benziyor, oysa günlükte tek satır yazıyor: *"Unable to
+load script."* (Bu yaşandı.)
+
 Sonraki günler yalnızca `npx expo start`. Debug derlemesi hata ayıklama
 anahtarıyla imzalandığı için **önce mevcut uygulama kaldırılmalı**
 (`adb uninstall com.odahesap.app`). `run:android` içeride `prebuild`
