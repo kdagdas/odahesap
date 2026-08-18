@@ -2792,8 +2792,23 @@ async def _ekstre(household_id: str, period_id: str, user_id: str,
     """
     aylar: Dict[str, dict] = {}
 
+    # Hareket türleri — "bu para nereye gitti" sorusunun cevabı.
+    #
+    # İki sütun ("sana düşen" / "ödediklerin") yetmiyordu: "ödediklerin"
+    # içinde birbirinden çok farklı üç şey vardı — ev alışverişlerinde
+    # fatura ödediklerin, bir başkası İÇİN aldıkların, ve kaydettiğin
+    # ödemeler. Tek satırda toplanınca "beni kim sübvanse etti, ben kimi
+    # sübvanse ettim" görünmez oluyordu.
+    #
+    # İşaret kuralı tek: **artı borcunu artırır, eksi azaltır.**
+    TURLER = ("pay", "ev_odedigin", "baskasi_icin", "senin_icin",
+              "odemelerin", "sana_odenen")
+
     def kutu(ay: str) -> dict:
-        return aylar.setdefault(ay, {"month": ay, "share": 0.0, "paid": 0.0})
+        return aylar.setdefault(ay, {
+            "month": ay, "share": 0.0, "paid": 0.0,
+            **{t: 0.0 for t in TURLER},
+        })
 
     exps = await db.expenses.find(
         {"household_id": household_id, "period_id": period_id}, {"_id": 0}
@@ -2807,9 +2822,24 @@ async def _ekstre(household_id: str, period_id: str, user_id: str,
         if set(shares) == {e["added_by"]} and e.get("target_type") == "self":
             continue
         k = kutu(_expense_day(e)[:7])
-        if e["added_by"] == user_id:
+        payim = float(shares.get(user_id, 0.0))
+        odeyen = e["added_by"]
+        if odeyen == user_id:
             k["paid"] += float(e["total"])
-        k["share"] += float(shares.get(user_id, 0.0))
+        k["share"] += payim
+
+        # Aynı hareket, türüne göre ayrı satır.
+        if len(shares) == 1 and user_id not in shares and odeyen == user_id:
+            # Tek kişi için aldın: o kişi sana borçlandı, senin borcun düştü.
+            # Kullanıcının en çok merak ettiği satır bu — "Kemal'den o parayı
+            # ayrıca almam gerekiyor mu?" Hayır: düşüm burada oldu.
+            k["baskasi_icin"] += float(e["total"])
+        elif len(shares) == 1 and user_id in shares and odeyen != user_id:
+            k["senin_icin"] += payim          # biri senin için aldı
+        else:
+            k["pay"] += payim                  # ortak harcamadaki payın
+            if odeyen == user_id:
+                k["ev_odedigin"] += float(e["total"])
 
     # Ödemeler KAYIT tarihine göre aylanıyor: harcamanın tarihi geçmişe ait
     # olabilir ama ödeme gerçekleştiği anda gerçekleşir.
@@ -2819,14 +2849,26 @@ async def _ekstre(household_id: str, period_id: str, user_id: str,
         k = kutu(make_aware(s["created_at"]).date().isoformat()[:7])
         if s["from_user_id"] == user_id:
             k["paid"] += float(s["amount"])
+            k["odemelerin"] += float(s["amount"])
         elif s["to_user_id"] == user_id:
             k["share"] += float(s["amount"])
+            k["sana_odenen"] += float(s["amount"])
 
     sirali = sorted(aylar.values(), key=lambda x: x["month"])
     for k in sirali:
         k["share"] = round(k["share"], 2)
         k["paid"] = round(k["paid"], 2)
         k["delta"] = round(k["share"] - k["paid"], 2)
+        # Sıfır olan tür hiç yazılmıyor: her ay aynı şeyi söyleyen satır
+        # listeyi doldurup asıl değişeni gizler.
+        k["lines"] = [
+            {"tur": t, "tutar": round(k[t], 2),
+             # Borcu ARTIRAN mı azaltan mı — ekranda işaret ve renk bundan.
+             "artiran": t in ("pay", "senin_icin", "sana_odenen")}
+            for t in TURLER if abs(k[t]) >= 0.005
+        ]
+        for t in TURLER:
+            k.pop(t, None)
 
     bu_ay = month_key(now_utc().date())
     return {

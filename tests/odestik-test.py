@@ -94,6 +94,24 @@ ay = [m for m in st["months"] if m["month"] == st["current_month"]][0]
 check("Alice 90 odedi", abs(float(ay["paid"]) - 90.0) < 0.01, str(ay))
 check("Alice'e dusen 30", abs(float(ay["share"]) - 30.0) < 0.01, str(ay))
 
+# Hareket turleri: "bu para nereye gitti" sorusunun cevabi. Iki sutun
+# yetmiyordu -- "odediklerin" icinde ev alisverisi de, bir baskasi ICIN
+# alinan da, kaydedilen odeme de vardi.
+tur = {l["tur"]: l for l in ay.get("lines", [])}
+check("kalemli dokum geliyor", len(tur) >= 2, str(ay.get("lines")))
+check("ev alisverisindeki payin ayri satir",
+      "pay" in tur and abs(tur["pay"]["tutar"] - 30.0) < 0.01, str(tur))
+check("senin odedigin ev alisverisi ayri satir",
+      "ev_odedigin" in tur and abs(tur["ev_odedigin"]["tutar"] - 90.0) < 0.01, str(tur))
+check("pay borcu ARTIRAN taraf", tur["pay"]["artiran"] is True, str(tur["pay"]))
+check("odedigin borcu AZALTAN taraf", tur["ev_odedigin"]["artiran"] is False,
+      str(tur["ev_odedigin"]))
+# Kimlik korunuyor: artiranlarin toplami - azaltanlarin toplami = delta.
+artan = sum(l["tutar"] for l in ay["lines"] if l["artiran"])
+azalan = sum(l["tutar"] for l in ay["lines"] if not l["artiran"])
+check("kalemler ayin farkini tutuyor", abs((artan - azalan) - ay["delta"]) < 0.01,
+      f"{artan} - {azalan} vs {ay['delta']}")
+
 print("\n-- yetki --")
 r = c.post(f"{API}/settlements/all", headers=hdr(bob))
 check("normal uye odestik diyemez (403)", r.status_code == 403, f"got {r.status_code}")
@@ -166,6 +184,28 @@ check("Carol yeni harcamada yok", carol_id not in (yeni_h.get("split_with") or {
 eski_h = [e for e in harc if abs(float(e["total"]) - 90.0) < 0.01][0]
 check("eski harcama 3 kisilik kaldi", len(eski_h.get("split_with") or {}) == 3,
       str(eski_h.get("split_with")))
+
+print("\n-- baskasi icin alinan ayri satir --")
+# Alice yalnizca Bob icin bir sey aliyor: Bob'a borclaniyor, Alice'in borcu
+# dusuyor. Kullanicinin en cok merak ettigi satir bu -- "o parayi ayrica
+# almam gerekiyor mu?" Hayir; dusum burada oldu.
+c.post(f"{API}/expenses", headers=hdr(alice), json={
+    "target_type": "roommate", "target_user_id": bob_id, "total": 12.0,
+    "source": "manual", "items": []})
+b2 = c.get(f"{API}/balances", headers=hdr(alice)).json()
+ay2 = [m for m in b2["statement"]["months"]
+       if m["month"] == b2["statement"]["current_month"]][0]
+tur2 = {l["tur"]: l for l in ay2["lines"]}
+check("baskasi icin alinan kendi satirinda",
+      "baskasi_icin" in tur2 and abs(tur2["baskasi_icin"]["tutar"] - 12.0) < 0.01, str(tur2))
+check("borcu AZALTAN taraf", tur2["baskasi_icin"]["artiran"] is False, str(tur2))
+b3 = c.get(f"{API}/balances", headers=hdr(bob)).json()
+ay3 = [m for m in b3["statement"]["months"]
+       if m["month"] == b3["statement"]["current_month"]][0]
+tur3 = {l["tur"]: l for l in ay3["lines"]}
+check("Bob'da 'senin icin alinan' olarak gorunuyor",
+      "senin_icin" in tur3 and abs(tur3["senin_icin"]["tutar"] - 12.0) < 0.01, str(tur3))
+check("Bob'da borcu ARTIRAN taraf", tur3["senin_icin"]["artiran"] is True, str(tur3))
 
 print("\n-- temizlik --")
 for t in (alice, bob, carol):

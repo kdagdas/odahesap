@@ -31,7 +31,19 @@ import {
 } from "@/src/ui";
 import { colors, spacing, radius, type as T, overline, fontFamily, metrics } from "@/src/theme";
 
-type EkstreAy = { month: string; share: number; paid: number; delta: number };
+type Hareket = { tur: string; tutar: number; artiran: boolean };
+/** Hareket türlerinin ekrandaki adı. Sunucu yalnızca anahtar gönderiyor. */
+const TUR_ADI: Record<string, string> = {
+  pay: "Ev alışverişlerindeki payın",
+  ev_odedigin: "Senin ödediğin ev alışverişleri",
+  baskasi_icin: "Başkası için aldıkların",
+  senin_icin: "Senin için alınanlar",
+  odemelerin: "Ödediklerin",
+  sana_odenen: "Sana ödenenler",
+};
+type EkstreAy = {
+  month: string; share: number; paid: number; delta: number; lines?: Hareket[];
+};
 type Ekstre = { months: EkstreAy[]; carried: number; current_month: string };
 type Harcama = {
   expense_id: string; merchant?: string | null; total: number;
@@ -142,20 +154,25 @@ export default function BorcDokumu() {
 
                     {acikMi && (
                       <View style={styles.detay}>
-                        <View style={styles.detayRow}>
-                          <Text style={styles.detayLabel}>
-                            {alacakli ? "Ödediklerin" : "Sana düşen"}
-                          </Text>
-                          <Money value={alacakli ? a.paid : a.share} style={styles.detayVal} />
-                        </View>
-                        <View style={styles.detayRow}>
-                          <Text style={styles.detayLabel}>
-                            {alacakli ? "Senin payın" : "Ödediklerin"}
-                          </Text>
-                          <Text style={[styles.detayVal, styles.detayEksi]}>
-                            −{formatEUR(alacakli ? a.share : a.paid)}
-                          </Text>
-                        </View>
+                        {/* Kart hareketi gibi: her satırın bir SEBEBİ var.
+                            "Ödediklerin" tek satırken içinde birbirinden çok
+                            farklı üç şey vardı — ev alışverişinde fatura
+                            ödediklerin, biri İÇİN aldıkların, kaydettiğin
+                            ödemeler. Toplanınca "bu para nereye gitti"
+                            cevapsız kalıyordu.
+
+                            İşaret kuralı tek: artı borcu artırır, eksi
+                            azaltır. "Kemal için aldıkların −12,00" satırı en
+                            çok merak edilen soruyu kapatıyor — o parayı
+                            ayrıca almana gerek yok, düşüm burada oldu. */}
+                        {(a.lines || []).map((l) => (
+                          <View key={l.tur} style={styles.detayRow}>
+                            <Text style={styles.detayLabel}>{TUR_ADI[l.tur] || l.tur}</Text>
+                            <Text style={[styles.detayVal, !l.artiran && styles.detayEksi]}>
+                              {l.artiran ? "" : "−"}{formatEUR(l.tutar)}
+                            </Text>
+                          </View>
+                        ))}
 
                         {/* O ayın fişleri. Bölüşme kadrosu değiştiği yerde
                             başlık düşüyor — dönem sınırının taşıdığı bilgi
