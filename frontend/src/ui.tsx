@@ -1500,6 +1500,46 @@ export function formatDateTR(iso?: string | null) {
   return !y || !m || !d ? iso : `${d}.${m}.${y}`;
 }
 
+/* ------------------------------------------------------------------- aylar */
+/* Görüntülemenin her yeri takvim ayı olduğu için ay adı iki ekranda birden
+   geçiyor; tek yerde duruyor. Bulunma hâli tablodan geliyor, ünlü uyumu
+   kuralla üretilemiyor: Ağustos'*ta* ama Eylül'*de*, Nisan'*da*. */
+const AYLAR = ["", "Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran",
+               "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"];
+const AYLAR_DE = ["", "Ocak'ta", "Şubat'ta", "Mart'ta", "Nisan'da", "Mayıs'ta",
+                  "Haziran'da", "Temmuz'da", "Ağustos'ta", "Eylül'de", "Ekim'de",
+                  "Kasım'da", "Aralık'ta"];
+
+const ayNo = (m: string) => parseInt((m || "").slice(5, 7), 10) || 0;
+
+/** `2026-08` → `Ağustos 2026` */
+export function ayAdi(m: string) {
+  return `${AYLAR[ayNo(m)] || ""} ${(m || "").slice(0, 4)}`.trim();
+}
+
+/** `2026-08` → `AĞUSTOS'TA` — başlık üstü etiketi için. */
+export function ayDe(m: string) {
+  return (AYLAR_DE[ayNo(m)] || "").toLocaleUpperCase("tr-TR");
+}
+
+/** `2026-08` — içinde bulunulan ay. */
+export function buAy(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+/**
+ * Değişim metni: "%12 fazla" · "2,5 katı".
+ *
+ * Yüzde %200'ü aşınca okunurluğunu yitiriyor — "%340 artış" kimsenin
+ * kafasında bir şeye karşılık gelmiyor, "3,4 katı" geliyor.
+ */
+export function degisimTxt(pct: number) {
+  const abs = Math.abs(pct);
+  if (abs >= 200) return `${(1 + abs / 100).toFixed(1).replace(".", ",")} katı`;
+  return `%${abs} ${pct >= 0 ? "fazla" : "az"}`;
+}
+
 export function todayISO(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;

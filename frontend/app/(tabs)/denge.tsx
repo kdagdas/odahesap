@@ -16,7 +16,7 @@ import { useHousehold } from "@/src/household";
 import {
   ScreenHeader, HeaderSplit, Sheet, Card, Row, Divider, Avatar, Money,
   IconPill, PrimaryButton, BottomSheet, PulseDot, HeaderPills, HeaderPill,
-  useCountUp, formatEUR, currencySign,
+  useCountUp, formatEUR, currencySign, ayAdi,
   useScrollPad,
 } from "@/src/ui";
 import {
@@ -26,6 +26,9 @@ import {
 import { colors, spacing, radius, type as T, overline, fontFamily, metrics } from "@/src/theme";
 
 type Transfer = { from: string; to: string; amount: number };
+/** Bakiyenin ay ay dökümü — `share` borcu artıran, `paid` azaltan taraf. */
+type EkstreAy = { month: string; share: number; paid: number; delta: number };
+type Ekstre = { months: EkstreAy[]; carried: number; current_month: string };
 type Period = {
   period_id: string; started_at: string; closed_at: string | null; status: string;
   first_expense?: string | null; last_expense?: string | null;
@@ -98,6 +101,8 @@ export default function Denge() {
   const [periods, setPeriods] = useState<Period[]>([]);
   const [selected, setSelected] = useState<string | undefined>(undefined);
   const [net, setNet] = useState<Record<string, number>>({});
+  /** Bakiyenin ay ay dökümü — ekstre bloğu ve borç dökümü aynı hesaptan. */
+  const [ekstre, setEkstre] = useState<Ekstre | null>(null);
   const [transfers, setTransfers] = useState<Transfer[]>([]);
   const [settlements, setSettlements] = useState<Settlement[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
@@ -136,6 +141,7 @@ export default function Denge() {
       ]);
       setPeriods(pers.periods || []);
       setNet(bal.net || {});
+      setEkstre(bal.statement || null);
       setTransfers(bal.transfers || []);
       setSettlements(stl.settlements || []);
       setStats(st);
@@ -188,6 +194,13 @@ export default function Denge() {
   const archived = currentId !== activeId;
 
   const myNet = Math.abs(net[me] || 0) < 0.005 ? 0 : (net[me] || 0);
+  /* Alacakliyken ekstrenin etiketleri yer degistiriyor: ayni dort satir,
+     ters yon. `share` borcu artiran, `paid` azaltan taraf. */
+  const alacakli = myNet > 0.005;
+  const buAyKutu = ekstre
+    ? (ekstre.months.find((m) => m.month === ekstre.current_month)
+       || { month: ekstre.current_month, share: 0, paid: 0, delta: 0 })
+    : { month: "", share: 0, paid: 0, delta: 0 };
   const owedToMe = useMemo(
     () => transfers.filter((t) => t.to === me).reduce((s, t) => s + t.amount, 0),
     [transfers, me],
@@ -333,16 +346,68 @@ export default function Denge() {
           }
         >
           <ScreenHeader size="l" overline="KASA" title="Senin Hesabın">
-            <Text style={styles.heroLabel}>NET DURUMUN</Text>
-            {/* Sayarak degisiyor: odeme kaydedince rakamin bir anda atlamasi
-                "oldu mu olmadi mi" sorusunu birakiyordu. */}
-            <Text style={[styles.heroValue,
-                          { color: myNet >= 0 ? colors.accentOnDark : colors.negativeOnDark }]}>
-              {formatEUR(sayanNet, true)}
-            </Text>
-            <Text style={styles.heroHint}>
-              {myNet > 0.01 ? "Ev sana borçlu" : myNet < -0.01 ? "Eve borcun var" : "Ödeşmiş durumdasın"}
-            </Text>
+            {/* EKSTRE BLOGU — net rakamin nereden geldigi, dort satirda.
+                Once yalnizca "NET DURUMUN 40,60 €" yaziyordu ve sayinin
+                nereden geldigi hicbir yerde gorunmuyordu.
+
+                Dayandigi kimlik: **odedigin − sana dusen = bakiyen**.
+                Devir bir DAGITIM degil bir ENSTANTANE (onceki ay sonundaki
+                bakiyen), o yuzden FIFO gerekmiyor.
+
+                Blok kendiliginden donuyor: alacakliyken etiketler yer
+                degistiriyor, ayri bir tasarim gerekmiyor. Ev kac kisilik
+                olursa olsun dort satir kaliyor.
+
+                "Onceki aylardan" satiri YALNIZCA devir varsa ciziliyor:
+                duzenli odesen bir evde ekran bugunkuyle ayni kaliyor. */}
+            {ekstre ? (
+              <View style={styles.ekstre}>
+                {Math.abs(ekstre.carried) > 0.005 && (
+                  <View style={styles.ekstreRow}>
+                    <Text style={styles.ekstreLabel}>Önceki aylardan</Text>
+                    <Text style={styles.ekstreVal}>{formatEUR(alacakli ? -ekstre.carried : ekstre.carried)}</Text>
+                  </View>
+                )}
+                <View style={styles.ekstreRow}>
+                  <Text style={styles.ekstreLabel}>
+                    {ayAdi(ekstre.current_month).split(" ")[0]}
+                    {alacakli ? "'ta ödediklerin" : "'ta sana düşen"}
+                  </Text>
+                  <Text style={styles.ekstreVal}>
+                    {formatEUR(alacakli ? buAyKutu.paid : buAyKutu.share)}
+                  </Text>
+                </View>
+                <View style={styles.ekstreRow}>
+                  <Text style={styles.ekstreLabel}>
+                    {alacakli ? "Senin payın" : "Ödediklerin"}
+                  </Text>
+                  <Text style={[styles.ekstreVal, styles.ekstreEksi]}>
+                    −{formatEUR(alacakli ? buAyKutu.share : buAyKutu.paid)}
+                  </Text>
+                </View>
+                <View style={styles.ekstreCizgi} />
+                <View style={styles.ekstreRow}>
+                  <Text style={styles.ekstreLabel}>
+                    {myNet > 0.01 ? "Ev sana borçlu"
+                      : myNet < -0.01 ? "Kalan borcun" : "Ödeşmiş durumdasın"}
+                  </Text>
+                  {/* Sayarak degisiyor: odeme kaydedince rakamin bir anda
+                      atlamasi "oldu mu olmadi mi" sorusunu birakiyordu. */}
+                  <Text style={[styles.heroValue,
+                                { color: myNet >= 0 ? colors.accentOnDark : colors.negativeOnDark }]}>
+                    {formatEUR(Math.abs(sayanNet))}
+                  </Text>
+                </View>
+              </View>
+            ) : (
+              <>
+                <Text style={styles.heroLabel}>NET DURUMUN</Text>
+                <Text style={[styles.heroValue,
+                              { color: myNet >= 0 ? colors.accentOnDark : colors.negativeOnDark }]}>
+                  {formatEUR(sayanNet, true)}
+                </Text>
+              </>
+            )}
             {/* Sifir olan sutun GOSTERILMIYOR. "Sana borçlu 0,00 €" gerçek
                 bir sayıyla aynı yeri kaplayıp hiçbir şey söylemiyordu; iki
                 kişilik bir borçta ayrıca üstteki net rakamın tekrarıydı. */}
@@ -775,6 +840,12 @@ const styles = StyleSheet.create({
   heroLabel: { ...overline, color: colors.onDarkMuted },
   heroValue: { ...T.hero, marginTop: spacing.xs },
   heroHint: { ...T.body, color: colors.onDarkMuted, marginTop: 2 },
+  ekstre: { marginTop: spacing.md, gap: 6 },
+  ekstreRow: { flexDirection: "row", alignItems: "baseline", gap: spacing.md },
+  ekstreLabel: { ...T.caption, color: colors.onDarkMuted, flex: 1 },
+  ekstreVal: { ...T.bodySb, color: colors.onDark },
+  ekstreEksi: { color: colors.accentOnDark },
+  ekstreCizgi: { height: 1, backgroundColor: colors.darkSurface, marginVertical: 3 },
   chips: { gap: spacing.sm, paddingHorizontal: spacing.lg, paddingBottom: spacing.lg },
   banner: {
     flexDirection: "row", alignItems: "center", gap: spacing.sm,

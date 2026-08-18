@@ -74,6 +74,26 @@ bal = c.get(f"{API}/balances", headers=hdr(alice)).json()
 check("Alice +60", abs(bal["net"][alice_id] - 60.0) < 0.01, str(bal["net"]))
 check("2 transfer onerisi", len(bal["transfers"]) == 2, str(bal["transfers"]))
 
+print("\n-- ekstre bakiyeyi tutuyor mu --")
+# Kasa'nin ekstre blogu ile borc dokumu ayni hesaptan besleniyor. Dayandigi
+# kimlik: odedigin - sana dusen = bakiyen. Aylik farklarin toplami bugunku
+# bakiyeyi vermek ZORUNDA; vermezse iki ekran iki farkli sayi gosterir.
+for who, tok, uid in (("Alice", alice, alice_id), ("Bob", bob, bob_id)):
+    b = c.get(f"{API}/balances", headers=hdr(tok)).json()
+    st = b.get("statement") or {}
+    delta = sum(float(m["delta"]) for m in st.get("months", []))
+    check(f"{who}: ekstre toplami bakiyeyi tutuyor",
+          abs(delta + float(b["net"][uid])) < 0.01,
+          f"delta {delta} vs net {b['net'][uid]}")
+b = c.get(f"{API}/balances", headers=hdr(alice)).json()
+st = b["statement"]
+check("onceki aylardan devir yok", abs(float(st["carried"])) < 0.01, str(st["carried"]))
+check("bu ayin satiri var",
+      any(m["month"] == st["current_month"] for m in st["months"]), str(st["months"]))
+ay = [m for m in st["months"] if m["month"] == st["current_month"]][0]
+check("Alice 90 odedi", abs(float(ay["paid"]) - 90.0) < 0.01, str(ay))
+check("Alice'e dusen 30", abs(float(ay["share"]) - 30.0) < 0.01, str(ay))
+
 print("\n-- yetki --")
 r = c.post(f"{API}/settlements/all", headers=hdr(bob))
 check("normal uye odestik diyemez (403)", r.status_code == 403, f"got {r.status_code}")

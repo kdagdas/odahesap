@@ -9,9 +9,9 @@ import { apiGet } from "@/src/api";
 import { useAuth } from "@/src/auth";
 import { useHousehold } from "@/src/household";
 import {
-  ScreenHeader, HeaderSplit, HeaderPills, Sheet, Card, Row, Divider, Avatar,
+  ScreenHeader, Sheet, Card, Row, Divider, Avatar,
   Money, IconPill, CategoryIcon, categoryLabel, splitBadge, splitSummary, PulseDot,
-  Donut, formatEUR, formatEURShort, useScrollPad,
+  Donut, formatEUR, formatEURShort, useScrollPad, ayDe, buAy, degisimTxt,
 } from "@/src/ui";
 import { ConfirmSheet } from "@/app/duzenli";
 import {
@@ -28,11 +28,17 @@ type Due = {
   day_of_month: number; scope: "household" | "self"; due_period: string | null;
   split_mode: "equal" | "exact"; split_with: Record<string, number>;
 };
+/** `/stats/monthly` — Anasayfa da İstatistik de **aynı ucu** okuyor.
+ *
+ *  Önceden Anasayfa dönem bazlı `/stats`'ı okuyordu: aynı olay iki ekranda
+ *  iki farklı rakam gösteriyordu. Dönem para hesabına indi, görüntülemenin
+ *  her yeri takvim ayı oldu. */
 type Stats = {
-  total: number; per_person: number; daily_average: number; days?: number;
-  change_pct: number | null; expense_count: number;
+  month: string; total: number; expense_count: number;
+  change_pct: number | null; prev_same_day: number; elapsed_days: number;
+  my_share: number; my_personal: number;
   categories: { key: string; total: number }[];
-  merchants: { name: string; total: number }[];
+  by_member: { user_id: string; total: number }[];
 };
 type ShopItem = { item_id: string; text: string; added_by: string; done: boolean };
 
@@ -60,10 +66,9 @@ export default function Panel() {
 
   const load = useCallback(async () => {
     try {
-      const [st, exp, bal, shop, ntf, rec] = await Promise.all([
-        apiGet<Stats>("/stats"),
+      const [st, exp, shop, ntf, rec] = await Promise.all([
+        apiGet<Stats>("/stats/monthly"),
         apiGet<{ expenses: Expense[] }>("/expenses"),
-        apiGet<any>("/balances"),
         apiGet<{ items: ShopItem[] }>("/shopping?scope=household"),
         apiGet<{ unread: number }>("/notifications"),
         apiGet<{ due: Due[] }>("/recurring"),
@@ -71,7 +76,9 @@ export default function Panel() {
       ]);
       setStats(st);
       setExpenses(exp.expenses || []);
-      setTotalsPaid(bal.totals_paid || {});
+      // "Kim ne kadar ödedi" de aya geçti; `/balances` çağrısı gereksizleşti.
+      setTotalsPaid(Object.fromEntries(
+        (st.by_member || []).map((m) => [m.user_id, m.total])));
       setShopping((shop.items || []).filter((i) => !i.done));
       setUnread(ntf.unread || 0);
       setDue(rec.due || []);
@@ -118,41 +125,37 @@ export default function Panel() {
             </Pressable>
           }
         >
-          <Text style={styles.heroLabel}>BU DÖNEM EV HARCAMASI</Text>
+          <Text style={styles.heroLabel}>{ayDe(stats?.month || buAy())} EV HARCAMASI</Text>
           <Text style={styles.heroValue}>{formatEUR(stats?.total ?? 0)}</Text>
-          {activePeriod && (
-            <Text style={styles.heroHint}>
-              {new Date(activePeriod.started_at).toLocaleDateString("tr-TR",
-                { day: "numeric", month: "long" })}'ten beri
-              {stats?.days ? ` · ${stats.days} gün` : ""}
-            </Text>
-          )}
-          {/* YÜZDE KALDIRILDI. `change_pct` bu dönemin toplamını bir önceki
-              DÖNEMIN toplamıyla karşılaştırıyordu; oysa dönem üç hafta da
-              sürebilir yedi hafta da (PROJE-DOKUMANI §5). Farklı uzunluktaki
-              iki kutuyu oranlamak "%114 artış" gibi bir sayı üretiyor ve o
-              sayı çoğu zaman yalnızca "bu dönem daha uzun sürdü" demek.
-              Doğru karşılaştırma İstatistik'te: aylar eşit uzunlukta sayılır.
+          {/* Trend bir HAP değil bir SATIR: ana rakamın hemen altında, aynı
+              sola dayalı, yani öznesini komşuluktan alıyor. Ortada duran ve
+              öznesiz bir rozet "neyin %12'si" sorusunu bırakıyordu.
 
-              "Ay sonu tahmini" de yanlış etiketti: hesap `günlük ortalama×30`,
-              yani "bu hızla 30 günde" -- ay sonu değil. Üstelik üstteki ana
-              rakam "BU DÖNEM" diyordu, aynı blokta iki farklı takvim vardı.
-              Yerine GÜNLÜK ORTALAMA: bir tahmin değil bir olgu, ve dönem
-              uzunluğundan bağımsız olduğu için tek karşılaştırılabilir sayı. */}
-          <HeaderSplit
-            items={[
-              { label: "Kişi başı", value: formatEUR(stats?.per_person ?? 0) },
-              { label: "Günde ortalama", value: formatEUR(stats?.daily_average ?? 0) },
-            ]}
-          />
-          <HeaderPills>
-            <Pressable style={styles.statsPill} onPress={() => router.push("/istatistik")}
-                       testID="open-stats-btn">
-              <Ionicons name="stats-chart" size={13} color={colors.onDarkMuted} />
-              <Text style={styles.statsPillTxt}>İstatistikler</Text>
-              <Ionicons name="chevron-forward" size={12} color={colors.onDarkMuted} />
+              Karşılaştırılan tutar YAZILI. Görünen sayı doğrulanabilir
+              olmalı; "%12" tek başına hiçbir şey söylemiyor.
+
+              Hesap AYNI GÜNE göre: önceden bu ayın şu ana kadarki toplamı
+              geçen ayın TAM toplamıyla karşılaştırılıyordu ve ayın 5'inde
+              bakan herkes "%80 azalış" görüyordu.
+
+              Karşılaştırılacak geçmiş yoksa satır HİÇ çizilmiyor -- dolgu
+              metni yok, uydurma yok; yeni evde başlık bir tık kısa kalıyor.
+
+              Tıklanabilir, çünkü bu satırı okuyanın aklından geçen soru
+              "neden?" ve cevabı eğride. Merak ile kapı aynı yerde. */}
+          {stats?.change_pct != null && (
+            <Pressable style={styles.trendRow} hitSlop={8} testID="open-stats-trend"
+                       onPress={() => router.push("/istatistik")}>
+              <Ionicons
+                name={stats.change_pct >= 0 ? "trending-up" : "trending-down"}
+                size={13} color={colors.accentOnDark}
+              />
+              <Text style={styles.trendPct}>{degisimTxt(stats.change_pct)}</Text>
+              <Text style={styles.trendPrev} numberOfLines={1}>
+                · geçen ay bugün {formatEURShort(stats.prev_same_day)}
+              </Text>
             </Pressable>
-          </HeaderPills>
+          )}
         </ScreenHeader>
 
         <Sheet>
@@ -201,9 +204,17 @@ export default function Panel() {
                 </Card>
               )}
 
+              {/* Kart artık ayın tamamını anlatıyor: ev nereye harcadı → sana
+                  ne düştü → devamı için kapı. Tek özne akışı, kartın
+                  ortasında konu değişmiyor.
+
+                  Kapı KOYU DÜĞME değil alt satır: uygulamanın kuralı
+                  "sayfada tek koyu düğme" ve Anasayfa'nın birincil eylemi
+                  ortadaki fiş tarama. Ama başlıktaki sönük hapa göre çok
+                  daha büyük bir hedef -- İstatistik'in keşfedilmeme sebebi
+                  oraya giden tek kapının bir fısıltı olmasıydı. */}
               {cats.length > 0 && (
-                <Card title="Nereye Gitti" action="Tümü"
-                      onAction={() => router.push("/istatistik")} style={styles.mx}>
+                <Card title="Nereye Gitti" style={styles.mx}>
                   <View style={styles.donutRow}>
                     <View style={styles.donutWrap}>
                       <Donut parts={cats} />
@@ -222,6 +233,39 @@ export default function Panel() {
                       ))}
                     </View>
                   </View>
+
+                  <Divider inset={0} />
+                  {/* "Sana düşen" = ev harcamalarından payına düşen, kim
+                      ödemiş olursa olsun. "Ödediğin" değil -- o Kasa'da ve
+                      ikisinin farkı bakiyen. "Pay" kelimesi bunu
+                      öğretmiyordu.
+
+                      Kişisel SIFIRSA sütun çizilmiyor: kendine hiç harcama
+                      girmeyen biri için kalıcı duvar kâğıdı olurdu.
+                      (Kasa'daki sıfır sütunu gizleme kuralının aynısı.) */}
+                  <View style={styles.mineRow}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.mineLabel}>SANA DÜŞEN</Text>
+                      <Text style={styles.mineValue}>{formatEUR(stats?.my_share ?? 0)}</Text>
+                    </View>
+                    {(stats?.my_personal ?? 0) > 0.005 && (
+                      <>
+                        <View style={styles.mineSep} />
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.mineLabel}>KİŞİSEL</Text>
+                          <Text style={styles.mineValue}>{formatEUR(stats!.my_personal)}</Text>
+                        </View>
+                      </>
+                    )}
+                  </View>
+
+                  <Divider inset={0} />
+                  <Pressable style={styles.doorRow} testID="open-stats-btn"
+                             onPress={() => router.push("/istatistik")}>
+                    <Ionicons name="stats-chart" size={15} color={colors.accentDark} />
+                    <Text style={styles.doorTxt}>Tüm istatistikler</Text>
+                    <Ionicons name="chevron-forward" size={15} color={colors.onSurfaceTertiary} />
+                  </Pressable>
                 </Card>
               )}
 
@@ -318,6 +362,24 @@ const styles = StyleSheet.create({
   mx: { marginHorizontal: spacing.lg },
   heroLabel: { ...overline, color: colors.onDarkMuted },
   heroHint: { ...T.caption, color: colors.onDarkMuted, marginTop: 2 },
+  trendRow: {
+    flexDirection: "row", alignItems: "center", gap: 5,
+    alignSelf: "flex-start", marginTop: 3,
+  },
+  trendPct: { ...T.captionSb, color: colors.accentOnDark },
+  trendPrev: { ...T.caption, color: colors.onDarkMuted, flexShrink: 1 },
+  mineRow: {
+    flexDirection: "row", alignItems: "center",
+    paddingHorizontal: spacing.lg, paddingVertical: spacing.md,
+  },
+  mineLabel: { ...overline, fontSize: 10, color: colors.inkTertiary },
+  mineValue: { ...T.bodySb, fontSize: 16, color: colors.ink, marginTop: 1 },
+  mineSep: { width: 1, height: 30, backgroundColor: colors.divider, marginHorizontal: spacing.lg },
+  doorRow: {
+    flexDirection: "row", alignItems: "center", gap: spacing.sm,
+    paddingHorizontal: spacing.lg, paddingVertical: spacing.md, minHeight: 44,
+  },
+  doorTxt: { ...T.bodySb, color: colors.accentDark, flex: 1 },
   statsPill: {
     flexDirection: "row", alignItems: "center", gap: 5,
     backgroundColor: colors.darkSurface, borderRadius: radius.pill,

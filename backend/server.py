@@ -2742,6 +2742,77 @@ async def _compute_balances(household_id: str, period_id: str) -> dict:
     }
 
 
+async def _ekstre(household_id: str, period_id: str, user_id: str,
+                  members: List[str]) -> dict:
+    """Bir kişinin bakiyesinin AY AY dökümü.
+
+    Kasa'nın ekstre bloğu ile borç dökümü sayfası **aynı hesaptan** besleniyor;
+    iki ekran iki farklı sayı gösteremesin.
+
+    Dayandığı kimlik uygulamanın omurgası (DEVAM.md):
+
+        ödediğin − sana düşen = bakiyen
+
+    Her ay için ikisi ayrı toplanıyor; farkı o ayda bakiyenin ne kadar
+    değiştiği. Toplamları bugünkü bakiyeyi verir, yani **FIFO gerekmiyor** —
+    hangi ödemenin hangi ayın borcuna gittiğini bilmeye ihtiyaç yok.
+
+    **Dil önemli:** "Haziran'dan kalan 48 €" bir kurgudur, hangi euro'nun
+    kaldığı bilinemez. "Haziran'da 48 € borçlandın" bir olgudur.
+
+    `share` = sana düşen (borcu artıran) · `paid` = cebinden çıkan (azaltan).
+    Etiketler yöne göre ekranda konuluyor: borçluda "ödediklerin", alacaklıda
+    "senin payın".
+    """
+    aylar: Dict[str, dict] = {}
+
+    def kutu(ay: str) -> dict:
+        return aylar.setdefault(ay, {"month": ay, "share": 0.0, "paid": 0.0})
+
+    exps = await db.expenses.find(
+        {"household_id": household_id, "period_id": period_id}, {"_id": 0}
+    ).to_list(5000)
+    for e in exps:
+        shares = expense_shares(e, members)
+        if not shares:
+            continue
+        # Kişisel harcama bakiyeye hiç girmiyor; `_compute_balances` ile aynı
+        # kural, yoksa ekstre toplamı bakiyeyi tutmazdı.
+        if set(shares) == {e["added_by"]} and e.get("target_type") == "self":
+            continue
+        k = kutu(_expense_day(e)[:7])
+        if e["added_by"] == user_id:
+            k["paid"] += float(e["total"])
+        k["share"] += float(shares.get(user_id, 0.0))
+
+    # Ödemeler KAYIT tarihine göre aylanıyor: harcamanın tarihi geçmişe ait
+    # olabilir ama ödeme gerçekleştiği anda gerçekleşir.
+    for s in await db.settlements.find(
+        {"household_id": household_id, "period_id": period_id}, {"_id": 0}
+    ).to_list(1000):
+        k = kutu(make_aware(s["created_at"]).date().isoformat()[:7])
+        if s["from_user_id"] == user_id:
+            k["paid"] += float(s["amount"])
+        elif s["to_user_id"] == user_id:
+            k["share"] += float(s["amount"])
+
+    sirali = sorted(aylar.values(), key=lambda x: x["month"])
+    for k in sirali:
+        k["share"] = round(k["share"], 2)
+        k["paid"] = round(k["paid"], 2)
+        k["delta"] = round(k["share"] - k["paid"], 2)
+
+    bu_ay = month_key(now_utc().date())
+    return {
+        # Değişimi sıfır olan ay hiç görünmüyor: her ay aynı şeyi söyleyen
+        # satır listeyi doldurup asıl değişeni gizler.
+        "months": [k for k in sirali if abs(k["delta"]) >= 0.005],
+        # Ekstre bloğundaki tek satırlık devir: bu aydan öncekilerin toplamı.
+        "carried": round(sum(k["delta"] for k in sirali if k["month"] < bu_ay), 2),
+        "current_month": bu_ay,
+    }
+
+
 @api.get("/balances")
 async def balances(period_id: Optional[str] = None, user=Depends(get_current_user)):
     hh = await get_user_household(user["user_id"])
@@ -2774,6 +2845,13 @@ async def balances(period_id: Optional[str] = None, user=Depends(get_current_use
     ).to_list(50)
     result["members"] = members
     result["period"] = period
+    # Ekstre: bakiyenin ay ay dökümü. Kapalı dönemde hesaplanmıyor — orada
+    # bakiye sıfır ve gösterilecek bir borç yok.
+    result["statement"] = (
+        {"months": [], "carried": 0, "current_month": month_key(now_utc().date())}
+        if snap else
+        await _ekstre(hh["household_id"], period["period_id"], user["user_id"], participants)
+    )
     return result
 
 
