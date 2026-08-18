@@ -28,7 +28,7 @@ export default function MemberDetail() {
   const router = useRouter();
   /* Geri, geldiği yere. Sekme gezgininde `back()` Anasayfa'ya düşüyor. */
   const geriDon = useGeriDon();
-  const { members } = useHousehold();
+  const { members, household } = useHousehold();
 
   /* Dönem değil AY. Görüntülemenin her yeri takvim ayı: bu ekranın penceresi
      Anasayfa'daki "Kim Ne Kadar Ödedi" ile aynı olmak zorunda, yoksa
@@ -87,7 +87,7 @@ export default function MemberDetail() {
         <HeaderPills>
           <HeaderPill
             value={ay}
-            options={sonAylar().map((m) => ({
+            options={sonAylar(household?.created_at).map((m) => ({
               value: m, label: ayAdi(m).split(" ")[0],
               hint: ayAdi(m), icon: "calendar-outline",
               iconAccent: m === buAy(),

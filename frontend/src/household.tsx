@@ -12,6 +12,8 @@ export type Household = {
   member_ids: string[];
   pending_member_ids?: string[];
   current_period_id: string;
+  /** Evin kurulduğu an — ay seçici bundan öncesine inmiyor. */
+  created_at?: string;
   /** Bir ev = bir para birimi. Karisirsa toplama islemi anlamsizlasir. */
   country?: "DE" | "TR";
   currency?: "EUR" | "TRY";

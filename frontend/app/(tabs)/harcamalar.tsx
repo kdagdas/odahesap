@@ -77,7 +77,7 @@ export default function Harcamalar() {
   /* Geri, geldiği yere: Kasa'dan girildiyse Kasa'ya. Sekme gezgininde
      `back()` yığının dibindeki Anasayfa'ya düşüyor. */
   const geriDon = useGeriDon();
-  const { members } = useHousehold();
+  const { members, household } = useHousehold();
   /* Kasa'daki bir ekstre satırından gelinmişse süzgeç hazır geliyor. */
   const params = useLocalSearchParams<{ akis?: string; ay?: string }>();
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -158,7 +158,7 @@ export default function Harcamalar() {
             )}
             <HeaderPill
               value={ay}
-              options={sonAylar().map((m) => ({
+              options={sonAylar(household?.created_at).map((m) => ({
                 value: m, label: ayAdi(m).split(" ")[0],
                 hint: ayAdi(m), icon: "calendar-outline",
                 iconAccent: m === buAy(),
@@ -166,13 +166,17 @@ export default function Harcamalar() {
               onSelect={setAy}
               testID="filter-ay"
             />
+            {/* Kişi süzgeci. Alt satır (hint) YOK: "Kemal" başlığının altına
+                yine "Kemal" yazmak boş bir tekrardı. Tek kelimelik isimlerde
+                zaten aynıydı, iki kelimelikte de ayırt edici bir şey
+                söylemiyordu. "Herkes" ise kaç kişi olduğunu söylüyor — o bir
+                bilgi, tekrar değil. */}
             <HeaderPill
               value={memberFilter ?? ""}
               options={[
                 { value: "", label: "Herkes", icon: "people", hint: `${members.length} kişi` },
                 ...members.map((m) => ({
-                  value: m.user_id, label: m.name.split(" ")[0],
-                  icon: "person", hint: m.name,
+                  value: m.user_id, label: m.name.split(" ")[0], icon: "person",
                 })),
               ]}
               onSelect={(v) => setMemberFilter(v || undefined)}

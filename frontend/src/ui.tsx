@@ -1602,22 +1602,31 @@ export function buAy(): string {
 }
 
 /**
- * Seçilebilir aylar: bu ay ve geriye doğru 11 ay.
+ * Seçilebilir aylar: bu aydan geriye, evin KURULDUĞU aya kadar.
  *
- * Dönem çiplerinin yerini aldı. Dönem para hesabından çıktı ve
- * görüntülemenin her yeri takvim ayı; Harcamalar ile üye dökümünün penceresi
- * aynı listeden gelmek zorunda, yoksa iki ekran farklı aralıklar gösterir.
+ * Dönem çiplerinin yerini aldı. Görüntülemenin her yeri takvim ayı;
+ * Harcamalar ile üye dökümünün penceresi aynı listeden gelmek zorunda.
  *
- * Veri olan aylar SORULMUYOR: boş bir ay seçmek zararsız (ekran "kayıt yok"
- * der) ama hangi ayların dolu olduğunu öğrenmek her açılışta fazladan bir
- * istek demek.
+ * `baslangic` (evin `created_at`'i) verilirse liste orada duruyor: evin var
+ * olmadığı bir aya bakmak "kayıt yok" demekten başka bir şey söylemiyor ve
+ * seçiciyi boş aylarla uzatıyordu. Verilmezse son 12 ay — güvenli bir tavan.
  */
-export function sonAylar(adet = 12): string[] {
+export function sonAylar(baslangic?: string | null): string[] {
   const d = new Date();
-  return Array.from({ length: adet }, (_, i) => {
+  const buAyKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  const alt = (baslangic || "").slice(0, 7);
+  const out: string[] = [];
+  for (let i = 0; i < 60; i++) {
     const x = new Date(d.getFullYear(), d.getMonth() - i, 1);
-    return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, "0")}`;
-  });
+    const key = `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, "0")}`;
+    out.push(key);
+    // Evin kurulduğu aya inince dur. Tavan 60 ay: `created_at` yoksa ya da
+    // gelecekteyse liste sonsuza gitmesin.
+    if (alt && key <= alt) break;
+    if (!alt && out.length >= 12) break;
+    if (key === buAyKey && i > 0) { /* buAy hep başta */ }
+  }
+  return out;
 }
 
 /**

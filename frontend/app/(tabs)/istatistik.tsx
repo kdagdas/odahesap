@@ -14,7 +14,7 @@
  *  arasında gereksiz sürtüşme üretir. "Kim ne kadar ÖDEDİ" farklı bir şey ve
  *  ödeşmenin doğrudan girdisi.
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator,
 } from "react-native";
@@ -27,7 +27,7 @@ import { useHousehold } from "@/src/household";
 import {
   ScreenHeader, Sheet, Card, Row, Divider, Avatar, Money, CategoryIcon,
   categoryLabel, MerchantBadge, Donut, TabSwitch, BottomSheet,
-  formatEUR, formatEURShort, useScrollPad, useGeriDon,
+  formatEUR, formatEURShort, useScrollPad, useGeriDon, useBasaSar,
 } from "@/src/ui";
 import {
   colors, spacing, radius, type as T, overline, fontFamily, metrics, CATEGORY_ICONS,
@@ -129,6 +129,8 @@ const shiftMonth = (m: string, by: number) => {
 export default function Istatistik() {
   const router = useRouter();
   const altPay = useScrollPad({ tabs: true });
+  const scrollRef = useRef<ScrollView>(null);
+  useBasaSar(scrollRef);
   const { user } = useAuth();
   const { members } = useHousehold();
   const [scope, setScope] = useState<"household" | "self">("household");
@@ -162,7 +164,8 @@ export default function Istatistik() {
 
   return (
     <View style={styles.root} testID="istatistik-screen">
-      <ScrollView contentContainerStyle={[styles.page, altPay]} showsVerticalScrollIndicator={false}>
+      <ScrollView ref={scrollRef} contentContainerStyle={[styles.page, altPay]}
+                  showsVerticalScrollIndicator={false}>
         <ScreenHeader
           size="l"
           overline="İSTATİSTİK"
