@@ -1484,6 +1484,41 @@ def expense_shares(e: dict, participants: List[str]) -> Dict[str, float]:
     return {u: total * w / denom for u, w in weights.items()}
 
 
+# Bir harcamanın bir kişi için hangi HAREKET satırına, ne kadar yazıldığı.
+#
+# Aynı harcama birden çok satıra düşebilir: ortak bir alışverişi sen ödediysen
+# hem "ev alışverişlerindeki payın" (borcunu artıran) hem de "senin ödediğin ev
+# alışverişleri" (azaltan) satırına yazılır. İkisi aynı olayın iki yüzü.
+#
+# **Tek yerde duruyor.** `_ekstre()` bakiyeyi bu türlere ayırıyor,
+# `/expenses?akis=` de aynı türle süzüyor. İki kopya olsaydı kaçınılmaz olarak
+# ayrışırlardı ve belirtisi şu olurdu: ekstrede "Senin için alınanlar 8,40"
+# yazıyor, dokunuyorsun, liste boş açılıyor. Kullanıcı bunu bir gizlilik
+# kuralı sanır — oysa iki süzgeç aynı fikirde değildir.
+#
+# İşaret kuralı burada değil ekranda: artı borcu artırır, eksi azaltır.
+def akis_paylari(e: dict, shares: Dict[str, float], user_id: str) -> Dict[str, float]:
+    if not shares:
+        return {}
+    # Kişisel harcama bakiyeye hiç girmiyor; `_compute_balances` ile aynı kural.
+    if set(shares) == {e["added_by"]} and e.get("target_type") == "self":
+        return {}
+    odeyen = e["added_by"]
+    payim = float(shares.get(user_id, 0.0))
+    tam = float(e.get("total") or 0)
+    if len(shares) == 1 and user_id not in shares and odeyen == user_id:
+        # Tek kişi için aldın: o kişi sana borçlandı, senin borcun düştü.
+        return {"baskasi_icin": tam}
+    if len(shares) == 1 and user_id in shares and odeyen != user_id:
+        return {"senin_icin": payim}
+    out: Dict[str, float] = {}
+    if user_id in shares:
+        out["pay"] = payim
+    if odeyen == user_id:
+        out["ev_odedigin"] = tam
+    return out
+
+
 def derive_target_type(payer: str, split_with: Dict[str, float], member_ids: List[str]) -> str:
     """Listeden okunan etiket. Süzgeçler ve ekrandaki rozet bunu kullanıyor.
 
@@ -1654,14 +1689,26 @@ async def list_expenses(
     member_id: Optional[str] = None,
     target_type: Optional[str] = None,
     month: Optional[str] = None,
+    akis: Optional[str] = None,
     user=Depends(get_current_user),
 ):
     """Görünür harcamalar.
 
     `month=YYYY-MM` verilirse dönem yerine **takvim ayı** süzülür ve her
-    kayda `my_share` eklenir — borç dökümünde "bu ayın hangi fişlerinden
+    kayda `my_share` eklenir — Kasa'daki ekstrede "bu ayın hangi fişlerinden
     geldi" katı bunu okuyor. Sağda iki sayı görünüyor: senin payın büyük,
     fişin tamamı küçük. Karıştırılan tam olarak bu ikisiydi.
+
+    `akis=` ekstredeki HAREKET satırının kendisi: `pay` · `ev_odedigin` ·
+    `baskasi_icin` · `senin_icin`. Tanım `akis_paylari()` içinde ve ekstre de
+    oradan besleniyor, yani satırdaki tutar ile açılan listenin toplamı
+    ayrışamaz.
+
+    **Bu süzgeç neden istemcide değil.** Önce `split_with` alanına bakarak
+    telefonda süzülüyordu ve Tur 4 öncesi kayıtları kaçırıyordu: o kayıtlarda
+    alan hiç yok, `split_of()` yedek yolu ise yalnızca sunucuda çalışıyor.
+    Belirtisi "Senin için alınanlar 3 €" yazıp içinin boş açılmasıydı — bir
+    gizlilik kuralı gibi görünüyordu, oysa yalnızca eksik veriydi.
     """
     hh = await get_user_household(user["user_id"])
     if not hh:
@@ -1688,14 +1735,26 @@ async def list_expenses(
         # eski kayıtlarda `created_at`'e düşüyor ve bu mantık Mongo sorgusuna
         # çevrilemiyor.
         exps = [e for e in exps if _expense_day(e)[:7] == month]
+    if aylik or akis:
         uyeler = await period_participants(
             hh["household_id"],
             (await get_active_period(hh["household_id"]) or {}).get("period_id", ""),
             hh["member_ids"],
         )
+        suzulmus = []
         for e in exps:
-            e["my_share"] = round(
-                float(expense_shares(e, uyeler).get(user["user_id"], 0.0)), 2)
+            shares = expense_shares(e, uyeler)
+            paylar = akis_paylari(e, shares, user["user_id"])
+            if akis and akis not in paylar:
+                continue
+            e["my_share"] = round(float(shares.get(user["user_id"], 0.0)), 2)
+            # Süzgeç bir akış satırındansa listedeki tutar da o satırın
+            # tutarı olmalı: "başkası için aldıkların"da senin payın sıfır,
+            # ilgilenilen sayı fişin tamamı.
+            if akis:
+                e["akis_tutar"] = round(float(paylar[akis]), 2)
+            suzulmus.append(e)
+        exps = suzulmus
 
     # secondary sort by created_at desc for same date
     exps.sort(key=lambda e: (e.get("expense_date") or "", e.get("created_at")), reverse=True)
@@ -2815,31 +2874,18 @@ async def _ekstre(household_id: str, period_id: str, user_id: str,
     ).to_list(5000)
     for e in exps:
         shares = expense_shares(e, members)
-        if not shares:
-            continue
-        # Kişisel harcama bakiyeye hiç girmiyor; `_compute_balances` ile aynı
-        # kural, yoksa ekstre toplamı bakiyeyi tutmazdı.
-        if set(shares) == {e["added_by"]} and e.get("target_type") == "self":
+        # Hangi satıra ne yazılacağını `akis_paylari` söylüyor; `/expenses?akis=`
+        # de aynı fonksiyonu okuyor, yani ekstredeki satır ile o satıra
+        # dokununca açılan fiş listesi aynı tanımdan geliyor.
+        paylar = akis_paylari(e, shares, user_id)
+        if not paylar:
             continue
         k = kutu(_expense_day(e)[:7])
-        payim = float(shares.get(user_id, 0.0))
-        odeyen = e["added_by"]
-        if odeyen == user_id:
+        if e["added_by"] == user_id:
             k["paid"] += float(e["total"])
-        k["share"] += payim
-
-        # Aynı hareket, türüne göre ayrı satır.
-        if len(shares) == 1 and user_id not in shares and odeyen == user_id:
-            # Tek kişi için aldın: o kişi sana borçlandı, senin borcun düştü.
-            # Kullanıcının en çok merak ettiği satır bu — "Kemal'den o parayı
-            # ayrıca almam gerekiyor mu?" Hayır: düşüm burada oldu.
-            k["baskasi_icin"] += float(e["total"])
-        elif len(shares) == 1 and user_id in shares and odeyen != user_id:
-            k["senin_icin"] += payim          # biri senin için aldı
-        else:
-            k["pay"] += payim                  # ortak harcamadaki payın
-            if odeyen == user_id:
-                k["ev_odedigin"] += float(e["total"])
+        k["share"] += float(shares.get(user_id, 0.0))
+        for tur, tutar in paylar.items():
+            k[tur] += tutar
 
     # Ödemeler KAYIT tarihine göre aylanıyor: harcamanın tarihi geçmişe ait
     # olabilir ama ödeme gerçekleştiği anda gerçekleşir.
