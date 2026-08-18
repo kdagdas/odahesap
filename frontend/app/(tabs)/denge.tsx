@@ -136,7 +136,12 @@ export default function Denge() {
       const [pers, bal, stl, st] = await Promise.all([
         apiGet<{ periods: Period[] }>("/periods"),
         apiGet<any>(`/balances${q}`),
-        apiGet<{ settlements: Settlement[] }>(`/settlements${q}`),
+        // Ödeme geçmişi dönemleri AŞMALI: son ödeme dönemi kendiliğinden
+        // kapattığı için, varsayılan (açık dönem) görünümü tam da
+        // ilgilenilen anda boş liste dönüyordu — kayıtlar bir önceki, artık
+        // kapanmış dönemde kalıyor.
+        apiGet<{ settlements: Settlement[] }>(
+          selected ? `/settlements?period_id=${selected}` : "/settlements?all_periods=true"),
         apiGet<Stats>(`/stats${q}`),
       ]);
       setPeriods(pers.periods || []);
@@ -309,12 +314,24 @@ export default function Denge() {
     finally { setBusy(false); }
   };
 
-  const closePeriod = async () => {
+  /**
+   * "Ödeştik" — eski "Dönemi Kapat"ın yerini alıyor ama işi tam tersi.
+   *
+   * Eskisi bakiyeleri **siliyordu**: ödeşmeden kapatılan bir dönemin borcu
+   * canlı ekrandan kayboluyor, kayıt arşivde kalıyor ama kimse bir daha
+   * bakmıyordu. Yenisi önerilen transferleri **gerçek ödeme kaydı olarak
+   * yazıyor**; bakiye zaten sıfıra iniyor ve dönem kendiliğinden kapanıyor.
+   *
+   * Aynı insan jesti ("nakit ödeştik, bitti"), dürüst defter: kim kime ne
+   * ödediği ödeme geçmişinde duruyor ve geri alınabiliyor.
+   */
+  const odestik = async () => {
     setBusy(true); setError(null); duyur(null);
     try {
-      await apiPost("/periods/close", {});
+      const r = await apiPost<{ count: number }>("/settlements/all", {});
       await refreshHH(); setSelected(undefined); await load();
-      setMode("none"); duyur("Dönem kapatıldı, yeni dönem başladı");
+      setMode("none");
+      duyur(`Ödeşildi · ${r?.count ?? 0} ödeme kaydedildi`);
     } catch (e: any) { setError(e?.message || "İşlem başarısız"); }
     finally { setBusy(false); }
   };
@@ -422,25 +439,12 @@ export default function Denge() {
                   ? [{ label: "Senin borcun", value: formatEUR(iOwe) }] : []),
               ]} />
             )}
-            {/* Süzgeç *içerik* değil BAĞLAM: "neye bakıyorum" sorusunun
-                parçası, başlık ve toplamlarla aynı yerde durmalı. Beyaz
-                yüzeyde kart olarak içerikle aynı ağırlığa giriyordu. */}
-            {periods.length > 1 && (
-              <HeaderPills>
-                <HeaderPill
-                  value={currentId || ""}
-                  options={periods.map((p, i) => ({
-                    value: p.period_id,
-                    label: periodLabel(p),
-                    hint: periodHint(p),
-                    icon: p.status === "active" ? "flash" : "archive-outline",
-                    iconAccent: p.status === "active",
-                  }))}
-                  onSelect={(v) => setSelected(v === activeId ? undefined : v)}
-                  testID="denge-period"
-                />
-              </HeaderPills>
-            )}
+            {/* DÖNEM SEÇİCİ KALKTI.
+                Tek yaptığı "arşivlenmiş bir döneme bak"tı. Dönem para
+                hesabından çıkınca kapalı dönem = **ödeşilmiş an** oldu, yani
+                aynı bilgi ödemelerin kendisinde duruyor ve daha zengin: kim
+                kime, ne zaman, ne kadar, ne kadarı kaldı. Yerini aşağıdaki
+                Ödeme Geçmişi aldı. */}
           </ScreenHeader>
 
           <Sheet>
@@ -576,8 +580,12 @@ export default function Denge() {
                   )}
                 </Card>
 
+                {/* ÖDEME GEÇMİŞİ — dönem seçicisinin yerini alan yer.
+                    Hap yalnızca "arşive bak" diyordu; burası kim kime ne
+                    zaman ne kadar ödedi diye cevap veriyor ve ödeşilmiş
+                    geçmiş de dahil, dönemleri aşıyor. */}
                 {settlements.length > 0 && (
-                  <Card title="Kaydedilen Ödemeler" style={styles.mx}>
+                  <Card title="Ödeme Geçmişi" style={styles.mx}>
                     {settlements.map((s, i) => {
                       const mine = s.from_user_id === me || s.to_user_id === me;
                       return (
@@ -611,32 +619,38 @@ export default function Denge() {
 
                 {!archived && (
                   <View style={[styles.mx, { gap: spacing.sm }]}>
-                    {!isAdmin ? (
+                    {ordered.length === 0 ? null : !isAdmin ? (
                       <View style={styles.banner}>
                         <Ionicons name="information-circle" size={16} color={colors.inkSecondary} />
-                        <Text style={styles.bannerTxt}>Dönemi yalnızca ev yöneticisi kapatabilir.</Text>
+                        <Text style={styles.bannerTxt}>
+                          Toplu ödeşmeyi yalnızca ev yöneticisi işaretleyebilir.
+                          Kendi ödemeni yukarıdan kaydedebilirsin.
+                        </Text>
                       </View>
                     ) : mode === "close" ? (
                       <View style={styles.confirm}>
                         <Text style={styles.confirmTxt}>
-                          Herkes gerçek hayatta ödeşti mi? Bu dönem arşivlenip yeni bir dönem başlayacak.
+                          Kalan borçların hepsi ödenmiş olarak kaydedilecek.
+                          Silinmiyor — kim kime ne ödediği deftere yazılıyor ve
+                          geri alınabiliyor.
                         </Text>
                         <View style={styles.confirmRow}>
                           <Pressable style={styles.ghost} onPress={() => setMode("none")}
                                      testID="cancel-close-period">
                             <Text style={styles.ghostTxt}>Vazgeç</Text>
                           </Pressable>
-                          <Pressable style={styles.solid} onPress={closePeriod} disabled={busy}
+                          <Pressable style={styles.solid} onPress={odestik} disabled={busy}
                                      testID="confirm-close-period">
                             {busy ? <ActivityIndicator color={colors.onBrand} />
-                                  : <Text style={styles.solidTxt}>Evet, kapat</Text>}
+                                  : <Text style={styles.solidTxt}>Evet, ödeştik</Text>}
                           </Pressable>
                         </View>
                       </View>
                     ) : mode === "reopen" ? (
                       <View style={styles.confirm}>
                         <Text style={styles.confirmTxt}>
-                          Son kapatılan dönem yeniden açılacak ve harcamaları geri gelecek.
+                          Son ödeşme geri alınacak: kaydedilen ödemeler silinecek
+                          ve borçlar yeniden görünecek.
                         </Text>
                         <View style={styles.confirmRow}>
                           <Pressable style={styles.ghost} onPress={() => setMode("none")} testID="cancel-reopen">
@@ -651,31 +665,29 @@ export default function Denge() {
                       </View>
                     ) : (
                       <>
-                        {/* Boyutu KORUNUYOR -- yaptigi is buyuk ve bulunmasi
-                            kolay olmali. Ama ortada odenmemis borc varken
-                            kendini "hazir" gostermiyor.
-                            PROJE-DOKUMANI §12'de yazan endise tam da bu:
-                            "kolayca basilan bir dugme insanlari odesmeden
-                            arsivlemeye iter". Bugun bu dugme ekranin en koyu,
-                            en genis ogesi ve basparmagin en rahat ulastigi
-                            yerde duruyor. Artik agirligini hak ettigi anda
-                            kazaniyor: herkes odestiyse koyu ve davetkar,
-                            borc varken sonuk. */}
-                        <PrimaryButton label="Dönemi Kapat & Denkleştir" icon="checkmark-done"
-                                       onPress={() => setMode("close")} testID="close-period-btn"
-                                       tone={ordered.length > 0 ? "muted" : undefined} />
-                        {ordered.length > 0 && (
-                          <Text style={styles.footNote}>
-                            {ordered.length === 1
-                              ? "Bir borç henüz ödenmedi"
-                              : `${ordered.length} borç henüz ödenmedi`}
-                          </Text>
-                        )}
+                        {/* Eski dugme "Donemi Kapat & Denklestir" idi ve
+                            bakiyeleri SILIYORDU; o yuzden odenmemis borc
+                            varken bilerek sonuk gosteriliyordu -- PROJE-
+                            DOKUMANI §12'deki endise ("kolayca basilan bir
+                            dugme insanlari odesmeden arsivlemeye iter").
+
+                            Artik silen bir sey yok: dugme odemeleri KAYDEDIYOR.
+                            Dolayisiyla sonuk gostermenin sebebi de kalmadi --
+                            tam tersine, dugmenin var olma sebebi odenmemis
+                            borctur. Borc yoksa hic cizilmiyor. */}
+                        <PrimaryButton label="Ödeştik" icon="checkmark-done"
+                                       onPress={() => setMode("close")}
+                                       testID="close-period-btn" />
+                        <Text style={styles.footNote}>
+                          {ordered.length === 1
+                            ? "Kalan borç ödenmiş olarak kaydedilir"
+                            : `${ordered.length} borç ödenmiş olarak kaydedilir`}
+                        </Text>
                         {canReopen && (
                           <Pressable style={styles.undoBtn} onPress={() => setMode("reopen")}
                                      testID="reopen-period-btn">
                             <Ionicons name="arrow-undo" size={15} color={colors.inkSecondary} />
-                            <Text style={styles.undoBtnTxt}>Son kapatmayı geri al</Text>
+                            <Text style={styles.undoBtnTxt}>Son ödeşmeyi geri al</Text>
                           </Pressable>
                         )}
                       </>
