@@ -230,10 +230,10 @@ export default function Denge() {
       </View>
     );
     return (
-      /* SATIR ANLATIR, DÜĞME ÖDER: düğme dışında her yere dokunmak borcun
-         nereden geldiğini açıyor. Düğme kendi dokunma alanını koruyor. */
-      <Pressable style={styles.bridge} testID={`debt-${t.from}-${t.to}`}
-                 onPress={() => router.push("/borc-dokumu")}>
+      /* Köprü YALNIZCA ödüyor. "Bu borç nereden geliyor" kapısı ekstre
+         bloğuna taşındı — orada satırlar zaten dökümün özeti. İçinde düğme
+         olan bir satırı tıklanabilir yapmak iç içe hedef sorunu üretiyordu. */
+      <View style={styles.bridge} testID={`debt-${t.from}-${t.to}`}>
         <View style={styles.bridgeRow}>
           {uc(t.from)}
           <View style={styles.middle}>
@@ -258,7 +258,7 @@ export default function Denge() {
             </Pressable>
           </View>
         )}
-      </Pressable>
+      </View>
     );
   };
   // Pencere KART BASLIGINDA: ayni kelime ("payin") Istatistik'te de
@@ -412,7 +412,16 @@ export default function Denge() {
                 "Onceki aylardan" satiri YALNIZCA devir varsa ciziliyor:
                 duzenli odesen bir evde ekran bugunkuyle ayni kaliyor. */}
             {ekstre ? (
-              <View style={styles.ekstre}>
+              /* BLOĞUN TAMAMI dokunulabilir, satır satır değil.
+                 Dört satırın her biri ~20 piksel; ayrı hedefler yapmak
+                 başparmak için isabetsiz olurdu. Üstelik dördü tek bir
+                 düşüncenin parçası: "bakiyen şöyle oluştu". Tek hedef, tek ok.
+
+                 Kapı BURASI, köprü değil: ekstre satırları zaten dökümün
+                 özeti, döküm de onların açılmış hâli. Köprünün sorduğu soru
+                 ise "kime ödeyeceğim" — başka bir soru. */
+              <Pressable style={styles.ekstre} testID="open-dokum"
+                         onPress={() => router.push("/borc-dokumu")}>
                 {Math.abs(ekstre.carried) > 0.005 && (
                   <View style={styles.ekstreRow}>
                     <Text style={styles.ekstreLabel}>Önceki aylardan</Text>
@@ -448,8 +457,13 @@ export default function Denge() {
                                 { color: myNet >= 0 ? colors.accentOnDark : colors.negativeOnDark }]}>
                     {formatEUR(Math.abs(sayanNet))}
                   </Text>
+                  {/* Tek ok, blogun tamamini temsil ediyor. Dort satirin
+                      dordune ayri ok koymak "hangisi acilir" sorusu dogurur;
+                      oysa acilan sey hepsi. */}
+                  <Ionicons name="chevron-forward" size={16} color={colors.onDarkMuted}
+                            style={{ marginLeft: 4 }} />
                 </View>
-              </View>
+              </Pressable>
             ) : (
               <>
                 <Text style={styles.heroLabel}>NET DURUMUN</Text>
