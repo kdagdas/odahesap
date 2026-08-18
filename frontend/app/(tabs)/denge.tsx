@@ -14,8 +14,8 @@ import { apiGet, apiPost, apiDelete } from "@/src/api";
 import { useAuth } from "@/src/auth";
 import { useHousehold } from "@/src/household";
 import {
-  ScreenHeader, HeaderSplit, Sheet, Card, Row, Divider, Avatar, Money,
-  IconPill, PrimaryButton, BottomSheet, PulseDot, HeaderPills, HeaderPill,
+  ScreenHeader, Sheet, Card, Row, Divider, Avatar, Money,
+  IconPill, PrimaryButton, BottomSheet, PulseDot,
   useCountUp, formatEUR, currencySign, ayAdi,
   useScrollPad,
 } from "@/src/ui";
@@ -45,41 +45,6 @@ type Stats = {
   by_member: { user_id: string; total: number }[];
   daily_series: { day: string; total: number }[];
   merchants: { name: string; total: number }[];
-};
-
-/**
- * Dönem etiketi — HARCAMA aralığı, dönem kaydının damgası değil.
- *
- * `started_at` bir muhasebe damgası: ev kurulup ilk dönem aynı gün kapandıysa
- * "3 Ağu – 3 Ağu" çıkıyor ve iki dönem ayırt edilemiyor. İnsanın hatırladığı
- * şey alışveriş yapılan günler. Aynı ay içindeyse ay bir kez yazılıyor
- * (banka ekstrelerindeki gibi), harcama yoksa tek tarih.
- */
-const AY_KISA = ["Oca", "Şub", "Mar", "Nis", "May", "Haz",
-                 "Tem", "Ağu", "Eyl", "Eki", "Kas", "Ara"];
-const AY_UZUN = ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran",
-                 "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"];
-
-const periodLabel = (p: Period) => {
-  const ilk = p.first_expense, son = p.last_expense;
-  if (!ilk) {
-    const d = new Date(p.started_at);
-    return `${d.getDate()} ${AY_UZUN[d.getMonth()]}`;
-  }
-  const [, ay1, g1] = ilk.split("-").map(Number);
-  const bitis = p.status === "active" ? null : son;
-  if (!bitis || bitis === ilk) return `${g1} ${AY_UZUN[ay1 - 1]}`;
-  const [, ay2, g2] = bitis.split("-").map(Number);
-  // Ayni ay: "3 - 16 Agustos". Farkli ay: "28 Tem - 2 Agustos".
-  return ay1 === ay2
-    ? `${g1} – ${g2} ${AY_UZUN[ay2 - 1]}`
-    : `${g1} ${AY_KISA[ay1 - 1]} – ${g2} ${AY_UZUN[ay2 - 1]}`;
-};
-
-const periodHint = (p: Period) => {
-  const durum = p.status === "active" ? "Sürüyor" : "Kapandı";
-  if (!p.expense_count) return `${durum} · harcama yok`;
-  return `${durum} · ${p.expense_count} harcama · ${formatEUR(p.expense_total)}`;
 };
 
 /** Ödeme geçmişinde katlanmadan görünen kayıt sayısı. */
@@ -236,7 +201,6 @@ export default function Denge() {
 
   // `by_member` yalnizca EV harcamalarini sayiyor; bu satir ise bakiyeyi
   // acikliyor, yani Salih icin odedigin de dahil olmali.
-  const myPaid = stats?.my_paid ?? 0;
 
   /**
    * Köprü — iki avatar iki ucu tutuyor, tutar ortada.
@@ -297,8 +261,6 @@ export default function Denge() {
   // Pencere KART BASLIGINDA: ayni kelime ("payin") Istatistik'te de
   // geciyor ama orasi takvim ayi. Basliga yazmak karsilastirma
   // sorusunu bastan kapatiyor.
-  const currentDonem = periods.find((p) => p.period_id === currentId);
-  const currentDonemTxt = currentDonem ? periodLabel(currentDonem) : "";
   const sayanNet = useCountUp(myNet);
 
   /**
@@ -494,20 +456,10 @@ export default function Denge() {
                 </Text>
               </>
             )}
-            {/* Sifir olan sutun GOSTERILMIYOR. "Sana borçlu 0,00 €" gerçek
-                bir sayıyla aynı yeri kaplayıp hiçbir şey söylemiyordu; iki
-                kişilik bir borçta ayrıca üstteki net rakamın tekrarıydı. */}
-            {/* Tek tarafli borcta bu satir ustteki net rakamin TEKRARI olur
-                (net −40,60 · senin borcun 40,60 · kopruden 40,60 = uc kez).
-                Yalnizca iki taraf da doluysa bilgi tasiyor. */}
-            {owedToMe > 0.005 && iOwe > 0.005 && (
-              <HeaderSplit items={[
-                ...(owedToMe > 0.005
-                  ? [{ label: "Sana borçlu", value: formatEUR(owedToMe), accent: true }] : []),
-                ...(iOwe > 0.005
-                  ? [{ label: "Senin borcun", value: formatEUR(iOwe) }] : []),
-              ]} />
-            )}
+            {/* "Sana borçlu / Senin borcun" ikilisi KALKTI. Zaten yalnızca
+                iki taraf da doluyken çiziliyordu; sadeleştirme her kişiye tek
+                net verdiği için o durum hiç oluşmuyor. Ekstre bloğu da aynı
+                soruyu daha iyi cevaplıyor. */}
             {/* DÖNEM SEÇİCİ KALKTI.
                 Tek yaptığı "arşivlenmiş bir döneme bak"tı. Dönem para
                 hesabından çıkınca kapalı dönem = **ödeşilmiş an** oldu, yani
@@ -535,21 +487,16 @@ export default function Denge() {
                     ucuz; Kasa'yı açma sebebi zaten bu blok. Beni
                     ilgilendirmeyen borç aynı kutunun altında tek satıra iniyor
                     ki ev büyürse blok şişmesin. */}
-                <Card title={`Kim Kime Borçlu · ${currentDonemTxt}`} style={styles.mx}>
-                  {/* Bir istatistik degil, odesmenin girdisi: "ben ne odedim,
-                      payim neydi" sorusu borcun kendisiyle ayni yerde durmali.
-                      Istatistik karti bu ekrandan kalkti; sayfasi ayri. */}
-                  {stats && stats.expense_count > 0 && (
-                    <View style={styles.paidLine}>
-                      <Text style={styles.paidLabel}>Senin ödediğin</Text>
-                      <Text style={styles.paidValue}>{formatEUR(myPaid)}</Text>
-                      {/* GERCEK pay: once `per_person` (toplam/uye sayisi)
-                          gosteriliyordu ve kisiye ozel bolusmede yanlisti --
-                          "odedigin - payin" ustteki net durumu tutmuyordu. */}
-                      <Text style={styles.paidLabel}>· payın</Text>
-                      <Text style={styles.paidValue}>{formatEUR(stats.my_share)}</Text>
-                    </View>
-                  )}
+                {/* Başlıktaki dönem aralığı ("· 3–16 Ağustos") KALKTI: eski
+                    dönem matematiğinden kalmaydı ve artık yanıltıcı — bu kart
+                    bir tarih aralığını değil **ödeşilmemiş her şeyi**
+                    gösteriyor.
+
+                    "Senin ödediğin · payın" satırı da kalktı: ikisi de
+                    yukarıdaki ekstre bloğunda yazılı ve orada bir hesabın
+                    parçası olarak duruyor. Aynı sayıyı iki kez göstermek,
+                    turun başındaki şikâyetin ta kendisiydi. */}
+                <Card title="Kim Kime Borçlu" style={styles.mx}>
                   {ordered.length === 0 ? (
                     <Row
                       leading={<IconPill name="checkmark-circle" color={colors.accent}
@@ -973,7 +920,9 @@ const styles = StyleSheet.create({
   stlRight: { alignItems: "flex-end", gap: 2 },
   undo: { ...T.caption, color: colors.negative },
 
-  paidLine: {
+  // paidLine/paidLabel/paidValue kaldirildi: "senin odedigin - payin"
+  // artik ekstre blogunda, bir hesabin parcasi olarak duruyor.
+  _kaldirildi_paidLine: {
     flexDirection: "row", alignItems: "center", gap: 5, flexWrap: "wrap",
     paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.xs,
   },
