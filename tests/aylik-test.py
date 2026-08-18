@@ -252,6 +252,45 @@ s = c.get(f"{API}/stats/monthly?month=bozuk", headers=hdr(alice)).json()
 check("bozuk ay parametresi dusurmuyor", "total" in s, str(s)[:120])
 
 
+print("\n-- ay ortasinda AYNI GUNE gore karsilastirma --")
+# Onceki hesap bu ayin SU ANA KADARKI toplamini gecen ayin TAM toplamiyla
+# karsilastiriyordu: ayin 5'inde bakan herkes "%80 azalis" goruyordu, cunku
+# ay bitmemisti. Ancak ayin son gununde duzeliyordu.
+#
+# Kurgu: gecen aya biri ERKEN biri GEC iki harcama konuyor. Dogru hesap
+# yalnizca erken olani sayar; eski hesap ikisini birden sayardi.
+bugun3 = date.today()
+if bugun3.day >= 27:
+    print("  [ATLA] ayin sonundayiz; erken/gec kesiti kurulamiyor")
+else:
+    carol, carol_id = reg("carol")
+    r = c.post(f"{API}/households", headers=hdr(carol), json={"name": f"Kesit Ev {TAG}"})
+    BU_AY = f"{bugun3.year:04d}-{bugun3.month:02d}"
+    onceki_yil = bugun3.year - 1 if bugun3.month == 1 else bugun3.year
+    onceki_ay = 12 if bugun3.month == 1 else bugun3.month - 1
+    ONC = f"{onceki_yil:04d}-{onceki_ay:02d}"
+
+    harca(carol, f"{ONC}-01", 100.0, category="Market")          # bugunun gununden ONCE
+    harca(carol, f"{ONC}-{bugun3.day + 1:02d}", 900.0, category="Market")  # SONRA
+    harca(carol, f"{BU_AY}-01", 120.0, category="Market")
+
+    s = c.get(f"{API}/stats/monthly?month={BU_AY}", headers=hdr(carol)).json()
+    check("gecen ayin TAM toplami 1000", near(s["prev_total"], 1000.0), s["prev_total"])
+    check("ayni gune kadarki toplam 100", near(s["prev_same_day"], 100.0),
+          s.get("prev_same_day"))
+    # Eski hesap: (120-1000)/1000 = -%88. Dogrusu: (120-100)/100 = +%20.
+    check("degisim ayni gune gore (+%20)", s["change_pct"] == 20, str(s["change_pct"]))
+    check("gecen gun sayisi bugun", s.get("elapsed_days") == bugun3.day,
+          str(s.get("elapsed_days")))
+
+    # Gecmis bir aya bakilirken kesit YOK: iki ay da tam.
+    s2 = c.get(f"{API}/stats/monthly?month={AY}", headers=hdr(alice)).json()
+    check("gecmis ayda kesit uygulanmiyor", near(s2["prev_same_day"], s2["prev_total"]),
+          f"{s2.get('prev_same_day')} vs {s2['prev_total']}")
+
+    c.post(f"{API}/households/leave", headers=hdr(carol))
+    c.post(f"{API}/auth/logout", headers=hdr(carol))
+
 print("\n-- temizlik --")
 for tok in (alice, bob):
     c.post(f"{API}/households/leave", headers=hdr(tok))

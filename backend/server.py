@@ -3587,6 +3587,7 @@ async def monthly_stats(
         "cumulative": [], "prev_cumulative": [], "bills": [],
         "months": [], "member_count": 0, "per_person": 0,
         "my_share": 0, "my_personal": 0,
+        "prev_same_day": 0, "days": 0, "elapsed_days": 0,
     }
     if not hh:
         return empty
@@ -3602,7 +3603,6 @@ async def monthly_stats(
 
     total = round(sum(float(e["total"]) for e in exps), 2)
     prev_total = round(sum(float(e["total"]) for e in prev), 2)
-    change = round((total - prev_total) / prev_total * 100) if prev_total > 0 else None
 
     # Düzenli ödemeden gelen toplam. Ekranda ayrı bir kart olarak
     # gösterilmiyor: kira aydan aya değişmediği için o kart her ay aynı şeyi
@@ -3620,6 +3620,29 @@ async def monthly_stats(
     days = (date.fromisoformat(hi) - date.fromisoformat(lo)).days
     plo, phi = _month_bounds(_prev_month(month))
     pdays = (date.fromisoformat(phi) - date.fromisoformat(plo)).days
+    prev_cum = _cumulative(prev, plo, pdays)
+
+    # ---- Karşılaştırma AYNI GÜNE kadar ----
+    #
+    # Önceki hesap bu ayın **şu ana kadarki** toplamını geçen ayın **tam**
+    # toplamıyla karşılaştırıyordu: ayın 5'inde bakan herkes "%80 azalış"
+    # görüyordu, ay bitmediği için. Ancak ayın son gününde düzeliyordu.
+    #
+    # Doğrusu kümülatif eğrinin zaten yaptığı şey: geçen ayın aynı gününde
+    # neredeydik. Geçmiş bir aya bakılıyorsa iki ay da tamdır, kesit gerekmez.
+    #
+    # Geçen ay kısaysa (31 → 30) son gün kullanılır; eksik gün uydurulmaz.
+    prev_same_day = prev_total
+    if month == month_key(today):
+        kesit = [r for r in prev_cum if r["day"][8:10] <= f"{today.day:02d}"]
+        prev_same_day = kesit[-1]["total"] if kesit else 0.0
+    change = (
+        round((total - prev_same_day) / prev_same_day * 100)
+        if prev_same_day > 0.005 else None
+    )
+    # Gün sayısı: geçmiş ayda ayın tamamı, içinde bulunulan ayda bugüne kadar.
+    # "Günde ortalama" Anasayfa'dan kalktı ama eğri ve kıyas metni bunu okuyor.
+    elapsed = today.day if month == month_key(today) else days
 
     # Ay seçicisinin dolaşabileceği aylar: veri olan aylar + içinde bulunulan.
     all_rows = await db.expenses.find(
@@ -3706,6 +3729,12 @@ async def monthly_stats(
         "prev_total": prev_total,
         "prev_month": _prev_month(month),
         "change_pct": change,
+        # Karşılaştırılan sayı ekranda YAZILIYOR ("geçen ayın 16'sında
+        # 1.108 €"), çünkü "%12" tek başına neyin yüzdesi olduğunu
+        # söylemiyordu. Görünen sayı doğrulanabilir olmalı.
+        "prev_same_day": round(prev_same_day, 2),
+        "days": days,
+        "elapsed_days": elapsed,
         "fixed": fixed,
         "variable": round(total - fixed, 2),
         "member_count": len(members),
@@ -3714,10 +3743,12 @@ async def monthly_stats(
             [{"user_id": k, "total": round(v, 2)} for k, v in by_member.items()],
             key=lambda x: -x["total"]),
         "cumulative": _cumulative(exps, lo, days),
+        # Geçen ayın eğrisi yukarıda bir kez hesaplandı; karşılaştırma da
+        # oradan çıkıyor, iki yerde ayrı hesaplanmıyor.
         # Geçen ayın eğrisi arkada gölge olarak çiziliyor. Ayları aynı gün
         # sayısına indirgemiyoruz: 28 günlük şubatı 31'e germek yanlış bir
         # eğri üretir, kısa ay kısa çizilsin.
-        "prev_cumulative": _cumulative(prev, plo, pdays),
+        "prev_cumulative": prev_cum,
         "months": months,
         "categories": cat_rows,
         "merchants": sorted(
