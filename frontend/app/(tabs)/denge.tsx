@@ -441,7 +441,7 @@ export default function Denge() {
                   </Text>
                   {/* Sayarak degisiyor: odeme kaydedince rakamin bir anda
                       atlamasi "oldu mu olmadi mi" sorusunu birakiyordu. */}
-                  <Text style={[styles.heroValue,
+                  <Text style={[styles.ekstreSonuc,
                                 { color: myNet >= 0 ? colors.accentOnDark : colors.negativeOnDark }]}>
                     {formatEUR(Math.abs(sayanNet))}
                   </Text>
@@ -848,6 +848,16 @@ const styles = StyleSheet.create({
   ekstreVal: { ...T.bodySb, color: colors.onDark },
   ekstreEksi: { color: colors.accentOnDark },
   ekstreCizgi: { height: 1, backgroundColor: colors.darkSurface, marginVertical: 3 },
+  /* 34 değil 27.
+     Hiyerarşi GÖRELİDİR: 34 punto, ekranda başka sayı yokken tasarlanmıştı.
+     Ekstre gelince etrafı 14 puntoluk üç sayıyla çevrildi, yani baskın olmak
+     için 2,4 kat gerekmiyor — 1,9 kat tartışmasız birinci ama bağırmıyor.
+     Ayrıca borç rakamını büyütmek algılanan ciddiyeti artırıyor; burası
+     türetilmiş bir sayı, üstünde nasıl oluştuğu yazılı. */
+  ekstreSonuc: {
+    fontSize: 27, lineHeight: 34, fontFamily: fontFamily.semibold,
+    letterSpacing: -0.9, marginLeft: spacing.md,
+  },
   // İkinci köprü yalnızca ÖLÇÜ olarak küçülüyor; düğme rengi değişmiyor.
   bridgeAmountSm: {
     fontSize: 16, lineHeight: 22, fontFamily: fontFamily.semibold, letterSpacing: -0.3,
@@ -876,7 +886,11 @@ const styles = StyleSheet.create({
   side: { width: 62, alignItems: "center" },
   sideName: { ...T.caption, color: colors.inkSecondary, marginTop: 5 },
   middle: { flex: 1, alignItems: "center" },
-  bridgeAmount: { fontSize: 21, lineHeight: 27, fontFamily: fontFamily.semibold, letterSpacing: -0.5 },
+  /* 21 değil 19. Tek borç varken bu sayı ekstrenin son satırıyla AYNI oluyor;
+     benzer ağırlıkta iki kez görünen bir rakam "hangisini okuyacağım"
+     duraksaması üretiyor. Rolleri ayrı: ekstredeki bir SONUÇ, buradaki bir
+     EYLEM HEDEFİ. */
+  bridgeAmount: { fontSize: 19, lineHeight: 25, fontFamily: fontFamily.semibold, letterSpacing: -0.4 },
   wire: { flexDirection: "row", alignItems: "center", gap: 5, alignSelf: "stretch", marginTop: 6 },
   wireLine: { flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: colors.borderStrong },
   bridgeBtn: {
