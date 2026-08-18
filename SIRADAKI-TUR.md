@@ -480,6 +480,77 @@ tüketim karşılaştırması.
 
 ---
 
+## Tur 10 — NEREDE KALDIK (18 Ağustos 2026)
+
+**23 commit atıldı, 617 kontrol geçiyor, `main` çalışır durumda.**
+
+### Biten
+
+Üç boy başlık · sekme anahtarı lacivert başlıkta · **dönemin para hesabından
+çıkması** · ödeşme çizgisi · **"Ödeştik" düğmesi** · üyelik günlüğü
+(`member_log`) + ayrılma bildirimi · aylık geçiş (`/stats/monthly`) · trend'in
+ay ortası düzeltmesi · Anasayfa'nın yeni düzeni · Kasa'nın ekstre bloğu ·
+köprü düzeltmeleri · ödeme geçmişi (`all_periods`) · borç dökümü ·
+ekstrenin kalemlenmesi · tip ölçüleri (34→27, 21→19).
+
+### KARAR — döküm ayrı sayfa değil, Kasa + Harcamalar
+
+Son konuşmada borç dökümü sayfasının **gereksiz** olduğu ortaya çıktı. Ev
+sahibinin itirazı: *"ev alışverişindeki paya tıklayınca beni harcamalar
+sayfasına atıp sadece ev için aldıklarımızı gösterebilir. Bu şekilde hangi
+ürünlerin olduğunu, ne zaman satın alındığını zaten görüyorum."* Doğru —
+ayrı bir fiş listesi çizmek aynı işi iki yerde yapmak.
+
+Yeni yapı **iki ekran**:
+
+1. **Kasa** — ekstre satırına dokununca açılım **kavisin ALTINDA**, beyaz
+   alanda bir kartta. Lacivertin içinde değil: satırlar 12 punto, orada altı
+   satır daha açmak okunmaz bir yığın yapar; ayrıca lacivert alan bu turda
+   "L boy" olarak tanımlandı ve içeriğe göre uzayınca üç boy sistemi
+   anlamını yitirir. Dokunulan satır lacivertte **vurgulu** kalıyor, yoksa
+   yukarısı ile aşağısı arasındaki bağ kopuyor.
+2. **Harcamalar** — hareket satırına dokununca süzgeçli olarak açılıyor.
+   Süzgeç hapı **başlıkta ve kaldırılabilir**: görünmezse insan "Sana düşen
+   98,32"yi ayın tamamı sanır.
+
+`app/(tabs)/borc-dokumu.tsx` **silinecek.** "Önceki aylardan" satırına
+dokununca ay listesi aynı kartta açılır, her ay da kendi hareketlerine.
+
+### Kalanlar
+
+1. **Ekstre satırları tıklanabilir**, açılım kavisin altında beyaz kartta;
+   dokunulan satır lacivertte vurgulu
+2. **Hareket satırı → Harcamalar**, süzgeçli (`ev` · `baskasi_icin` ·
+   `senin_icin` · ay)
+3. **Süzgeç SUNUCUYA taşınacak.** İstemcideki `split_with` süzgeci Tur 4
+   öncesi kayıtları kaçırıyor — o kayıtlarda alan yok ve `split_of()` yedek
+   yolu yalnızca sunucuda çalışıyor. **"Senin için alınanlar 3 €" görünüp
+   içeriğinin açılmaması bu yüzden**, gizlilik değil
+4. Harcamalar başlığında kaldırılabilir süzgeç hapı
+5. `borc-dokumu.tsx` sil
+6. **Geri dönüş Kasa'ya** — şu an Anasayfa'ya atıyor
+7. **Sekmeye dokununca en üstten başlasın**, kaldığı yerden değil
+8. Ayrılan üyenin "ayrıldı" rozeti + ayrılma uyarısı (borç tutarıyla)
+9. Anasayfa dikkat şeridi
+10. İstatistik'te "Toplam"ın yeşili nötre
+11. Köprüde tarih filtresi
+12. `member-detail` ay bazlı
+13. **`.env` geri konacak** (`.env.yedek-tur10`), sonra APK v43
+
+> **6 ve 7 gezinme davranışı** ve `expo-router`'ın sekme yığınıyla ilgili;
+> beklenmedik bir şey çıkarsa cihazda denemek gerekiyor.
+
+### Geliştirme ortamı (bu oturumda kuruldu)
+
+- `D:\SettleUp\ortam.ps1` — `iex (gc D:\SettleUp\ortam.ps1 -Raw)`
+- Telefon → bilgisayar: `adb reverse tcp:8098` · yerel sunucu **üretim
+  veritabanıyla** (`DB_NAME=odahesap_db`, port 8098)
+- Test sunucusu ayrı: `DB_NAME=odahesap_test`, port 8099
+- **`frontend/.env` şu an `http://localhost:8098` gösteriyor.** Üretim adresi
+  `.env.yedek-tur10` içinde ve **APK'dan önce geri konmalı**
+
+---
+
 ## Tur 10 planı — para çekirdeği
 
 Madde başına ayrı commit, turun sonunda tek APK (v43).
