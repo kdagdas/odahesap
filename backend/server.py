@@ -865,6 +865,26 @@ async def transfer_admin(body: MemberActionReq, user=Depends(get_current_user)):
     return {"ok": True, "admin_id": body.user_id}
 
 
+async def _uye_kaydi(household_id: str, user_id: str, eylem: str) -> None:
+    """Üyelik değişimini eve ekler: `katildi` · `ayrildi` · `cikarildi`.
+
+    Dönem para hesabından çıkınca "bu dönemde üç kişiydik" sınırı da kalktı.
+    Bölüşme listeleri (`split_with`) her harcamanın kaç kişiye bölündüğünü
+    zaten dondurarak taşıyor — yani "ne zaman üçe, ne zaman ikiye bölündü"
+    sorusu veriden türetilebiliyor. Türetilemeyen tek şey **kimin** ne zaman
+    ayrıldığı; borç dökümündeki "12 Ağustos · Kemal evden ayrıldı" satırı
+    buradan geliyor.
+
+    Eklemeli ve küçük: üyelik değişimi yılda birkaç kez olan bir olay.
+    """
+    await db.households.update_one(
+        {"household_id": household_id},
+        {"$push": {"member_log": {
+            "user_id": user_id, "eylem": eylem, "at": now_utc(),
+        }}},
+    )
+
+
 @api.post("/households/remove-member")
 async def remove_member(body: MemberActionReq, user=Depends(get_current_user)):
     """Kick a member out — for people who moved out and deleted the app
@@ -897,6 +917,7 @@ async def remove_member(body: MemberActionReq, user=Depends(get_current_user)):
     await db.households.update_one(
         {"household_id": hh["household_id"]}, {"$pull": {"member_ids": body.user_id}}
     )
+    await _uye_kaydi(hh["household_id"], body.user_id, "cikarildi")
     return {"ok": True, "removed": body.user_id}
 
 
@@ -951,6 +972,7 @@ async def approve_member(body: ApproveReq, user=Depends(get_current_user)):
             {"period_id": active["period_id"]},
             {"$addToSet": {"participant_ids": body.user_id}},
         )
+    await _uye_kaydi(hh["household_id"], body.user_id, "katildi")
     await notify(
         [body.user_id],
         "İsteğin onaylandı",
@@ -1034,6 +1056,20 @@ async def leave_household(user=Depends(get_current_user)):
                     {"household_id": hh["household_id"]},
                     {"$set": {"admin_id": remaining[0]}},
                 )
+        await _uye_kaydi(hh["household_id"], user["user_id"], "ayrildi")
+        # Ayrılma SESSIZ olamaz. Ayrılan kişinin ödeşilmemiş borcu duruyor
+        # olabilir ve o borç kalanların ekranında yaşamaya devam ediyor
+        # (`period_participants` onu dönemde tutuyor). Ayrıca bu andan sonra
+        # ev harcamaları bir kişi eksiğe bölünmeye başlıyor -- kalanların
+        # bunu bir yerden görmesi gerekiyor.
+        await notify(
+            [m for m in hh.get("member_ids", []) if m != user["user_id"]],
+            "Bir ev arkadaşı ayrıldı",
+            f"{user['name']} evden ayrıldı. Bundan sonraki ev harcamaları "
+            "kalan üyeler arasında bölüşülecek.",
+            "member_left",
+            {"household_id": hh["household_id"], "user_id": user["user_id"]},
+        )
     # also cancel any pending
     await db.households.update_many(
         {"pending_member_ids": user["user_id"]},
@@ -2380,19 +2416,30 @@ async def clear_done_shopping(scope: str = "household", user=Depends(get_current
 # you owe moves your net back towards zero. Without this, "Dönemi Kapat" is
 # all-or-nothing — it assumes everyone squared up at the same moment.
 @api.get("/settlements")
-async def list_settlements(period_id: Optional[str] = None, user=Depends(get_current_user)):
+async def list_settlements(
+    period_id: Optional[str] = None,
+    all_periods: bool = False,
+    user=Depends(get_current_user),
+):
+    """Ödeme kayıtları. Varsayılan: açık dönem. `all_periods=true`: hepsi.
+
+    Ödeme geçmişinin dönemleri **aşması gerekiyor**: son ödeme dönemi
+    kendiliğinden kapatıyor, yani ödeşen bir ev varsayılan görünümde tam da
+    ilgilendiği anda **boş liste** görüyordu. Kayıtlar bir önceki, artık
+    kapanmış dönemde kalıyor.
+    """
     hh = await get_user_household(user["user_id"])
     if not hh:
         return {"settlements": []}
-    pid = period_id
-    if not pid:
+    q: dict = {"household_id": hh["household_id"]}
+    if period_id:
+        q["period_id"] = period_id
+    elif not all_periods:
         active = await get_active_period(hh["household_id"])
-        pid = active["period_id"] if active else None
-    if not pid:
-        return {"settlements": []}
-    rows = await db.settlements.find(
-        {"household_id": hh["household_id"], "period_id": pid}, {"_id": 0}
-    ).sort("created_at", -1).to_list(500)
+        if not active:
+            return {"settlements": []}
+        q["period_id"] = active["period_id"]
+    rows = await db.settlements.find(q, {"_id": 0}).sort("created_at", -1).to_list(500)
     return {"settlements": rows}
 
 
@@ -2444,6 +2491,62 @@ async def create_settlement(body: SettlementCreate, user=Depends(get_current_use
     # borcu bir harcamayı silerek sıfırlamak ödeşmek değil, düzeltmedir.
     await _odesme_cizgisi(hh["household_id"])
     return {"settlement": doc}
+
+
+@api.post("/settlements/all")
+async def settle_all(user=Depends(get_current_user)):
+    """"Ödeştik" — önerilen transferlerin hepsini tek hamlede kaydeder.
+
+    Eski "Dönemi kapat" düğmesinin yerini alıyor ama işi tam tersi: o
+    bakiyeleri **siliyordu**, bu **kaydediyor.** Nakit ödeşen bir ev için
+    tek jest, ve defterde kimin kime ne ödediği yazılı kalıyor.
+
+    Neden gerekli: ödeşme kaydını yalnızca tarafları girebiliyor, yani
+    kapanma herkesin tek tek uygulamayı açmasına bağlı kalıyordu. Üç kişilik
+    bu evde bugüne kadar **hiç ödeme işaretlenmemişti** (yedekte
+    `settlements` sıfır kayıt) — yani o kapanma hiçbir zaman gerçekleşmezdi.
+
+    Neden yönetici: ev adına yapılan bir beyan. Herkese bildirim gider,
+    kimsenin haberi olmadan defter kapanmaz.
+
+    Geri alınabilir: kaydedilen ödemelerden sonuncusunu silmek dönemi de
+    geri açar (bkz. `DELETE /settlements/{id}`).
+    """
+    hh = await require_admin(user["user_id"])
+    period = await get_active_period(hh["household_id"])
+    if not period:
+        raise HTTPException(status_code=400, detail="Aktif dönem yok")
+
+    snap = await _compute_balances(hh["household_id"], period["period_id"])
+    transfers = snap.get("transfers") or []
+    if not transfers:
+        raise HTTPException(status_code=400, detail="Ödeşilecek borç yok")
+
+    simdi = now_utc()
+    docs = [{
+        "settlement_id": new_id("stl"),
+        "household_id": hh["household_id"],
+        "period_id": period["period_id"],
+        "from_user_id": t["from"],
+        "to_user_id": t["to"],
+        "amount": round(float(t["amount"]), 2),
+        "note": "Ödeştik",
+        "recorded_by": user["user_id"],
+        "toplu": True,
+        "created_at": simdi,
+    } for t in transfers]
+    await db.settlements.insert_many([d.copy() for d in docs])
+
+    await notify(
+        [m for m in hh["member_ids"] if m != user["user_id"]],
+        "Ev ödeşti",
+        f"{user['name']} \"ödeştik\" dedi; {len(docs)} ödeme kaydedildi.",
+        "settlement",
+        {"household_id": hh["household_id"]},
+    )
+    # Bildirimi yukarıda kendimiz gönderdik; çizgi sessiz çizilsin.
+    await _odesme_cizgisi(hh["household_id"], bildir=False)
+    return {"settlements": docs, "count": len(docs)}
 
 
 @api.delete("/settlements/{settlement_id}")
@@ -3743,7 +3846,7 @@ async def _donemi_kapat(hh: dict, period: dict) -> dict:
     return new_period
 
 
-async def _odesme_cizgisi(household_id: str) -> None:
+async def _odesme_cizgisi(household_id: str, bildir: bool = True) -> None:
     """Bakiye sıfıra değdiyse dönemi KENDİLİĞİNDEN kapatır.
 
     Eskiden kapatma bir düğmeydi ve bakiyeleri **sıfırlıyordu**: ödeşmeden
@@ -3767,13 +3870,14 @@ async def _odesme_cizgisi(household_id: str) -> None:
         if await _odesme_durumu(household_id, period["period_id"]) != "odesildi":
             return
         await _donemi_kapat(hh, period)
-        await notify(
-            hh["member_ids"],
-            "Ev ödeşti",
-            "Kimsenin kimseye borcu kalmadı.",
-            "period_closed",
-            {"household_id": household_id},
-        )
+        if bildir:
+            await notify(
+                hh["member_ids"],
+                "Ev ödeşti",
+                "Kimsenin kimseye borcu kalmadı.",
+                "period_closed",
+                {"household_id": household_id},
+            )
     except Exception as e:  # noqa: BLE001
         logging.warning("odesme cizgisi cizilemedi: %s", e)
 
