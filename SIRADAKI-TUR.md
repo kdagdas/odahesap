@@ -516,26 +516,40 @@ Yeni yapı **iki ekran**:
 `app/(tabs)/borc-dokumu.tsx` **silinecek.** "Önceki aylardan" satırına
 dokununca ay listesi aynı kartta açılır, her ay da kendi hareketlerine.
 
-### Kalanlar
+### Kalanlar — HEPSİ BİTTİ (19 Ağustos 2026)
 
-1. **Ekstre satırları tıklanabilir**, açılım kavisin altında beyaz kartta;
-   dokunulan satır lacivertte vurgulu
-2. **Hareket satırı → Harcamalar**, süzgeçli (`ev` · `baskasi_icin` ·
-   `senin_icin` · ay)
-3. **Süzgeç SUNUCUYA taşınacak.** İstemcideki `split_with` süzgeci Tur 4
-   öncesi kayıtları kaçırıyor — o kayıtlarda alan yok ve `split_of()` yedek
-   yolu yalnızca sunucuda çalışıyor. **"Senin için alınanlar 3 €" görünüp
-   içeriğinin açılmaması bu yüzden**, gizlilik değil
-4. Harcamalar başlığında kaldırılabilir süzgeç hapı
-5. `borc-dokumu.tsx` sil
-6. **Geri dönüş Kasa'ya** — şu an Anasayfa'ya atıyor
-7. **Sekmeye dokununca en üstten başlasın**, kaldığı yerden değil
-8. Ayrılan üyenin "ayrıldı" rozeti + ayrılma uyarısı (borç tutarıyla)
-9. Anasayfa dikkat şeridi
-10. İstatistik'te "Toplam"ın yeşili nötre
-11. Köprüde tarih filtresi
-12. `member-detail` ay bazlı
-13. **`.env` geri konacak** (`.env.yedek-tur10`), sonra APK v43
+Aşağıdaki 13 maddenin tamamı koda girdi. Madde başına ayrı commit; `main`
+çalışır durumda, `tsc --noEmit` temiz.
+
+1. ✓ **Ekstre satırları tıklanabilir**, açılım kavisin altında beyaz kartta;
+   dokunulan satır lacivertte vurgulu, oku açıkken aşağı dönüyor
+2. ✓ **Hareket satırı → Harcamalar**, süzgeçli (`?akis=…&ay=…`)
+3. ✓ **Süzgeç SUNUCUYA taşındı.** `akis_paylari()` tek tanım; `_ekstre()` ve
+   `/expenses?akis=` aynı fonksiyondan besleniyor, ayrışamazlar.
+   `akis-test.py` her satırın tutarını süzülen listenin toplamıyla
+   karşılaştırıyor (değişmezlik). "Senin için alınanlar 3 €" boş açılması bu
+   yüzden çözüldü — gizlilik değil, eksik veriydi.
+4. ✓ Harcamalar başlığında kaldırılabilir süzgeç hapı (`HeaderClearPill`)
+5. ✓ `borc-dokumu.tsx` silindi + rota kaydı kaldırıldı
+6. ✓ **Geri Kasa'ya** — `useGeriDon` geldiği yeri `?geri=` ile taşıyor
+7. ✓ **Sekmeye dokununca en üstten** — `useBasaSar`, animasyonsuz
+8. ✓ Ayrılan üye rozeti + borç tutarlı ayrılma onayı + bildirimde tutar
+9. ✓ Anasayfa dikkat şeridi (yalnızca varsa, yalnızca yöneticiye)
+10. ✓ İstatistik'te "Toplam"ın yeşili nötre
+11. ✓ Köprüde tarih filtresi (fiş maddeden eskiyse eşleşme yok)
+12. ✓ `member-detail` ay bazlı + kapısı Anasayfa'da + "Kişisel" doğru sayı
+13. **`.env` APK'dan HEMEN ÖNCE geri konacak** (`.env.yedek-tur10`) — şu an
+    hâlâ `localhost:8098` çünkü cihaz denemesi sürüyor
+
+### Cihaz denemesinden gelen ek düzeltmeler (19 Ağustos)
+
+- **Ödeşme çizgisi.** Harcamalar'da bir ayın içinde ödeşilmiş/ödeşilmemiş
+  kayıtlar yan yana düşüyordu. "15 Temmuz · buraya kadar ödeşildi" çizgisi
+  kapanış tarihinden geliyor. Soluklaştırma yok (çizgi bir kez söylüyor);
+  geç girilen fiş çizginin altında kalıp "ödeşilmedi" işareti alıyor.
+- **Ay seçici evle sınırlı.** `sonAylar` evin `created_at`'inde duruyor.
+- **Kişi süzgecinde isim tekrarı kalktı** (hint = tam ad idi).
+- **İstatistik başa sarıyor.**
 
 > **6 ve 7 gezinme davranışı** ve `expo-router`'ın sekme yığınıyla ilgili;
 > beklenmedik bir şey çıkarsa cihazda denemek gerekiyor.

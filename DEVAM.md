@@ -218,8 +218,9 @@ tek seferlik ve sonrasinda temizlik gerektigini bilerek yapin.
 
 ## Testler
 
-On dokuz takım, toplam **516 kontrol**, hepsi çalışan bir API'ye HTTP ile bağlanır. Yerel sunucuya da
-canlıya da aynı şekilde çalıştırılabilir:
+Yaklaşık yirmi dört takım, OCR hariç toplam **~700 kontrol**, hepsi çalışan
+bir API'ye HTTP ile bağlanır. Yerel sunucuya da canlıya da aynı şekilde
+çalıştırılabilir:
 
 ```bash
 cd backend
@@ -229,18 +230,28 @@ cd backend
 | Dosya | Kapsam | Sayı |
 |---|---|---|
 | `e2e-test.py` | kayıt, giriş, ev, gizlilik, denge, dönem | 32 |
-| `admin-test.py` | yönetici rolü, devir, dönem geri alma | 25 |
+| `admin-test.py` | yönetici rolü, devir, dönem geri alma | 27 |
 | `privacy-test.py` | kişisel/ikili harcama görünürlüğü | 12 |
-| `remove-member-test.py` | üye çıkarma, geçmiş dönem doğruluğu | 17 |
+| `remove-member-test.py` | üye çıkarma, geçmiş dönem doğruluğu | 19 |
 | `shopping-test.py` | alınacaklar listesi, iki kapsam | 18 |
 | `profile-test.py` | ad/e-posta/şifre, fotoğraf yetkisi | 27 |
-| `settle-edit-test.py` | ödeme işaretleme, harcama düzenleme | 25 |
+| `settle-edit-test.py` | ödeme işaretleme, harcama düzenleme | 26 |
 | `session-401-test.py` | oturum hatası ile şifre hatası ayrımı | 16 |
-| `bolusme-test.py` | `split_with`, kişiye özel tutarlar, listenin donması | 52 |
+| `bolusme-test.py` | `split_with`, kişiye özel tutarlar, listenin donması | 55 |
 | `duzenli-test.py` | düzenli ödemeler: vade, çift onay koruması, ödeyen | 53 |
-| `aylik-test.py` | takvim ayı istatistiği: ay sınırı, kapsam, sabit/değişken | 33 |
-| `fiyat-test.py` | birim fiyat, paket sınıfı, fiyat hafızası | 46 |
-| Tur 1-3'ten: `donem-dondurma` · `duzenleme-gecmisi` · `market-tekrar` · `para-birimi` · `aktivite` · `stats` · `categorize` | | 147 |
+| `aylik-test.py` | takvim ayı istatistiği: ay sınırı, kapsam, sabit/değişken | 54 |
+| `aylik-kapsam-test.py` | ev/kişisel/ikili kapsam ayrımı | 29 |
+| `fiyat-test.py` | birim fiyat, paket sınıfı, fiyat hafızası | 51 |
+| `kopru-test.py` | alınacaklar ↔ fiş köprüsü + **tarih süzgeci** | 22 |
+| `odestik-test.py` | ödeşme, üyelik günlüğü, **ayrılma bildirimi/rozeti** | 49 |
+| `akis-test.py` | **hareket akışları: ekstre satırı == süzülen liste** | 38 |
+| Tur 1-3'ten: `donem-dondurma` · `duzenleme-gecmisi` · `market-tekrar` · `para-birimi` · `aktivite` · `stats` · `etiket-bazli` · `categorize` | | ~180 |
+
+**`akis-test.py` neyi koruyor:** Kasa'daki ekstre satırının tutarı ile o
+satıra dokununca açılan Harcamalar listesinin toplamı birebir aynı olmalı.
+İkisi de `akis_paylari()` okuyor; test onların ayrışmadığını doğruluyor.
+Ayrıca ödeşme çizgisi (kapalı dönem = ödeşilmiş) ve geç girilen fiş istisnası
+burada.
 
 Betikler `tests/` altında. Hepsi kendi test hesaplarını
 oluşturup sonunda temizler; **üretim verisine dokunmazlar**.
@@ -392,29 +403,50 @@ eşleştirilip **öneri** olarak sunulur (`POST /shopping/match`).
   "su" her şeye eşleşir.
 - Eşleşme yoksa hiçbir şey görünmez; akış kesilmez.
 
-`kopru-test.py` 18 kontrolle koruyor.
+**Tarih süzgeci (Tur 10):** fiş, maddenin listeye yazıldığı günden ESKİYSE
+eşleştirme yapılmıyor. Bir hafta önceki fişi bugün taratınca dün yazılmış
+"Süt" aday çıkıyordu — o süt alınmadı, madde daha ortada yoktu. Aynı gün
+elenmiyor (sabah yazılıp öğlen alınan en sık senaryo); saat karşılaştırması
+yok çünkü fişin üstünde saat yok. `kopru-test.py` 22 kontrolle koruyor.
 
 ## Ekranlardaki sayılar — hangisi hangisi
 
-Karışıklığın kaynağı iki bağımsız eksen:
+Karışıklığın kaynağı iki bağımsız eksendi. **Tur 10'da pencere tekleşti:**
+dönem para hesabından çıkınca görüntülemenin her yeri takvim ayı oldu.
 
-**Pencere:** dönem (ödeşmenin birimi) · takvim ayı (istatistiğin birimi)
+**Pencere:** artık her yerde takvim ayı. (Ödeşme hâlâ "ne zaman denk gelirse"
+ama o bir OLAY, bir pencere değil — kapanan dönem bir ödeşme anını damgalıyor.)
 **Kapsam:** ev (listede evin tamamı) · sen (listede sen, payın kadar)
 
 | Nerede | Pencere | Kapsam |
 |---|---|---|
-| Anasayfa "Bu dönem ev harcaması" | dönem | ev |
-| Anasayfa "Kişi başı" | dönem | ev ÷ üye sayısı (düz ortalama) |
-| Anasayfa "Günde ortalama" | dönem | ev ÷ gün |
-| Kasa "Senin ödediğin" | dönem | **bakiyeyi ilgilendiren her şey** |
-| Kasa "payın" | dönem | senin payın (`expense_shares`) |
-| Kasa dönem hapı | dönem | ev |
-| İstatistik "Ev harcaması" | **ay** | ev |
-| İstatistik "Ev payın" / "Kişisel" | **ay** | sen |
+| Anasayfa "Ağustos'ta ev harcaması" | ay | ev |
+| Anasayfa "Sana düşen" | ay | sen (payın, kim ödemiş olursa olsun) |
+| Anasayfa "Kişisel" | ay | sen (kendine aldıkların) |
+| Kasa ekstre "Ödediklerin" | ödeşilmemiş | senin cebinden çıkan |
+| Kasa ekstre "Sana düşen / payın" | ödeşilmemiş | senin payın (`expense_shares`) |
+| Kasa "Kalan borcun" | ödeşilmemiş | net bakiye |
+| Harcamalar akış hapı `pay` | ay | senin payın (ortak harcamalarda) |
+| Harcamalar akış `baskasi_icin` | ay | başkası için aldığın (fişin tamamı) |
+| İstatistik "Ev harcaması" | ay | ev |
+| İstatistik "Ev payın" / "Kişisel" | ay | sen |
 
 **Ev harcaması = evin TAMAMI bölüşüyor.** Üç kişilik bir evde "sen + Salih"
-alımı ev harcaması değildir. Bu kural artık dört yerde de aynı: `/stats`,
+alımı ev harcaması değildir. Bu kural her yerde aynı: `/stats`,
 `/stats/monthly`, `/periods` özeti ve bakiye.
+
+**"Bakiye ödeşilmemiş her şeydir" (Tur 10).** Dönem artık para hesabında
+kullanılmıyor: açık dönem "ödeşilmemiş her şey" demek, çünkü dönem yalnızca
+ödeşilince kapanıyor. `_compute_balances()` yeniden yazılmadı — kapanma
+koşulu değişti. Kapalı dönem = ödeşilmiş an; Harcamalar'daki "buraya kadar
+ödeşildi" çizgisi bu andan geliyor.
+
+**Hareket akışları (`akis_paylari`).** Bir harcamanın bir kişi için hangi
+satıra ne kadar yazıldığı tek fonksiyonda: `pay` (ortak harcamadaki payın,
+artıran) · `ev_odedigin` (o harcamayı sen ödediysen, azaltan) · `baskasi_icin`
+(tek kişi için aldın, azaltan) · `senin_icin` (biri senin için aldı, artıran).
+Ekstre bu türlere ayırıyor, `/expenses?akis=` aynı türle süzüyor —
+`akis-test.py` ikisinin ayrışmadığını koruyor.
 
 **"ödediğin − payın = net"** ilişkisi `stats-test.py` ve
 `etiket-bazli-test.py` ile korunuyor. Tutmuyorsa bir yerde kapsam kaymıştır.

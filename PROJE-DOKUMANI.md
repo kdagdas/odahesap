@@ -608,22 +608,28 @@ dokunmaz. Yardımcılar: `fcm-verify.py` (Firebase kimlik bilgisi gerçekten
 
 ## 12. Yapılmadan bırakılanlar
 
-### ⚠ DÖNEM MODELİ DEĞİŞİYOR — Tur 10
+### ✓ DÖNEM MODELİ DEĞİŞTİ — Tur 10 (19 Ağustos 2026)
 
-Aşağıdaki bölümlerin ve §5'in anlattığı **dönem** mekanizması Tur 10'da para
-hesabından çıkarılıyor. Karar verildi, kod henüz değişmedi; bu doküman
-bugünkü davranışı anlatmaya devam ediyor.
+§5'in anlattığı **dönem** mekanizması Tur 10'da para hesabından çıktı. Artık:
 
-Özeti: `POST /periods/close` bugün bakiyeleri arşivleyip **sıfırlıyor**, yani
-ödeşmeden kapatılan bir dönemin borcu canlı ekrandan siliniyor. Yeni modelde
-**Kasa ödeşilmemiş her şeye bakacak**, harcamalar tarihleriyle yaşayacak,
-`period_id` kayıtlarda kalıp hesapta kullanılmayacak, ve dönem kapatma düğmesi
-kalkacak — bakiye sıfıra değince ödeşme çizgisi kendiliğinden düşecek.
-Görüntülemenin her yeri (Anasayfa, İstatistik, harcamalar) **takvim ayı**
-olacak.
+- **Dönem kapatma düğmesi yok.** Yerine "Ödeştik" var; eskisi bakiyeleri
+  **siliyordu**, yenisi önerilen transferleri **gerçek ödeme kaydı** yazıyor.
+  Bakiye sıfıra değince dönem kendiliğinden kapanıyor.
+- **Kasa ödeşilmemiş her şeye bakıyor.** Açık dönem = "ödeşilmemiş her şey",
+  çünkü dönem yalnızca ödeşilince kapanıyor. `_compute_balances()` imzası
+  aynı — kapanma koşulu değişti, hesap değil. Eski APK'lar (v42) çalışmaya
+  devam ediyor.
+- **Kapalı dönem = ödeşilmiş an.** Harcamalar'daki "buraya kadar ödeşildi"
+  çizgisi bu andan geliyor; kapalı dönem hâlâ dokunulmaz.
+- **Görüntülemenin her yeri takvim ayı.** Anasayfa, İstatistik, Harcamalar,
+  üye dökümü aynı pencereden okuyor; Anasayfa ile İstatistik birebir aynı
+  sayıyı gösteriyor.
+- **Göç olmadı.** Bugüne kadar kapalı dönemler kapalı (ödeşilmiş) kaldı, açık
+  olan açık; hiçbir harcamanın dönemi değişmedi.
 
-Gerekçeler, elenen alternatifler ve **neden** elendikleri, ekran tasarımları
-ve madde madde plan: [SIRADAKI-TUR.md](SIRADAKI-TUR.md).
+Gerekçeler, elenen alternatifler ve **neden** elendikleri, ekran tasarımları:
+[SIRADAKI-TUR.md](SIRADAKI-TUR.md). §5 hâlâ dönemin bugünkü çalışma biçimini
+(katılım, dondurma, yeniden açma) anlatıyor.
 
 ### Kararlaştırılmış sıra
 
