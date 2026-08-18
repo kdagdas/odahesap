@@ -328,6 +328,9 @@ desteklenir. Ödemeyi yalnızca **tarafları** kaydedebilir veya geri alabilir.
 
 ### Dönem yaşam döngüsü
 
+> **Bu mekanizma Tur 10'da kalkıyor** — bkz. §12 başındaki uyarı ve
+> [SIRADAKI-TUR.md](SIRADAKI-TUR.md). Aşağısı bugünkü davranıştır.
+
 - Ev kurulduğunda ilk dönem açılır
 - Yönetici dönemi kapatır → bakiyeler `final_balances` olarak arşivlenir, yeni
   boş dönem başlar
@@ -604,6 +607,23 @@ dokunmaz. Yardımcılar: `fcm-verify.py` (Firebase kimlik bilgisi gerçekten
 ---
 
 ## 12. Yapılmadan bırakılanlar
+
+### ⚠ DÖNEM MODELİ DEĞİŞİYOR — Tur 10
+
+Aşağıdaki bölümlerin ve §5'in anlattığı **dönem** mekanizması Tur 10'da para
+hesabından çıkarılıyor. Karar verildi, kod henüz değişmedi; bu doküman
+bugünkü davranışı anlatmaya devam ediyor.
+
+Özeti: `POST /periods/close` bugün bakiyeleri arşivleyip **sıfırlıyor**, yani
+ödeşmeden kapatılan bir dönemin borcu canlı ekrandan siliniyor. Yeni modelde
+**Kasa ödeşilmemiş her şeye bakacak**, harcamalar tarihleriyle yaşayacak,
+`period_id` kayıtlarda kalıp hesapta kullanılmayacak, ve dönem kapatma düğmesi
+kalkacak — bakiye sıfıra değince ödeşme çizgisi kendiliğinden düşecek.
+Görüntülemenin her yeri (Anasayfa, İstatistik, harcamalar) **takvim ayı**
+olacak.
+
+Gerekçeler, elenen alternatifler ve **neden** elendikleri, ekran tasarımları
+ve madde madde plan: [SIRADAKI-TUR.md](SIRADAKI-TUR.md).
 
 ### Kararlaştırılmış sıra
 

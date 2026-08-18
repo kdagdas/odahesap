@@ -1,119 +1,477 @@
-# Sıradaki tur — Tur 10: sadeleşme ve sayfa düzeni
+# Sıradaki turlar — Tur 10: para çekirdeği · Tur 11: analiz sayfası
 
 > Bu dosya yeni bir sohbet penceresine geçerken bağlamı taşımak için yazıldı.
 >
 > Son durum: **APK v42**, **596 kontrol** geçiyor, `main` çalışır durumda.
-> Ayrıntı ve gerekçeler için [PROJE-DOKUMANI.md](PROJE-DOKUMANI.md) §12,
+> Aşağıdaki kararlar **konuşuldu ve onaylandı, koda girmedi.**
+> Uygulamanın bugünkü hâli için [PROJE-DOKUMANI.md](PROJE-DOKUMANI.md),
 > günlük operasyon için [DEVAM.md](DEVAM.md).
 
-## v33 → v42 arasında ne oldu
+## Bu tur nasıl bu hâle geldi
 
-Uzun bir arayüz ve doğruluk turu. Sırayla:
+Tur 10 "sadeleşme ve sayfa düzeni" olarak planlanmıştı ve merkezinde
+**Ay ↔ Dönem anahtarı** vardı: kullanıcı hangi pencereye baktığını seçemiyordu,
+biz de ona bir anahtar verecektik.
 
-**Hatalar (hepsi cihazda ya da testle doğrulandı)**
+Konuşma sırasında ev sahibi otomatik dönem kapatma + devreden borç önerdi.
+Onu incelerken asıl kusur çıktı: **dönem aynı anda üç iş birden yapıyor** —
+harcamanın kabı, raporlamanın penceresi ve ödeşmenin birimi. Karışıklığın
+sebebi buydu; anahtar o karışıklığın üstüne konacak bir yamaydı.
 
-| Ne | Kök sebep |
-|---|---|
-| Alt sayfa gezinme çubuğunun altında kalıyordu | Modal penceresini ÖLÇMEK. Dört deneme sürdü; çözüm ölçümü tümden bırakmak — güvenli alan kök sağlayıcıdan okunup sayı olarak veriliyor + `statusBarTranslucent`/`navigationBarTranslucent` |
-| Sekmeli ekranlarda ~120px boş kaydırma | Sekme çubuğu `position: absolute` değil; React Navigation ekranı zaten üstünde bitiriyor, `useScrollPad` çubuk yüksekliğini boşuna ekliyordu |
-| `roommate` harcamaları hiçbir istatistikte yoktu | `_month_expenses` `target_type` etiketine bakıyordu |
-| Anasayfa "sen + Salih" alımını EVE yazıyordu | `/stats` etikette kalmıştı, `/stats/monthly` listeye geçmişti — iki uç aynı olayı farklı sayıyordu |
-| Kasa'daki "payın" düz ortalamaydı | `toplam/üye` gösteriliyordu; bakiye `expense_shares` ile hesaplanıyor, ekranda uyuşmazlık görünüyordu |
-| **Dönem seçici başkalarının kişisel harcamalarını sızdırıyordu** | `/periods` özeti her harcamayı sayıyordu |
-| İstatistik marketleri üçe bölüyordu | `_breakdown` ham adla grupluyordu, `normalize_merchant` çağrılmıyordu |
-| Karanlık temada ikonlar/çizgiler kayboluyordu | `colors.dark` bazı yerlerde zemin, bazı yerlerde ön plan |
-| Karartma alttan yukarı süzülüyordu | `Modal animationType="slide"` pencerenin tamamını kaydırıyordu |
+Ev sahibi otomatik kapatmadan da vazgeçti ve gerekçeleri doğruydu: aylık sabit
+giderler (kira) bir aydan kısa dönemlerde bir döneme düşüp diğerine düşmüyor
+ve istatistikleri bozuyor · haftalık ödeşen ev yine aylık istatistik istiyor ·
+bir ay sonra girilen fiş hangi haftaya yazılacak sorusu cevapsız kalıyor.
 
-**Gelenler:** karanlık tema (sistem takipli), tek yüzlü ödeme sayfası,
-alacaklının kendi ekranından ödeme bilgisi paylaşması, IBAN mod-97
-doğrulaması, çapalı `https` paylaşım bağlantısı + `assetlinks.json`,
-bildirim türlerinin ayrılması, vade odaklı Düzenli Ödemeler, Profil'in
-sahipliğe göre gruplanması, gün başlıklı harcama listesi, fiş incelemede
-açılır satır, üye satırında ⋯ menüsü, alınacaklarda kaydırarak silme,
-animasyon paketi, ve **alınacaklar ↔ fiş köprüsü**.
+Sonuç: **anahtar yapılmayacak, çünkü sebebi ortadan kalkıyor.**
 
-**Yeni test dosyaları:** `aylik-kapsam-test.py` (29), `etiket-bazli-test.py`
-(21), `kopru-test.py` (18). Toplam 550 → 596.
+---
 
-## Kararlaştırılan ama YAPILMAYANLAR — Tur 10 buradan başlıyor
+## KARAR 1 — Dönem para hesabından çıkıyor
 
-Bunlar konuşuldu, maketleri onaylandı, koda girmedi:
+### Bugün ne oluyor
 
-1. **Üç boy başlık sistemi.** Başlık yükseklikleri ekrandan ekrana %17–33
-   arasında geziniyor; her ekran kendi yüksekliğini uyduruyor. Material 3'ün
-   küçük/orta/büyük ayrımı gibi üç boy tanımlanıp her ekran birine atanacak.
-   S = yalnızca kimlik · M = kimlik + tek durum/sekme · L = kahraman sayı.
-2. **Sekme anahtarının tek yeri.** Alınacaklar'da lacivertte, İstatistik'te
-   beyaz yüzeyde — aynı iş, iki yer. Hep lacivertte olacak.
-3. **İstatistik penceresi Kasa'nın hapıyla aynı biçime gelsin**, yanında
-   dönem aralığı sessizce dursun.
-4. **Eğride dönem başı çizgisi.** Ay 1'inde başlıyor ama dönem 3'ünde
-   başladıysa ayın ilk iki günü önceki döneme ait — kesikli yeşil çizgi bunu
-   yazıyla değil gözle söylüyor.
-5. **Kart başlıklarına pencere.** Aynı sayı iki ekranda aynı adla geçiyorsa
-   penceresi başlıkta yazar: "Ağustos'taki Katkın", "Kim Kime Borçlu · 3–16
-   Ağustos". (Kasa tarafı yapıldı, İstatistik tarafı kaldı.)
-6. **Başlıktaki sönük "İstatistikler" hapı kalksın**, giriş "Tümü ›" olsun —
-   aynı odaya iki kapı var, ikincisi zayıf olan.
-7. **İstatistik'te "Toplam"ın yeşili nötre dönsün** (yeşil = alacak demek).
-8. **Anasayfa'da "dikkat isteyenler" şeridi** — yalnızca varsa en üstte.
+`POST /periods/close` bakiyeleri `final_balances` olarak arşivliyor ve yeni
+dönemi **sıfırdan** başlatıyor. Bildirim birebir şunu diyor:
+*"Dönemi kapattı, yeni dönem başladı. Bakiyeler sıfırlandı."*
 
-## Tur 10'un MERKEZİ: Ay ↔ Dönem anahtarı
+Yani biri ödeşmeden dönem kapanırsa **borç canlı ekrandan siliniyor.** Kayıt
+arşivde duruyor ama kimse bir daha bakmıyor. Sessiz bir kayıp.
 
-Yukarıdaki 3-5 belirtiyi hafifletir ama **sebebi kaldırmaz.** Sebep: kullanıcı
-hangi pencereye baktığını *seçemiyor*. Ev sahibi bu turda defalarca karıştırdı
-ve uygulamayı yazan kişi o — kullanıcının hiç şansı yok.
+### Yeni model
 
-İstatistik'teki hap gerçek bir anahtar olacak: **`Ay | Dönem`**.
+- **Kasa ödeşilmemiş her şeye bakar.** Harcamalar tarihleriyle yaşar.
+- `period_id` alanı kayıtlarda **kalır** (eski APK'lar ve geriye dönük
+  uyumluluk için) ama **hesapta kullanılmaz.**
+- **Dönem kapatma düğmesi kalkar.** Bakiye sıfıra değince ödeşme çizgisi
+  kendiliğinden tarihe düşer ve herkese bildirim gider.
+- Eşik **bir kuruş** (`|net| < 0,01`). Çizgi yalnızca **gerçekten silinen bir
+  borç varsa** çizilir — yeni kurulmuş, hiç harcama girilmemiş bir evde
+  "Ev ödeşti" yazmak saçma olurdu.
+- Dokunulmazlık kuralı tekleşir: **ödeşme çizgisinden öncesi değişmez.**
+  Bugünkü "kapalı dönem" kontrollerinin hepsi tek bir tarih karşılaştırmasına
+  iner.
 
-- Sunucu: `_month_expenses` ay sınırı yerine genel bir **aralık** alacak;
-  "geçen ay" karşılaştırması "önceki dönem"e dönüşecek
-- İstemci: eğrinin x ekseni değişken uzunluk kaldıracak (dönem üç hafta da
-  olabilir yedi hafta da)
-- Kendi test takımı
+### Göç
 
-**Tahmin: ~1 gün.** Ev sahibi "öbür türlü olmayacak" dedi ve haklı.
+Bugüne kadar kapatılmış dönemlerdeki ödenmemiş bakiyeler **ödenmiş sayılır.**
+Devir yalnızca bundan sonrası için işler. Aksi hâlde insanların aylar önce
+unuttuğu, muhtemelen elden ödeştiği borçlar bir sabah ekranda belirir.
 
-## Ödeşme sıklığı + dönem kapatma hatırlatması
+### Dokunulacak yerler
 
-Ev ayarlarına **"Ödeşme sıklığı"** geliyor: haftalık / iki haftada bir /
-aylık / hatırlatma istemiyorum. Vadesi gelince **iki ayrı bildirim**:
+`_compute_balances()` · `period_participants()` · `/balances` · `/periods`
+(→ ödeşme geçmişi) · `POST /settlements` (bugün "Aktif dönem bulunamadı" diye
+400 dönüyor, o kontrol kalkacak) · `DELETE /settlements/{id}` (kapalı dönem
+kontrolü yerine ödeşme çizgisi) · `e2e` · `admin` · `donem-dondurma` ·
+`remove-member` · `settle-edit` test takımları.
 
-- **Borcu olanlara:** "Dönem kapanmak üzere · Salih'e 40,60 € borcun var"
-- **Yöneticiye, ancak herkes ödeştiyse:** "Dönem kapatılabilir"
+---
 
-Tek genel hatırlatma yanlış olurdu: borcu olmayana anlamsız gelir, yöneticiyi
-de ödeşilmeden kapatmaya iter (PROJE-DOKUMANI §12'deki endişe). **Hatırlatma
-asla kendiliğinden kapatmaz** — düzenli ödemelerdeki kuralın aynısı.
+## KARAR 2 — Görüntülemenin her yerinde takvim ayı
 
-Zamanlanmış işi **kira hatırlatmasıyla paylaşıyor** (GitHub Actions, günlük).
-Tahmin: ~3-4 sa, ikisi birlikte.
+Uygulamada iki bağımsız cetvel var ve **birbirlerine hiç bakmıyorlar:**
 
-## Uygulama içinden tema seçimi — iki yol
-
-`StyleSheet.create` modül yüklenirken çalışıp o anki renkleri içine gömüyor;
-sonradan `colors`'ı değiştirmek çalışmıyor.
-
-| Yol | Ne | Maliyet |
+| Cetvel | Birim | Nerede |
 |---|---|---|
-| **A** | Ayarlarda Açık/Koyu/Sistem, *bir sonraki açılışta* geçerli | ~30 dk |
-| **B** | Gerçek canlı tema — 22 dosyada 1.234 satır stil bileşen içine | ~1 gün |
+| Görüntüleme | takvim ayı, her zaman | Anasayfa, İstatistik, harcamalar, üye dökümü |
+| Ödeşme | ne zaman denk gelirse | Kasa |
 
-**A önerildi.** B'nin kazancı estetik, maliyeti riskli bir refaktör; sistem
-teması zaten Android'de tek dokunuş uzakta.
+Bugün Anasayfa dönem bazlı, İstatistik ay bazlı, Kasa dönem bazlı sayı
+gösteriyor — aynı olay üç ekranda üç farklı rakam. Aylık geçişten sonra
+**Anasayfa ve İstatistik birebir aynı sayıyı** gösterir.
 
-## Köprüde eksik kalan filtre
+### Kira sorunu kendiliğinden çözülüyor
 
-Fiş tarihi, maddenin listeye yazıldığı tarihten **önceyse** eşleştirme.
-Gerekçe: fişler biriktirilip toplu giriliyor; iki hafta önceki krema bu
-haftaki ihtiyaç değil. Tek satırlık iş. Otomatik işaretleme olmadığı için
-kritik değil ama her yanlış öneri doğru önerilere olan güveni azaltıyor.
+Dönem 35 günse kira 35'e, 25 günse 25'e bölünüyor ve evin "günlük hızı" kimse
+davranışını değiştirmediği hâlde oynuyordu. Pencere hep takvim ayı olunca kira
+her pencerede **tam bir kez** düşer: `1200 ÷ 31 = 38,7` · `1200 ÷ 30 = 40,0`.
+Fark yok.
 
-## Tur 9'dan kalanlar — hâlâ faturalandırma bekliyor
+Bu yüzden **"sabit giderleri istatistikten ayırma" fikri gereksiz.** O fikir
+dönem uzunluğu değişken olduğu için gerekiyordu.
 
-Hız sınırlaması ve paralel toplu tarama. **Ev sahibi faturalandırmayı
-şimdilik açmayacağını söyledi** (17 Ağustos 2026). Fiş küçültme bundan
-bağımsız çıktı ve v36'da yapıldı.
+### Ay sınırı bir OLAY değil, bir OKUMA
+
+Ayın sonunda hiçbir şey olmaz: kapanmaz, kilitlenmez, bildirim gitmez, vade
+doğmaz. Ay sınırı yalnızca şu cümleyi kurabilmek için kullanılır:
+*"Önceki aylardan 18,00 €"* — yani **31 Temmuz sonundaki bakiyen.**
+
+Bunun bir yan faydası: **geç girilen fiş sorunu tamamen kaybolur.** 20 Temmuz
+tarihli bir fiş bugün girilirse Temmuz sonu bakiyesi yeniden hesaplanır,
+"önceki aylardan" satırı büyür, kalan borç aynı miktarda artar. Kilitlenmiş
+bir şey olmadığı için düzeltilecek bir şey de yok.
+
+**Geç fiş kendi gerçek tarihine yazılır.** İstatistik güncellenir (Temmuz'un
+resmi *daha doğru* hale gelir), borç bugüne düşer, ödeşilmiş para değişmez.
+Bugün bundan korkmanın sebebi para ile istatistiğin birbirine kaynamış
+olmasıydı; kaynağı sökünce korku da gidiyor.
+
+Bildirim tek satır: *"Salih 20 Temmuz tarihli bir fiş ekledi · ödeştiğiniz
+tarihten önce · 12,40 € bakiyene eklendi."*
+
+---
+
+## KARAR 3 — Kasa'nın yeni yapısı
+
+### Ekstre bloğu (koyu başlıkta)
+
+```
+Önceki aylardan          18,00
+Ağustos payın            62,60
+Ödediklerin             -40,00
+------------------------------
+Kalan borcun             48,20 €
+```
+
+**Devir bir dağıtım değil, bir enstantane:** `31 Temmuz sonundaki bakiyen`.
+Bu yüzden **FIFO gerekmiyor** — ödediğin 40 €'nun "hangi ayın borcu" olduğunu
+bilmeye gerek yok, zaman dilimi hesabı kendi kapatıyor.
+
+**Devir tek satırdır, ay ay veya kişi kişi dökülmez.** Sebep maliyet değil
+doğruluk: sadeleştirme her seferinde kimin kime ödeyeceğini yeniden
+hesapladığı için "Temmuz'dan Salih'e 18 €" diye bir şey yoktur — Ağustos'un
+harcamaları girince o borç Ayşe'ye ödenecek hale gelebilir.
+
+Blok **kendiliğinden dönüyor:** alacaklıda etiketler "önceki aylardan ·
+ödediklerin · senin payın · ev sana borçlu" olur. Aynı dört satır, ayrı bir
+tasarım gerekmiyor. Ev kaç kişilik olursa olsun blok dört satır kalır.
+
+### İnce köprü
+
+Bugünkü köprü ~140 piksel; yenisi **~64.** Tek satır: avatar · isim · aradaki
+çizgi · avatar · isim, tutar çizginin altında, düğme sağda hap olarak. İki
+avatar ve çizgi duruyor çünkü yönü onlar söylüyor.
+
+- **En büyük borç koyu düğme, diğerleri çerçeveli.** Sıra değil miktar
+  belirler — önce büyüğü kapatmak istersin.
+- **Alacak tarafında koyu düğme yok.** Orada yapılacak bir iş değil,
+  onaylanacak bir şey var.
+- **Satır anlatır, düğme öder.** Düğme dışında her yere dokunmak "bu borç
+  nereden geliyor" sayfasını açar.
+- İkiden fazla köprü olursa (beş kişilik ev) liste düzenine iner.
+
+### Kartlar
+
+| Kart | Ne zaman |
+|---|---|
+| Borçların | senin ödeyeceğin en az bir transfer varsa |
+| Alacakların | sana ödenecek en az bir transfer varsa |
+| Evdeki diğer ödemeler | seni ilgilendirmeyen transfer varsa · katlanmış |
+| Ödeme Geçmişi | en az bir ödeme varsa · son 2, gerisi "Tümü ›" |
+
+**Sadeleştirme açıkken ilk iki kart aynı anda dolu olamaz** —
+`simplify_debts()` her kişiye tek net verir, kişi ya borçludur ya alacaklı.
+
+**"Ödeme bilgini paylaş" kartın dibinde tek satır.** Bugün her borçlunun
+satırında ayrı ayrı duruyor, oysa paylaşılan IBAN hepsinde aynı.
+
+### Borç dökümü (satıra dokununca)
+
+```
+ÖNCEKİ AYLARDAN
+  Temmuz sonu bakiyesi        18,00  >
+AĞUSTOS
+  Ev alışverişlerindeki payın 62,60  >
+  Ödediklerin                -40,00  >
+  Kemal'in sana borcu         -0,80  >
+-------------------------------------
+  Ödenecek                    39,80
+```
+
+Oklu satırlar bir kat daha açılır: **harcamalar** (sağda iki sayı — senin
+payın büyük, fişin tamamı küçük) → **fiş kalemleri.** Borcun en dibinde havuç
+var; **hiçbir rakip bu katı gösteremez.**
+
+Gizlilik sorunu yok: zaten bölüşme listesinde olduğun harcamalar.
+
+### Ödeme geçmişi
+
+Gün başlıklı, yön ikonlu. Alt satır *"52,40 borçtan · kalan 12,40"* der. Bir
+ödemeye dokununca: tutar, o anki borç, bu ödeme, kalan, "bu borç nereden
+geliyordu ›" ve **geri al** (yalnızca taraflar).
+
+Ödeşme anı listede yeşil bir çizgi olarak durur: *"16 Ağustos · Ev ödeşti"*.
+
+### Ödeşme akışı DEĞİŞMİYOR
+
+Bugünkü davranış doğru ve kalıyor: **iki taraftan biri kaydeder** (üçüncü kişi
+403 alır), **kayıt anında düşer, onay adımı yok**, karşı tarafa bildirim
+gider, **iki taraftan biri geri alabilir** ve geri alma da bildirim üretir.
+
+Onay adımı bilerek yok: ikili bir gerçek yaratırdı ("ödedim ama onaylamadı"
+durumunda bakiye kaç?), alacaklıyı borçlunun hakemi yapardı, ve para zaten
+gerçek dünyada hareket etmişti. **Defter izin istemez.** Yanlışsa geri alınır —
+düzeltme, kapı bekçiliğinden ucuzdur.
+
+### Sadeleştirme AÇIK kalıyor, ayar konmuyor
+
+Splitwise'da bu bir grup ayarı ve varsayılan açık; forumunda "kapatılabilsin"
+talepleri var, kurucusu da algoritmanın *"kimse daha önce borçlu olmadığı
+birine borçlu hale gelmez"* kuralını tutmadığını kabul etmiş.
+
+Bizde **ayar konmayacak.** Gerekçeler:
+
+- Ayar, kullanıcıya anlamadığı bir soruyu sormaktır
+- Splitwise'ın somut hatası bizde de olurdu: ayar ödemeler yapıldıktan sonra
+  değiştirilirse ödeşmiş insanlar yeniden borçlu çıkıyor
+- **Döküm, ayarın çözdüğü asıl sorunu ayar olmadan çözüyor.** İnsanı rahatsız
+  eden rakam değil, anlamamak: "ben Kemal'e ödeme yapmıyor muyum?"
+
+Üç kişilik evde sadeleştirmenin kazancı zaten en fazla **bir transfer**
+(3 ikili ilişki → 2 transfer). Altı kişilik evde 15 → 5, orada gerçekten
+değerli. Ev büyürse ayar yeniden gündeme gelir; o zaman varsayılan açık ve
+**ödeşme başladıktan sonra kilitli** olmalı.
+
+---
+
+## KARAR 4 — Anasayfa
+
+```
+EV
+Bizim Ev                                    (zil)
+
+AĞUSTOS'TA EV HARCAMASI
+1.240,50 €
+^ %12 · geçen ayın 16'sında 1.108 €
+
++-- Nereye Gitti --------------------+
+|  halka + 4 kategori                |
+|  --------------------------------  |
+|  SANA DÜŞEN 413,50  KİŞİSEL 96,20  |
+|  --------------------------------  |
+|  Tüm istatistikler               > |
++------------------------------------+
+```
+
+### "Senin payın" → "Sana düşen"
+
+Uygulamada sana ait **üç ayrı sayı** dolaşıyor ve "pay" kelimesi bunu
+öğretmiyordu:
+
+| Sayı | Ne demek | Nerede |
+|---|---|---|
+| **Ödediğin** | senin cebinden çıkan | Kasa |
+| **Sana düşen** | ev harcamalarından payına düşen, kim ödemiş olursa olsun | Anasayfa, İstatistik |
+| **Kişiselin** | kendine aldıkların | Anasayfa, İstatistik |
+
+"Ödediğin − sana düşen = bakiyen" ilişkisi uygulamanın omurgası.
+
+### Trend bir hap değil bir SATIR
+
+Ana rakamın hemen altında, sola dayalı, **karşılaştırılan tutar yazılı.**
+"geçen ayın 16'sında 1.108 €" yazınca kimse "%12 neyin yüzdesi" diye sormuyor
+— gözüyle doğruluyor. Öznesini komşuluktan alıyor.
+
+**Bugünkü hesap ay ortasında yanlış:** `change_pct` bu ayın *şu ana kadarki*
+toplamını geçen ayın *tam* toplamıyla karşılaştırıyor, yani ayın 5'inde bakan
+herkes "%80 azalış" görüyor. Doğrusu **aynı güne kadar** karşılaştırmak;
+`prev_cumulative` zaten üretiliyor.
+
+Kural merdiveni:
+
+1. Geçen ayın aynı gününe kadarki toplam anlamlı mı → **yüzde**
+2. %200'ü aşarsa → **"2,5 katı"** dili (yüzde büyüdükçe okunmaz oluyor)
+3. Karşılaştırılacak geçmiş yoksa → **satır hiç çizilmez.** Dolgu metni yok,
+   uydurma yok. Yeni evde başlık bir tık kısa olur, o kadar.
+
+### "Günde ortalama" kalkıyor, yerine "Kişisel"
+
+O sayının varlık sebebi dönemlerin farklı uzunlukta olmasıydı — üç haftalık
+dönemle yedi haftalıkı ancak günlük hıza indirerek karşılaştırabiliyorduk.
+Aylar zaten eşit. **Kişisel** ise kaydediliyor ama Anasayfa'da hiç
+görünmüyordu.
+
+**Kişisel sıfırsa o sütun çizilmez**, "Sana düşen" tek başına kalır — Kasa'da
+sıfır sütunu gizleme kuralının aynısı.
+
+### "Kişi başı" kalkıyor
+
+Düz ortalama (`toplam / üye sayısı`) kişiye özel bölüşmede yanlış çıkıyor.
+Kasa'da aynı hata bir kez düzeltilmişti; Anasayfa'da duruyordu.
+
+### İstatistiğe iki kapı, ikisi de merakın oluştuğu yerde
+
+1. **Trend satırı tıklanabilir** — "↑ %12" okuyanın aklından geçen soru
+   "neden?" ve cevabı eğride
+2. **Kart dibinde "Tüm istatistikler ›"** — dokuz kategorinin kalanı,
+   marketler, faturalar için
+
+Başlıktaki sönük "İstatistikler" hapı **tamamen kalkıyor** — aynı odaya iki
+kapı vardı, zayıf olan gitti.
+
+Kapı **koyu düğme değil, alt satır.** Uygulamanın kuralı "sayfada tek koyu
+düğme" ve Anasayfa'nın birincil eylemi ortadaki fiş tarama.
+
+### Dikkat şeridi
+
+Kavisin hemen altında, **yalnızca varsa.** İçerik: bekleyen katılma isteği
+(yöneticiye) ve — ileride yapılırsa — ödeşme hatırlatması.
+
+**Vadesi gelen düzenli ödemeler GİRMEZ:** kendi kartı hemen altında duruyor,
+ikisi birden olursa aynı iş iki kez yazılmış olur.
+
+---
+
+## KARAR 5 — İstatistik bir ANALİZ sayfası (Tur 11)
+
+### Teşhis
+
+Sayfa bugün Anasayfa'da az önce görülen halkayla açılıyor: aynı halka, aynı
+kategoriler. İnsan girip "ha, aynısı" deyip çıkıyor. Sorun kapının küçüklüğü
+değil, **odanın içinde yeni bir şey olmaması.**
+
+**Halka kalıyor.** ("Değişim göstersin, halka çıksın" önerisi denendi ve ev
+sahibi haklı olarak reddetti: burası yalnızca karşılaştırma sayfası değil,
+*neyi nereye ne kadar harcadık* sayfası.) Fark **derinlik**: Anasayfa dört
+kategori, analiz sayfası dokuzunu farklarıyla ve **içine girilebilir** hâliyle.
+
+### Sayfa sırası
+
+**Ay Boyunca** (eğri) → **Nereye Gitti** (halka + 9 kategori + farklar,
+dilimler dokunulabilir) → **Son 6 Ay** → **En Çok Aldıklarımız** →
+**Zamlananlar** → **Faturalar** → **Marketler** → **Kim Ne Kadar Ödedi**
+
+Eğri başa alınıyor ki ilk ekranda Anasayfa'da olmayan bir şey görünsün.
+Kolayca ters çevrilebilir bir karar; cihazda bakıp karar verilecek.
+
+### Yeni kartlar
+
+**En Çok Aldıklarımız — ürün bazlı aylık toplam.** `Süt · 14 lt · 3 markette ·
+17,20 €`. Tur 8'in **genel ürün adı** işi sayesinde `MILSANI`, `MILBONA` ve
+`JA!` tek satırda toplanıyor. Karşılaştırmaya ihtiyacı yok, **ilk aydan
+itibaren dolu geliyor**, ve rakiplerin hiçbiri üretemez.
+
+**Kategoriye gir.** Halkanın dilimine veya satıra dokununca: 6 aylık seyir +
+"ne alındı" (kalem bazlı) + "nereden" (market bazlı).
+
+**Markete gir.** Toplam, fiş sayısı, ortalama fiş, hangi kategoriler, hangi
+fişler.
+
+**Son 6 Ay.** Tek bakışta genel gidiş. Bu ay koyu, gerisi gri, altında 6 ay
+ortalaması.
+
+**Zamlananlar / Ucuzlayanlar.** Aynı market içinde aynı ürünün ay-ay birim
+fiyatı. Ucuzlayanlar da listede — yalnızca zam göstermek insanı sürekli kötü
+haberle karşılar.
+
+- **Kaynak `price_points` DEĞİL.** O koleksiyon bilerek kimlik alanı
+  taşımıyor, yani "bu evin fiyat geçmişi" oradan çıkarılamaz. Kaynak
+  `POST /price-memory`'nin kullandığı yol: evin kendi `expenses` kayıtları,
+  `source: "receipt"`, `normalize_merchant` + `product_key` + `pack_type`.
+- **Ayın son fiyatı değil ayın MEDYANI** karşılaştırılır — kampanyalı bir
+  hafta "ucuzladı" deyip ertesi ay "zamlandı" demesin.
+- **%8 eşiği** — altındaki oynamalar yuvarlama ve kampanya gürültüsü.
+- Bu ev üç farklı marketten çoğunlukla market markası alıyor; kart aylarca
+  boş kalabilir. **Veri yoksa satır üretmez, sorun değil.**
+
+### "Toplam"ın yeşili nötre dönüyor
+
+Yeşil bu uygulamada "alacak" demek; senin toplam çıkışın alacak değil.
+
+---
+
+## Elenenler ve NEDEN elendikleri
+
+Bir sonraki oturum bunları "eksik" sanıp geri getirmesin.
+
+| Ne | Neden elendi |
+|---|---|
+| **Ay ↔ Dönem anahtarı** | Dönem hesaptan çıkınca iki pencere tek pencereye indi; anahtarın kıyaslayacağı bir şey kalmadı |
+| **Otomatik dönem kapatma** | Aylık sabit giderler kısa dönemlerde bir döneme düşüp diğerine düşmüyor; geç girilen fiş sorunu büyüyor; kullanıcı kısıtlanıyor |
+| **Eğride dönem başı çizgisi** | Dönem ekranlardan çıktı |
+| **Kart başlıklarına pencere yazma** | Her yer "Ağustos" oldu, ayırt edilecek bir şey kalmadı |
+| **Devreden borcun ay ay yaşlandırılması** | Sadeleştirme kimin kime ödeyeceğini yeniden hesapladığı için "Temmuz'dan X'e" bir kurgu olurdu |
+| **Ödemenin dönemlere FIFO dağıtımı** | Devir bir enstantane olarak tanımlanınca gereksizleşti |
+| **Sabit giderleri istatistikten ayırma** | Aylık pencere gürültüyü zaten öldürdü |
+| **Sadeleştirme kapatma ayarı** | Anlaşılmayan bir soru + Splitwise'ın somut hatası (ödeme sonrası değiştirilirse ödeşmişler yeniden borçlu çıkıyor) |
+| **Ödemeye onay adımı** | İkili gerçek yaratır, alacaklıyı hakem yapar; para zaten hareket etmiş |
+| **Halkayı İstatistik'ten çıkarma** | Burası yalnızca karşılaştırma değil analiz sayfası — "neyi nereye ne kadar" da burada |
+| **Ekstre disiplini (vade, gecikme dili)** | Ev arkadaşları arasındaki borç bankayla olan borç değil; "45 gündür ödenmedi" gereksiz sürtüşme üretir |
+
+Önceki turlardan gelen elenmişler de geçerliliğini koruyor: sekme geçiş
+animasyonu, alt sayfa sürükleme jesti, EPC karekodu, bütçe ve hız göstergesi,
+sabit/değişken oranı kartı, marketler arası fiyat karşılaştırması, kişi başına
+tüketim karşılaştırması.
+
+---
+
+## Tur 10 planı — para çekirdeği
+
+Madde başına ayrı commit, turun sonunda tek APK (v43).
+
+1. **Üç boy başlık sistemi.** `ScreenHeader`'a `size` prop'u. Boy yükseklik
+   değil **içerik** kuralı: **S** = yalnızca kimlik (Ayarlar, Ev ayarları,
+   Düzenle, Bildirimler, Ödeme bilgilerim) · **M** = kimlik + tek şerit
+   (Alınacaklar, Harcamalar, Aktivite, Düzenli, Profil) · **L** = kahraman
+   sayı (Anasayfa, Kasa, İstatistik, üye dökümü).
+2. **Sekme anahtarı tek yerde.** İstatistik'teki Ev|Kişisel beyaz yüzeyden
+   lacivert başlığa (`onDark`) taşınıyor — Alınacaklar'daki gibi.
+3. **Dönem para hesabından çıkıyor.** Sunucu: `_compute_balances()`,
+   `period_participants()`, `/balances`, `/settlements`. Göç: geçmiş kapalı
+   dönemler ödenmiş sayılır.
+4. **Ödeşme çizgisi.** Bakiye sıfıra değince otomatik kayıt + bildirim. Dönem
+   kapatma düğmesi kalkıyor.
+5. **Aylık geçiş.** `/stats` dönem yerine ay; `/periods` özeti ödeşme
+   geçmişine dönüşüyor; `member-detail` ay bazlı.
+6. **Kasa'nın yeni yüzü.** Ekstre bloğu, ince köprüler, Borçların/Alacakların
+   kartları, paylaşma satırı kartın dibinde.
+7. **Borç dökümü.** Yeni uç + üç kademeli sayfa (kaynak → harcamalar →
+   kalemler).
+8. **Ödeme geçmişi.** Kasa'da son 2 + "Tümü" sayfası + ödeme detayı.
+9. **Anasayfa'nın yeni düzeni.** "Sana düşen", trend satırı (aynı güne göre),
+   "günde ortalama" ve "kişi başı" kalkıyor, İstatistik hapı kalkıyor, kart
+   dibinde "Tüm istatistikler ›".
+10. **Dikkat şeridi.**
+11. **İstatistik'te "Toplam"ın yeşili nötre.**
+12. **Köprüde tarih filtresi.** Fiş tarihi, maddenin listeye yazıldığı
+    tarihten önceyse eşleştirme (tek satır).
+13. **Testler.** Dönem semantiği doğrulayan takımlar yeniden yazılacak; yeni
+    takım: ödeşilmemiş bakiye, devir, ödeşme çizgisi.
+14. **Belgeler + APK v43.**
+
+## Tur 11 planı — analiz sayfası
+
+Kaba tahmin ~15 saat.
+
+1. Halkanın derinleşmesi + **kategori sayfası** (6 aylık seyir, ne alındı,
+   nereden)
+2. **Son 6 Ay** çubuğu
+3. **En Çok Aldıklarımız** + "tüm ürünler" sayfası
+4. **Market sayfası**
+5. **Zamlananlar / Ucuzlayanlar**
+6. Marketler kartına geçen ay sütunu
+7. Sayfa sırası + iki kapı
+8. Belgeler + APK v44
+
+**Neden ayrıldı:** para matematiği ile analiz ekranı aynı APK'da değişirse,
+bir şey bozulduğunda hangisinden geldiği ayırt edilemez. "Madde başına commit,
+tur başına APK" kuralının sebebi bu.
+
+---
+
+## Sonraki adaylar
+
+- **Ödeşme sıklığı hatırlatması** — ev ayarı, **varsayılan kapalı**;
+  hatırlatma isteyen ev ile istemeyen ev çok farklı. GitHub Actions günlük
+  işi, kira hatırlatmasıyla paylaşımlı. **Hatırlatma asla kendiliğinden
+  ödeştirmez.**
+- **Uygulama içinden tema seçimi (Yol A)** — Ayarlarda Açık/Koyu/Sistem, bir
+  sonraki açılışta geçerli, ~30 dk. Yol B (canlı tema) 22 dosyada 1.234
+  satırlık riskli refaktör, önerilmiyor.
+- Alınacaklar–fiyat köprüsü · arama · avatarlar · CSV/PDF · çevrimdışı kuyruk
+- Hız sınırlaması ve paralel toplu tarama — **faturalandırma bekliyor**
+  (ev sahibi 17 Ağustos 2026'da şimdilik açmayacağını söyledi)
+
+## Genele açma paketi
+
+E-posta doğrulama · gerçek şifre sıfırlama · hesap ve veri silme · rıza
+katmanı (opt-in) · gizlilik metni · saklama süresi · **şube adresi + ödeme
+yöntemi toplama** (açılış APK'sıyla aynı anda; fiş fotoğrafları saklanmadığı
+için sonradan çıkarılamaz) · tanıtım ekranları · "sana ne kazandırdı"
+rakamları
+
+---
 
 ## Biten turlar
 
@@ -121,7 +479,7 @@ bağımsız çıktı ve v36'da yapıldı.
 |---|---|---|
 | 1+2 | Dönem dondurma, düzenleme geçmişi, birim, aynı fiş uyarısı | v17 |
 | 3 | Profil/Ev/Uygulama ayrımı, ülke + para birimi, Aktivite | v18 |
-| 4 | `{kişi: tutar}` bölüşme modeli — bkz. §5 | v23 |
+| 4 | `{kişi: tutar}` bölüşme modeli | v23 |
 | — | Fiyat altyapısı: birim fiyat, paket sınıfı, `price_points` | v24 |
 | 5 | Düzenli ödemeler + ödeyen seçici | v24 |
 | 6 | Takvim ayı istatistikleri | v24 |
@@ -130,41 +488,7 @@ bağımsız çıktı ve v36'da yapıldı.
 | 9 | Fiş küçültme; gezinme çubuğu, tek yüzlü ödeme, etiket bazlı istatistik | v33–41 |
 | B | Alınacaklar ↔ fiş köprüsü | v42 |
 
-## Sonraki adaylar
-
-- **Alınacaklar–fiyat köprüsü** — genel ürün adı bunu mümkün kıldı: listeye
-  "süt" yazınca evin en son kaça aldığı gösterilebilir. Birkaç hafta veri
-  birikmesi gerekiyor.
-- **Faturalar kartı** zaten hazır, 2-3 aylık düzenli ödeme verisi bekliyor
-- Arama, avatarlar, CSV/PDF, çevrimdışı kuyruk, dönem hatırlatması
-
-## Genele açma paketi
-
-- E-posta doğrulama, gerçek şifre sıfırlama, hesap ve veri silme
-- Rıza katmanı (opt-in), gizlilik metni, saklama süresi
-- **Şube adresi + ödeme yöntemi toplama** — açılış APK'sıyla aynı anda;
-  fiş fotoğrafları saklanmadığı için sonradan çıkarılamaz
-- Tanıtım ekranları (gerçek fiş ekran görüntüleriyle, illüstrasyon değil)
-- "Sana ne kazandırdı" rakamları
-- Düzenli ödeme hatırlatma bildirimi (GitHub Actions üzerinden)
-
-## Denendi ve BİLEREK geri alındı
-
-Bir sonraki oturum bunları "eksik" sanıp geri getirmesin.
-
-- **Sekme geçiş animasyonu** — kasıyordu; sebep animasyon değil, sekmeye
-  basınca aynı anda veri çekilmesiydi
-- **Alt sayfa sürükleme jesti** — bir sebep bulunup düzeltildi, ikincisi
-  bulunamadı; değeri düşük
-- **EPC/Girocode karekodu** — ödeyenin ekranında görünüyor ama ödeyenin kendi
-  banka uygulamasıyla okutması gerekiyor; kendi ekranını tarayamaz
-- **Bütçe ve hız göstergesi** — ay-ay karşılaştırma aynı soruyu sıfır
-  kurulumla cevaplıyor
-- **Sabit/değişken oranı kartı** — kira değişmediği için her ay aynı şeyi
-  söylüyordu; yerine Faturalar kartı geldi
-- **Marketler arası fiyat karşılaştırması** — barkod yok. *Genel ürün adı
-  geldikten sonra EMTİA için kısmen mümkün oldu* (havuç, ekmek); markalı
-  işlenmiş üründe hâlâ geçerli değil
+---
 
 ## Bilinmesi gereken tuzaklar
 
@@ -181,7 +505,26 @@ Bir sonraki oturum bunları "eksik" sanıp geri getirmesin.
 - Alt sayfalarda `KeyboardAvoidingView` **çalışmıyor** — `BottomSheet` klavye
   yüksekliğini kendi hallediyor.
 - Tablette içerik `CONTENT_MAX_WIDTH` (560) ile sınırlı.
+- **Emülatör bu projede güvenilmez hakem** — gezinme çubuğu farklı davranıyor
+  ve turun en pahalı hatası tam o alandaydı.
 - Ayrıntılar: [DEVAM.md](DEVAM.md)
+
+## Geliştirme derlemesi — tur içinde APK derlemeyin
+
+Arayüz maddelerini görmek için release APK derlemeye gerek yok. Bir kez
+kurulur, sonrası anlık:
+
+```
+. D:\SettleUp\ortam.ps1
+cd D:\SettleUp\OdaHesap\frontend
+npx expo run:android
+```
+
+Sonraki günler yalnızca `npx expo start`. Debug derlemesi hata ayıklama
+anahtarıyla imzalandığı için **önce mevcut uygulama kaldırılmalı**
+(`adb uninstall com.odahesap.app`). `run:android` içeride `prebuild`
+çalıştırır: sonrasında imzalama ve ABI ayarları doğrulanmalı, `versionCode`
+elle değiştirilmemeli. Debug yavaştır — performans yargısı release'de verilir.
 
 ## Yeni sohbete yapıştırılacak metin
 
