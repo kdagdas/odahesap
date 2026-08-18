@@ -2,7 +2,7 @@ import { useCallback, useState } from "react";
 import {
   View, Text, StyleSheet, ScrollView, RefreshControl, Pressable, ActivityIndicator,
 } from "react-native";
-import { useFocusEffect, useRouter } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { apiGet, apiDelete } from "@/src/api";
 import { useAuth } from "@/src/auth";
@@ -10,7 +10,7 @@ import { useHousehold } from "@/src/household";
 import {
   ScreenHeader, HeaderSplit, Sheet, Card, Divider, Avatar, CategoryIcon,
   MerchantBadge, Money, splitBadge, formatEUR, formatQty,
-  HeaderPills, HeaderPill, useScrollPad,
+  HeaderPills, HeaderPill, HeaderClearPill, useScrollPad, ayAdi, buAy,
 } from "@/src/ui";
 import { colors, spacing, radius, type as T, overline, metrics } from "@/src/theme";
 
@@ -21,27 +21,44 @@ type Expense = {
   total: number; merchant?: string; category?: string; source: string;
   created_at: string; expense_date?: string;
   items?: Item[]; notes?: string;
-};
-type Period = {
-  period_id: string; started_at: string; closed_at: string | null; status: string;
-  first_expense?: string | null; last_expense?: string | null;
-  expense_count?: number; expense_total?: number;
+  /** Bu fişten sana düşen. `month` süzgeciyle geliyor. */
+  my_share?: number;
+  /** Süzülen akış satırının bu fişteki tutarı — `akis` verildiğinde. */
+  akis_tutar?: number;
 };
 
 /**
- * Dönem etiketi — HARCAMA aralığı, dönem kaydının damgası değil.
+ * Akış süzgecinin ekrandaki adı.
  *
- * `started_at` bir muhasebe damgası: ev kurulup ilk dönem aynı gün kapandıysa
- * "3 Ağu – 3 Ağu" çıkıyor ve iki dönem ayırt edilemiyor. İnsanın hatırladığı
- * şey alışveriş yapılan günler. Aynı ay içindeyse ay bir kez yazılıyor
- * (banka ekstrelerindeki gibi), harcama yoksa tek tarih.
+ * Anahtarlar sunucudaki `akis_paylari()` ile birebir aynı; Kasa'daki ekstre
+ * satırı da onları kullanıyor. Hap üzerindeki yazı ekstredeki satırın
+ * KISALTILMIŞ hâli — birebir aynısı olsaydı hap taşardı, bambaşka bir
+ * kelime olsaydı "aynı şeye mi bakıyorum" sorusu doğardı.
  */
-const AY_KISA = ["Oca", "Şub", "Mar", "Nis", "May", "Haz",
-                 "Tem", "Ağu", "Eyl", "Eki", "Kas", "Ara"];
+const AKIS_ADI: Record<string, string> = {
+  pay: "Sana düşen",
+  ev_odedigin: "Senin ödediklerin",
+  baskasi_icin: "Başkası için aldıkların",
+  senin_icin: "Senin için alınanlar",
+};
+
 const AY_UZUN = ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran",
                  "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"];
-
 const GUNLER = ["Pazar", "Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi"];
+
+/** Seçilebilir aylar: bu ay ve geriye doğru 11 ay.
+ *
+ *  Dönem çipleri yerine bunlar geldi. Dönem artık para hesabında yok ve
+ *  görüntülemenin her yeri takvim ayı; harcamaların penceresi de aynı
+ *  pencere olmak zorunda, yoksa Kasa'daki "Ağustos'ta sana düşen" ile bu
+ *  ekrandaki liste farklı iki aralığı gösterir. */
+const sonAylar = (): string[] => {
+  const d = new Date();
+  return Array.from({ length: 12 }, (_, i) => {
+    const x = new Date(d.getFullYear(), d.getMonth() - i, 1);
+    return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, "0")}`;
+  });
+};
 
 /** "15 AĞUSTOS · CUMARTESİ" — bugün ve dün ayrıca adlandırılır. */
 const gunBasligi = (iso: string) => {
@@ -54,28 +71,6 @@ const gunBasligi = (iso: string) => {
     .toLocaleUpperCase("tr");
 };
 
-const periodLabel = (p: Period) => {
-  const ilk = p.first_expense, son = p.last_expense;
-  if (!ilk) {
-    const d = new Date(p.started_at);
-    return `${d.getDate()} ${AY_UZUN[d.getMonth()]}`;
-  }
-  const [, ay1, g1] = ilk.split("-").map(Number);
-  const bitis = p.status === "active" ? null : son;
-  if (!bitis || bitis === ilk) return `${g1} ${AY_UZUN[ay1 - 1]}`;
-  const [, ay2, g2] = bitis.split("-").map(Number);
-  // Ayni ay: "3 - 16 Agustos". Farkli ay: "28 Tem - 2 Agustos".
-  return ay1 === ay2
-    ? `${g1} – ${g2} ${AY_UZUN[ay2 - 1]}`
-    : `${g1} ${AY_KISA[ay1 - 1]} – ${g2} ${AY_UZUN[ay2 - 1]}`;
-};
-
-const periodHint = (p: Period) => {
-  const durum = p.status === "active" ? "Sürüyor" : "Kapandı";
-  if (!p.expense_count) return `${durum} · harcama yok`;
-  return `${durum} · ${p.expense_count} harcama · ${formatEUR(p.expense_total)}`;
-};
-
 // Was a tab; the shopping list earns that slot because it is used daily while
 // this history is opened occasionally. Reached from "Tümü" on the home screen.
 export default function Harcamalar() {
@@ -83,10 +78,14 @@ export default function Harcamalar() {
   const altPay = useScrollPad({ tabs: true, extra: 0 });
   const { user } = useAuth();
   const router = useRouter();
-  const { members, activePeriod } = useHousehold();
+  const { members } = useHousehold();
+  /* Kasa'daki bir ekstre satırından gelinmişse süzgeç hazır geliyor. */
+  const params = useLocalSearchParams<{ akis?: string; ay?: string }>();
   const [expenses, setExpenses] = useState<Expense[]>([]);
-  const [periods, setPeriods] = useState<Period[]>([]);
-  const [selectedPeriod, setSelectedPeriod] = useState<string | undefined>(undefined);
+  const [akis, setAkis] = useState<string | undefined>(
+    params.akis && AKIS_ADI[params.akis] ? params.akis : undefined);
+  const [ay, setAy] = useState<string>(
+    typeof params.ay === "string" && params.ay.length === 7 ? params.ay : buAy());
   const [memberFilter, setMemberFilter] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -94,17 +93,17 @@ export default function Harcamalar() {
 
   const load = useCallback(async () => {
     try {
-      const pers = await apiGet("/periods");
-      setPeriods(pers.periods || []);
-      const pid = selectedPeriod || activePeriod?.period_id;
-      const q = new URLSearchParams();
-      if (pid) q.set("period_id", pid);
+      const q = new URLSearchParams({ month: ay });
+      // Akış süzgeci SUNUCUDA: istemcideki `split_with` süzgeci Tur 4 öncesi
+      // kayıtları kaçırıyordu ve belirtisi "Senin için alınanlar 3 €" yazıp
+      // içinin boş açılmasıydı.
+      if (akis) q.set("akis", akis);
       if (memberFilter) q.set("member_id", memberFilter);
-      const exp = await apiGet(`/expenses?${q.toString()}`);
+      const exp = await apiGet<{ expenses: Expense[] }>(`/expenses?${q.toString()}`);
       setExpenses(exp.expenses || []);
     } catch (e) { console.log(e); }
     finally { setLoading(false); setRefreshing(false); }
-  }, [selectedPeriod, memberFilter, activePeriod]);
+  }, [ay, akis, memberFilter]);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
@@ -112,9 +111,13 @@ export default function Harcamalar() {
     try { await apiDelete(`/expenses/${id}`); load(); } catch (e) { console.log(e); }
   };
 
-  const activePeriodId = activePeriod?.period_id;
-  const currentPeriodId = selectedPeriod || activePeriodId;
-  const listedTotal = expenses.reduce((s, e) => s + (e.total || 0), 0);
+  /* Süzülen toplam AKIŞIN toplamı, fiş toplamlarının değil.
+     Kasa'da "Ağustos'ta sana düşen 62,60" yazıp buraya gelen biri başlıkta
+     62,60 görmeli; fişlerin tamamını toplarsak 186,00 çıkar ve iki ekran
+     birbirini yalanlar. */
+  const listedTotal = akis
+    ? expenses.reduce((s, e) => s + (e.akis_tutar || 0), 0)
+    : expenses.reduce((s, e) => s + (e.total || 0), 0);
 
   return (
     <View style={styles.root} testID="harcamalar-screen">
@@ -138,12 +141,32 @@ export default function Harcamalar() {
         >
           <HeaderSplit
             items={[
-              { label: "Süzülen toplam", value: formatEUR(listedTotal) },
+              { label: akis ? AKIS_ADI[akis] : "Süzülen toplam",
+                value: formatEUR(listedTotal), accent: !!akis },
               { label: "Kayıt", value: `${expenses.length} harcama` },
             ]}
           />
-          {/* Süzgeç bağlamdır: başlık ve toplamlarla aynı yerde durur. */}
+          {/* Süzgeç bağlamdır: başlık ve toplamlarla aynı yerde durur.
+              Akış hapı EN BAŞTA ve kaldırılabilir — bu ekrana Kasa'dan gelen
+              birinin gördüğü liste ayın tamamı değil ve bunu söyleyen tek
+              şey o hap. Ay hapı kaldırılamaz: bir pencere her zaman var,
+              yalnızca hangisi olduğu değişir. */}
           <HeaderPills>
+            {akis && (
+              <HeaderClearPill label={AKIS_ADI[akis]}
+                               onClear={() => setAkis(undefined)}
+                               testID="filter-akis" />
+            )}
+            <HeaderPill
+              value={ay}
+              options={sonAylar().map((m) => ({
+                value: m, label: ayAdi(m).split(" ")[0],
+                hint: ayAdi(m), icon: "calendar-outline",
+                iconAccent: m === buAy(),
+              }))}
+              onSelect={setAy}
+              testID="filter-ay"
+            />
             <HeaderPill
               value={memberFilter ?? ""}
               options={[
@@ -156,30 +179,11 @@ export default function Harcamalar() {
               onSelect={(v) => setMemberFilter(v || undefined)}
               testID="filter-member"
             />
-            <HeaderPill
-              value={selectedPeriod || activePeriodId || ""}
-              options={periods.map((p, i) => ({
-                value: p.period_id,
-                label: periodLabel(p),
-                hint: periodHint(p),
-                icon: p.status === "active" ? "flash" : "archive-outline",
-                iconAccent: p.status === "active",
-              }))}
-              onSelect={(v) => setSelectedPeriod(v === activePeriodId ? undefined : v)}
-              testID="filter-period"
-            />
           </HeaderPills>
         </ScreenHeader>
 
         <Sheet>
           <View style={styles.scroll}>
-
-          {currentPeriodId !== activePeriodId && (
-            <View style={styles.archivedBanner} testID="archived-banner">
-              <Ionicons name="archive-outline" size={16} color={colors.accentDark} />
-              <Text style={styles.archivedTxt}>Kapatılmış dönem görüntüleniyor</Text>
-            </View>
-          )}
 
           {loading ? (
             <ActivityIndicator color={colors.ink} style={{ marginTop: spacing.xl }} />
@@ -188,10 +192,13 @@ export default function Harcamalar() {
               <View style={styles.emptyRing}>
                 <Ionicons name="file-tray-outline" size={30} color={colors.inkTertiary} />
               </View>
-              <Text style={styles.emptyTitle}>Bu dönemde harcama yok</Text>
+              <Text style={styles.emptyTitle}>
+                {akis ? `${ayAdi(ay)} ayında bu türde kayıt yok`
+                      : `${ayAdi(ay)} ayında harcama yok`}
+              </Text>
             </View>
           ) : (
-            <Card title="Tüm Harcamalar">
+            <Card title={akis ? AKIS_ADI[akis] : "Tüm Harcamalar"}>
               {expenses.map((e, idx) => {
                 const author = members.find((m) => m.user_id === e.added_by);
                 const targetChip = splitBadge(e, members, user?.user_id);
@@ -241,7 +248,19 @@ export default function Harcamalar() {
                             {targetChip.txt}
                           </Text>
                         </View>
-                        <Money value={e.total} />
+                        {/* Akış süzgeci açıkken sağda İKİ sayı var: büyük
+                            olan o satıra düşen tutar, küçük olan fişin
+                            tamamı. Karıştırılan tam olarak bu ikisiydi —
+                            60 €'luk fişte payın 20 € ve ekranda tek sayı
+                            varsa hangisi olduğu bilinemiyor. */}
+                        {akis && Math.abs((e.akis_tutar ?? e.total) - e.total) > 0.005 ? (
+                          <View style={{ alignItems: "flex-end" }}>
+                            <Money value={e.akis_tutar ?? 0} />
+                            <Text style={styles.icinde}>{formatEUR(e.total)} içinde</Text>
+                          </View>
+                        ) : (
+                          <Money value={akis ? (e.akis_tutar ?? e.total) : e.total} />
+                        )}
                       </View>
                     </Pressable>
 
@@ -300,11 +319,6 @@ const styles = StyleSheet.create({
   scroll: { padding: spacing.lg, paddingTop: spacing.sm, gap: metrics.cardGap, paddingBottom: spacing.xxxl },
   groupLabel: { ...overline, marginTop: spacing.xs },
   chipRow: { gap: spacing.sm, alignItems: "center", paddingRight: spacing.lg },
-  archivedBanner: {
-    flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: colors.accentSoft,
-    borderRadius: radius.md, padding: spacing.md,
-  },
-  archivedTxt: { ...T.bodySb, color: colors.accentDark },
   empty: { alignItems: "center", paddingVertical: spacing.xxxl, gap: spacing.md },
   emptyRing: {
     width: 72, height: 72, borderRadius: 36, borderWidth: 1, borderColor: colors.border,
@@ -323,6 +337,7 @@ const styles = StyleSheet.create({
     paddingTop: spacing.lg, paddingBottom: spacing.xs,
   },
   splitTxt: { ...T.caption, color: colors.inkTertiary },
+  icinde: { ...T.caption, fontSize: 10, color: colors.inkTertiary, marginTop: 1 },
   expSubtle: { ...T.caption, color: colors.inkTertiary },
   expDetails: {
     backgroundColor: colors.surfaceAlt, paddingHorizontal: spacing.lg,

@@ -565,6 +565,31 @@ export function HeaderPills({ children }: { children: React.ReactNode }) {
   return <View style={styles.pillRow}>{children}</View>;
 }
 
+/**
+ * KALDIRILABİLİR süzgeç hapı — seçilmiyor, yalnızca kaldırılıyor.
+ *
+ * `HeaderPill`'den ayrı bir bileşen çünkü sorduğu soru farklı. O bir
+ * seçicidir ("hangi ay?"), bu bir DURUM bildirir ("şu an süzülüyorsun") ve
+ * tek eylemi süzgeci kaldırmaktır — açılacak bir listesi yok.
+ *
+ * Görünür olması şart. Kasa'dan "Ağustos'ta sana düşen 98,32"ye dokunup
+ * gelen biri, hapı görmezse ekrandaki listeyi ayın TAMAMI sanır ve iki sayı
+ * tutmadığı için uygulamanın yanlış hesapladığını düşünür.
+ *
+ * Çarpı sağda ve hapın kendisi düğme: küçük bir simgeyi ayrı hedef yapmak
+ * başparmak için isabetsiz, üstelik hapın başka bir işi yok.
+ */
+export function HeaderClearPill({
+  label, onClear, testID,
+}: { label: string; onClear: () => void; testID?: string }) {
+  return (
+    <Pressable style={[styles.pill, styles.pillAktif]} onPress={onClear} testID={testID}>
+      <Text style={styles.pillTxt} numberOfLines={1}>{label}</Text>
+      <Ionicons name="close" size={13} color={colors.onDark} />
+    </Pressable>
+  );
+}
+
 export function HeaderPill<T extends string>({
   value, options, onSelect, testID,
 }: {
@@ -1640,6 +1665,10 @@ const styles = StyleSheet.create({
     backgroundColor: colors.darkSurface, borderRadius: radius.pill,
     paddingHorizontal: spacing.md, paddingVertical: 6,
   },
+  /* Etkin süzgeç yeşil çerçeveli: yanındaki seçici haplarla aynı kutu, ama
+     "bu şu an bir şey yapıyor" diyen tek işaret. Dolgu değil çerçeve —
+     dolgu, lacivert başlıktaki tek koyu düğme kuralını bozardı. */
+  pillAktif: { borderWidth: 1, borderColor: colors.accentOnDark },
   pillTxt: { ...T.captionSb, color: colors.onDark, flexShrink: 1 },
   selectLabel: { ...T.caption, color: colors.inkTertiary },
   selectValue: { ...T.bodySb, color: colors.ink, marginTop: 1 },
