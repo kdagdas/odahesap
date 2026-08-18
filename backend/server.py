@@ -1779,6 +1779,25 @@ async def list_expenses(
             suzulmus.append(e)
         exps = suzulmus
 
+    # ÖDEŞME GÜNÜ her kayda yazılıyor.
+    #
+    # Dönem yalnızca ödeşilince kapanıyor, yani **kapalı dönem = ödeşilmiş**.
+    # Aylık pencereye geçince bir ayın içinde ödeşilmiş ve ödeşilmemiş
+    # harcamalar yan yana düşer oldu (15 Temmuz'da ödeştiyseniz Temmuz'un
+    # yarısı öyle, yarısı böyle) ve listede ikisini ayıran hiçbir şey yoktu.
+    #
+    # Çizgiyi istemci çiziyor ama TARİHİ burada üretiliyor: kapanış anı
+    # dönemin üstünde duruyor, harcamanın değil.
+    kapali = {}
+    for p in await db.periods.find(
+        {"household_id": hh["household_id"], "status": "closed"},
+        {"_id": 0, "period_id": 1, "closed_at": 1},
+    ).to_list(500):
+        if p.get("closed_at"):
+            kapali[p["period_id"]] = make_aware(p["closed_at"]).date().isoformat()
+    for e in exps:
+        e["odesme"] = kapali.get(e.get("period_id"))
+
     # secondary sort by created_at desc for same date
     exps.sort(key=lambda e: (e.get("expense_date") or "", e.get("created_at")), reverse=True)
     return {"expenses": exps}

@@ -26,6 +26,9 @@ type Expense = {
   my_share?: number;
   /** Süzülen akış satırının bu fişteki tutarı — `akis` verildiğinde. */
   akis_tutar?: number;
+  /** Ödeşme günü (`YYYY-MM-DD`) — kayıt ödeşilmiş bir döneme aitse.
+   *  Dönem yalnızca ödeşilince kapandığı için kapalı dönem = ödeşilmiş. */
+  odesme?: string | null;
 };
 
 /**
@@ -46,6 +49,12 @@ const AKIS_ADI: Record<string, string> = {
 const AY_UZUN = ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran",
                  "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"];
 const GUNLER = ["Pazar", "Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi"];
+
+/** "15 Temmuz" — ödeşme çizgisinin üstündeki tarih. */
+const kisaTarih = (iso: string) => {
+  const d = new Date(iso);
+  return `${d.getDate()} ${AY_UZUN[d.getMonth()]}`;
+};
 
 /** "15 AĞUSTOS · CUMARTESİ" — bugün ve dün ayrıca adlandırılır. */
 const gunBasligi = (iso: string) => {
@@ -198,11 +207,30 @@ export default function Harcamalar() {
                 // yazilir, altina o gunun satirlari dizilir.
                 const gun = e.expense_date || "";
                 const yeniGun = !!gun && gun !== (expenses[idx - 1]?.expense_date || "");
+                // Ödeşme çizgisi bu kaydın ÜSTÜNE çizilir mi? Liste yeniden
+                // eskiye sıralı; çizgi bir ödeşme grubunun ilk kaydında
+                // düşüyor ve "buraya kadarı ödeşildi" diyor.
+                const cizgi = e.odesme && e.odesme !== expenses[idx - 1]?.odesme
+                  ? e.odesme : null;
+                // Çizginin ALTINDA ama ödeşilmemiş kayıt. Nadir ve gerçek:
+                // 20 Temmuz tarihli bir fiş bugün girilirse tarihçe eskidir
+                // ama borcu canlıdır. Çizgi tarihe çizildiği için bu satır
+                // yanlış tarafta kalıyor; işaret onu düzeltiyor.
+                const istisna = !e.odesme
+                  && expenses.slice(0, idx).some((o) => !!o.odesme);
                 return (
                   <View key={e.expense_id}>
+                    {cizgi && (
+                      <View style={styles.odesmeCizgi} testID={`odesme-${cizgi}`}>
+                        <Ionicons name="checkmark-circle" size={14} color={colors.accentDark} />
+                        <Text style={styles.odesmeTxt}>
+                          {kisaTarih(cizgi)} · buraya kadar ödeşildi
+                        </Text>
+                      </View>
+                    )}
                     {yeniGun ? (
                       <Text style={styles.gunBaslik}>{gunBasligi(gun)}</Text>
-                    ) : idx > 0 ? <Divider inset={spacing.lg + 46} /> : null}
+                    ) : idx > 0 && !cizgi ? <Divider inset={spacing.lg + 46} /> : null}
                     <Pressable
                       onPress={() => setExpandedId(expanded ? null : e.expense_id)}
                       testID={`expense-item-${e.expense_id}`}
@@ -232,11 +260,20 @@ export default function Harcamalar() {
                               yalnizca ISTISNA vurgulu: "Ev" herkesin
                               bekledigi durum, sessiz kalir. Tarih satirdan
                               cikti, gun basliginda. */}
-                          <Text style={[styles.splitTxt,
-                                        targetChip.txt !== "Ev" && { color: colors.accentDark }]}
-                                numberOfLines={1}>
-                            {targetChip.txt}
-                          </Text>
+                          <View style={styles.altSatir}>
+                            <Text style={[styles.splitTxt,
+                                          targetChip.txt !== "Ev" && { color: colors.accentDark }]}
+                                  numberOfLines={1}>
+                              {targetChip.txt}
+                            </Text>
+                            {/* Ödeşme çizgisinin altında duran ama ödeşilmemiş
+                                kayıt. Geç girilen fiş kendi gerçek tarihine
+                                yazılıyor (KARAR 2) — istisna nadir olduğu için
+                                tam da işaretlenmeyi hak eden şey o. */}
+                            {istisna && (
+                              <Text style={styles.odesilmedi}>ödeşilmedi</Text>
+                            )}
+                          </View>
                         </View>
                         {/* Akış süzgeci açıkken sağda İKİ sayı var: büyük
                             olan o satıra düşen tutar, küçük olan fişin
@@ -328,6 +365,24 @@ const styles = StyleSheet.create({
   },
   splitTxt: { ...T.caption, color: colors.inkTertiary },
   icinde: { ...T.caption, fontSize: 10, color: colors.inkTertiary, marginTop: 1 },
+  altSatir: { flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" },
+  /* Ödeşilmiş kayıtlar SOLUKLAŞTIRILMIYOR, yalnızca çizgi çiziliyor.
+     Soluklaştırma, çizginin bir kez söylediğini her satırda tekrar eder ve
+     bir ayın çoğu satırı ödeşilmiş olduğu için ekranın büyüğü "kapalı"
+     görünürdü. Harcamalar'ın sorusu "ne harcadık" — ödeşilmiş bir fiş daha
+     az gerçek değil, istatistikte de tam sayılıyor. Bankacılıkta da kalıp
+     böyle: BEKLEYEN işlem işaretlenir, gerçekleşmiş olan değil. */
+  odesmeCizgi: {
+    flexDirection: "row", alignItems: "center", gap: 6,
+    backgroundColor: colors.accentSoft,
+    paddingHorizontal: spacing.lg, paddingVertical: 7,
+  },
+  odesmeTxt: { ...T.captionSb, fontSize: 11, color: colors.accentDark },
+  odesilmedi: {
+    ...T.caption, fontSize: 10, color: colors.onWarning,
+    backgroundColor: colors.warningSoft, borderRadius: radius.sm,
+    paddingHorizontal: 5, paddingVertical: 1,
+  },
   expSubtle: { ...T.caption, color: colors.inkTertiary },
   expDetails: {
     backgroundColor: colors.surfaceAlt, paddingHorizontal: spacing.lg,

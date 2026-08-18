@@ -17,6 +17,8 @@ from datetime import date
 
 import httpx
 
+from ortak import odes
+
 BASE = (sys.argv[1] if len(sys.argv) > 1 else "http://localhost:8001").rstrip("/")
 API = f"{BASE}/api"
 TAG = uuid.uuid4().hex[:8]
@@ -145,6 +147,41 @@ for jeton, ad in ((alice, "alice"), (bob, "bob"), (carol, "carol")):
                   abs(toplam - satir["tutar"]) < 0.02,
                   f"liste {toplam}")
     check(f"{ad} · ekstrede fisli satir var", satir_sayisi > 0, str(satir_sayisi))
+
+print("\n-- ODESME CIZGISI: kapali donem = odesilmis --")
+# Aylik pencereye gecince bir ayin icinde odesilmis ve odesilmemis harcamalar
+# yan yana duser oldu (15 Temmuz'da odestiyseniz Temmuz'un yarisi oyle,
+# yarisi boyle) ve listede ikisini ayiran hicbir sey yoktu.
+onceki = c.get(f"{API}/expenses?month={AY}", headers=hdr(alice)).json()["expenses"]
+check("odesmeden once hicbir kayit odesilmis degil",
+      all(e.get("odesme") is None for e in onceki),
+      str([(e["merchant"], e.get("odesme")) for e in onceki]))
+
+odes(c, API, {alice_id: alice, bob_id: bob, carol_id: carol})
+
+sonra = c.get(f"{API}/expenses?month={AY}", headers=hdr(alice)).json()["expenses"]
+eski = {e["expense_id"] for e in onceki}
+odesilmis = [e for e in sonra if e["expense_id"] in eski]
+check("odestikten sonra eski kayitlar odesilmis",
+      odesilmis and all(e.get("odesme") for e in odesilmis),
+      str([(e["merchant"], e.get("odesme")) for e in odesilmis]))
+check("odesme GUNU yaziyor (YYYY-MM-DD)",
+      odesilmis and len(odesilmis[0]["odesme"]) == 10, str(odesilmis[:1]))
+check("hepsi ayni gune dusuyor",
+      len({e["odesme"] for e in odesilmis}) == 1,
+      str({e["odesme"] for e in odesilmis}))
+
+# GEC GIRILEN FIS: odesme cizgisi TARIHE cizilir ama odesilmislik DONEME
+# bagli. Odestikten sonra girilen, tarihi eski bir fis cizginin altinda
+# kaliyor ama odesilmemis; istemci onu ayrica isaretliyor.
+gec = harcama(alice, total=24.0, target_type="household",
+              merchant="Gec Fis", expense_date=f"{AY}-01")
+liste = c.get(f"{API}/expenses?month={AY}", headers=hdr(alice)).json()["expenses"]
+gec_kayit = next(e for e in liste if e["expense_id"] == gec)
+check("gec girilen fis ODESILMEMIS", gec_kayit.get("odesme") is None, str(gec_kayit)[:200])
+check("ama tarihi cizginin gerisinde", gec_kayit["expense_date"] == f"{AY}-01",
+      str(gec_kayit.get("expense_date")))
+
 
 print("\n-- bilinmeyen akis hicbir sey dondurmez --")
 check("akis=uydurma bos liste", suz(alice, "uydurma") == [])
