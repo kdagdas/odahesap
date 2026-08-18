@@ -373,7 +373,11 @@ export default function Istatistik() {
                       </View>
                       <View style={{ flex: 1 }}>
                         <Text style={styles.legendLabel}>Toplam</Text>
-                        <Text style={[styles.outValue, { color: colors.accentDark }]}>
+                        {/* Nötr, yeşil DEĞİL. Yeşil bu uygulamada tek bir şey
+                            demek: alacak. Senin toplam çıkışın bir alacak
+                            değil, harcadığın para. Renk anlamını bir yerde
+                            kaybederse her yerde kaybeder. */}
+                        <Text style={styles.outValue}>
                           {formatEUR(data.my_share + data.my_personal)}
                         </Text>
                       </View>
