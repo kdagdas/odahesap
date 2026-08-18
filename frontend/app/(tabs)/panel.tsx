@@ -50,7 +50,9 @@ export default function Panel() {
   const scrollRef = useRef<ScrollView>(null);
   useBasaSar(scrollRef);
   const { user } = useAuth();
-  const { household, members, activePeriod, refresh: refreshHH } = useHousehold();
+  const {
+    household, members, activePeriod, pendingMembers, isAdmin, refresh: refreshHH,
+  } = useHousehold();
   const router = useRouter();
   const [stats, setStats] = useState<Stats | null>(null);
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -166,6 +168,33 @@ export default function Panel() {
             <ActivityIndicator color={colors.ink} style={{ marginTop: spacing.xxl }} />
           ) : (
             <View style={{ gap: metrics.cardGap }}>
+              {/* DİKKAT ŞERİDİ — kavisin hemen altında ve YALNIZCA varsa.
+                  Normal günlerde hiç çizilmiyor; yeri boş durmuyor.
+
+                  İçeriği "senden bir şey bekleyen" işler. Bugün tek madde
+                  var: bekleyen katılma isteği, ve yalnızca yöneticiye.
+                  Başkasının yapamayacağı bir işi ona duyurmak, herkese
+                  duyurup çoğunun elinden bir şey gelmemesinden iyi.
+
+                  Vadesi gelen düzenli ödemeler bilerek GİRMİYOR: kendi kartı
+                  hemen altında duruyor ve ikisi birden olursa aynı iş iki kez
+                  yazılmış olur.
+
+                  Rengi uyarı değil dikkat: birinin eve katılmak istemesi bir
+                  hata değil, beklenen ve olağan bir olay. */}
+              {isAdmin && pendingMembers.length > 0 && (
+                <Pressable style={[styles.serit, styles.mx]} testID="dikkat-serit"
+                           onPress={() => router.push("/ev-ayarlari")}>
+                  <Ionicons name="person-add" size={16} color={colors.onWarning} />
+                  <Text style={styles.seritTxt} numberOfLines={2}>
+                    {pendingMembers.length === 1
+                      ? `${pendingMembers[0].name.split(" ")[0]} eve katılmak istiyor`
+                      : `${pendingMembers.length} kişi eve katılmak istiyor`}
+                  </Text>
+                  <Ionicons name="chevron-forward" size={15} color={colors.onWarning} />
+                </Pressable>
+              )}
+
               {/* Vadesi gelen düzenli ödemeler. Onaylanmadan hiçbir kayıt
                   oluşmuyor; kart yalnızca bekleyen varsa çıkıyor.
 
@@ -375,6 +404,12 @@ export default function Panel() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.dark },
   scroll: { backgroundColor: colors.bg, flexGrow: 1 },
+  serit: {
+    flexDirection: "row", alignItems: "center", gap: spacing.sm,
+    backgroundColor: colors.warningSoft, borderRadius: radius.md,
+    paddingHorizontal: spacing.md, paddingVertical: spacing.md,
+  },
+  seritTxt: { ...T.bodySb, color: colors.onWarning, flex: 1 },
   mx: { marginHorizontal: spacing.lg },
   heroLabel: { ...overline, color: colors.onDarkMuted },
   heroHint: { ...T.caption, color: colors.onDarkMuted, marginTop: 2 },
