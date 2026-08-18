@@ -890,8 +890,8 @@ async def remove_member(body: MemberActionReq, user=Depends(get_current_user)):
         if involved:
             raise HTTPException(
                 status_code=400,
-                detail=f"Bu kişinin açık dönemde {involved} harcaması var. Çıkarmadan önce "
-                       "ödeşip dönemi kapatın, yoksa herkesin payı yeniden hesaplanır.",
+                detail=f"Bu kişinin ödeşilmemiş {involved} harcaması var. Çıkarmadan önce "
+                       "ödeşin, yoksa herkesin payı yeniden hesaplanır.",
             )
 
     await db.households.update_one(
@@ -2437,6 +2437,12 @@ async def create_settlement(body: SettlementCreate, user=Depends(get_current_use
         "settlement",
         {"settlement_id": doc["settlement_id"]},
     )
+    # Bu ödemeyle herkes ödeştiyse dönem kendiliğinden kapanır.
+    #
+    # Yalnızca BURADA çağrılıyor, harcama silme/düzenleme sonrasında değil:
+    # çizgi "ödeştiniz" demek ve ödeşmek bir ödemenin gerçekleşmesidir. Son
+    # borcu bir harcamayı silerek sıfırlamak ödeşmek değil, düzeltmedir.
+    await _odesme_cizgisi(hh["household_id"])
     return {"settlement": doc}
 
 
@@ -2453,7 +2459,24 @@ async def delete_settlement(settlement_id: str, user=Depends(get_current_user)):
 
     period = await db.periods.find_one({"period_id": row["period_id"]}, {"_id": 0})
     if period and period.get("status") == "closed":
-        raise HTTPException(status_code=400, detail="Kapatılmış dönemdeki ödeme kaydı değiştirilemez")
+        # Son ödeme dönemi KENDİLİĞİNDEN kapatmış olabilir (bkz.
+        # `_odesme_cizgisi`). O ödemeyi geri almak, tetiklediği kapanmayı da
+        # geri almalı — yoksa yanlış kaydedilmiş bir son ödeme hiçbir zaman
+        # düzeltilemezdi. Geri alma ödeşme akışının bilinçli bir parçası.
+        #
+        # Yalnızca EN SON kapanan dönem ve yalnızca sonrasına hiç harcama
+        # girilmemişse: daha eskisini açmak aradaki dönemleri sırasız bırakır.
+        son = await db.periods.find(
+            {"household_id": row["household_id"], "status": "closed"},
+            {"_id": 0, "period_id": 1},
+        ).sort("closed_at", -1).to_list(1)
+        uygun = bool(son) and son[0]["period_id"] == row["period_id"]
+        geri = await _donemi_geri_ac(row["household_id"]) if uygun else None
+        if not geri:
+            raise HTTPException(
+                status_code=400,
+                detail="Bu ödeme sonrasında yeni kayıtlar oluştu; geri alınamaz.",
+            )
 
     await db.settlements.delete_one({"settlement_id": settlement_id})
 
@@ -3664,12 +3687,30 @@ async def list_periods(user=Depends(get_current_user)):
     return {"periods": periods}
 
 
-@api.post("/periods/close")
-async def close_period(user=Depends(get_current_user)):
-    hh = await require_admin(user["user_id"])
-    period = await get_active_period(hh["household_id"])
-    if not period:
-        raise HTTPException(status_code=400, detail="Aktif dönem yok")
+SIFIR_ESIK = 0.01
+"""Bir kuruş. Bakiyeler iki basamağa yuvarlanıyor; "sıfır" bundan küçük."""
+
+
+async def _odesme_durumu(household_id: str, period_id: str) -> str:
+    """`bos` · `acik` · `odesildi`.
+
+    Dönemin kapanabilmesi için iki koşul birden gerekiyor: gerçekten bir
+    hareket olmuş olmalı ve herkesin bakiyesi sıfıra inmiş olmalı. Boş bir
+    dönem teknik olarak "ödeşmiş" görünür ama onu kapatmak hiçbir şey
+    söylemez — yeni kurulmuş bir evde "Ev ödeşti" yazmak saçma olurdu.
+    """
+    n = await db.expenses.count_documents(
+        {"household_id": household_id, "period_id": period_id}
+    )
+    if n == 0:
+        return "bos"
+    snap = await _compute_balances(household_id, period_id)
+    kalan = [v for v in (snap.get("net") or {}).values() if abs(float(v)) >= SIFIR_ESIK]
+    return "acik" if kalan else "odesildi"
+
+
+async def _donemi_kapat(hh: dict, period: dict) -> dict:
+    """Dönemi arşivler ve yenisini açar. Tek gövde, iki çağıran."""
     # Katılımcı listesi bakiyelerden ÖNCE donuyor: hesap bu listeyle yapıldı,
     # aynı liste kayda geçmezse dönem sonradan başka bir kadroyla yeniden
     # hesaplanabilir hale gelir.
@@ -3699,14 +3740,111 @@ async def close_period(user=Depends(get_current_user)):
     await db.households.update_one(
         {"household_id": hh["household_id"]}, {"$set": {"current_period_id": new_period_id}}
     )
+    return new_period
+
+
+async def _odesme_cizgisi(household_id: str) -> None:
+    """Bakiye sıfıra değdiyse dönemi KENDİLİĞİNDEN kapatır.
+
+    Eskiden kapatma bir düğmeydi ve bakiyeleri **sıfırlıyordu**: ödeşmeden
+    kapatılan bir dönemin borcu canlı ekrandan siliniyor, kayıt arşivde
+    kalıyor ama kimse bir daha bakmıyordu. Sessiz bir kayıptı.
+
+    Artık kapanma yalnızca herkes ödeştiğinde oluyor, yani kapanışta
+    kaybolacak bir borç kalmıyor. Ödeşilmezse dönem açık kalır ve aylarca
+    sürebilir — Kasa'daki "önceki aylardan" satırı da bu yüzden var.
+
+    Hata yutulur: bildirimlerdeki kuralın aynısı. Çizginin çizilememesi
+    ödemenin kaydedilmesini engellememeli.
+    """
+    try:
+        hh = await db.households.find_one({"household_id": household_id}, {"_id": 0})
+        if not hh:
+            return
+        period = await get_active_period(household_id)
+        if not period:
+            return
+        if await _odesme_durumu(household_id, period["period_id"]) != "odesildi":
+            return
+        await _donemi_kapat(hh, period)
+        await notify(
+            hh["member_ids"],
+            "Ev ödeşti",
+            "Kimsenin kimseye borcu kalmadı.",
+            "period_closed",
+            {"household_id": household_id},
+        )
+    except Exception as e:  # noqa: BLE001
+        logging.warning("odesme cizgisi cizilemedi: %s", e)
+
+
+@api.post("/periods/close")
+async def close_period(user=Depends(get_current_user)):
+    """Elle kapatma — artık YALNIZCA herkes ödeştiyse.
+
+    Düğme v43'te arayüzden kalkıyor ama uç duruyor: sahadaki v42 telefonlarda
+    düğme hâlâ var ve basılırsa eski davranış (borcu sessizce silmek) geri
+    gelirdi. Kural sunucuda olduğu için eski istemciler de korunuyor.
+    """
+    hh = await require_admin(user["user_id"])
+    period = await get_active_period(hh["household_id"])
+    if not period:
+        raise HTTPException(status_code=400, detail="Aktif dönem yok")
+
+    durum = await _odesme_durumu(hh["household_id"], period["period_id"])
+    if durum == "bos":
+        raise HTTPException(status_code=400, detail="Bu dönemde henüz harcama yok")
+    if durum == "acik":
+        raise HTTPException(
+            status_code=400,
+            detail="Herkes ödeşmeden dönem kapatılamaz. Kalan borçlar Kasa'da görünüyor.",
+        )
+
+    new_period = await _donemi_kapat(hh, period)
     await notify(
         [m for m in hh["member_ids"] if m != user["user_id"]],
-        "Dönem kapatıldı",
-        f"{user['name']} dönemi kapattı, yeni dönem başladı. Bakiyeler sıfırlandı.",
+        "Ev ödeşti",
+        f"{user['name']} dönemi kapattı. Kimsenin kimseye borcu kalmadı.",
         "period_closed",
         {"household_id": hh["household_id"]},
     )
     return {"closed_period_id": period["period_id"], "new_period": new_period}
+
+
+async def _donemi_geri_ac(household_id: str):
+    """En son kapanan dönemi yeniden açar; yapılamıyorsa `None`.
+
+    Yalnızca yeni dönem hâlâ boşken güvenli: içine harcama girilmişse geri
+    açmak onları güncel olmayan bir dönemde bırakır ve her bakiyeden
+    görünmez olurlar.
+
+    İki çağıran var: yöneticinin elle geri alması ve son ödemenin silinmesi
+    (kapanmayı o ödeme tetiklemiş olabilir).
+    """
+    active = await get_active_period(household_id)
+    if not active:
+        return None
+    used = await db.expenses.count_documents(
+        {"household_id": household_id, "period_id": active["period_id"]}
+    )
+    if used:
+        return None
+    closed = await db.periods.find(
+        {"household_id": household_id, "status": "closed"}, {"_id": 0}
+    ).sort("closed_at", -1).to_list(1)
+    if not closed:
+        return None
+    previous = closed[0]
+    await db.periods.delete_one({"period_id": active["period_id"]})
+    await db.periods.update_one(
+        {"period_id": previous["period_id"]},
+        {"$set": {"status": "active", "closed_at": None}, "$unset": {"final_balances": ""}},
+    )
+    await db.households.update_one(
+        {"household_id": household_id},
+        {"$set": {"current_period_id": previous["period_id"]}},
+    )
+    return await db.periods.find_one({"period_id": previous["period_id"]}, {"_id": 0})
 
 
 @api.post("/periods/reopen")
@@ -3732,23 +3870,9 @@ async def reopen_period(user=Depends(get_current_user)):
                    "önce bu harcamaları silmeniz gerekir.",
         )
 
-    closed = await db.periods.find(
-        {"household_id": hh["household_id"], "status": "closed"}, {"_id": 0}
-    ).sort("closed_at", -1).to_list(1)
-    if not closed:
+    reopened = await _donemi_geri_ac(hh["household_id"])
+    if not reopened:
         raise HTTPException(status_code=400, detail="Geri alınacak kapatılmış dönem yok")
-    previous = closed[0]
-
-    await db.periods.delete_one({"period_id": active["period_id"]})
-    await db.periods.update_one(
-        {"period_id": previous["period_id"]},
-        {"$set": {"status": "active", "closed_at": None}, "$unset": {"final_balances": ""}},
-    )
-    await db.households.update_one(
-        {"household_id": hh["household_id"]},
-        {"$set": {"current_period_id": previous["period_id"]}},
-    )
-    reopened = await db.periods.find_one({"period_id": previous["period_id"]}, {"_id": 0})
     return {"reopened_period": reopened}
 
 

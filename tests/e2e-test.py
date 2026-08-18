@@ -12,6 +12,8 @@ import uuid
 
 import httpx
 
+from ortak import odes
+
 BASE = (sys.argv[1] if len(sys.argv) > 1 else "http://localhost:8000").rstrip("/")
 API = f"{BASE}/api"
 TAG = uuid.uuid4().hex[:8]
@@ -32,6 +34,7 @@ def check(label: str, condition: bool, detail: str = "") -> None:
 
 def auth(token: str) -> dict:
     return {"Authorization": f"Bearer {token}"}
+
 
 
 def main() -> int:
@@ -146,9 +149,13 @@ def main() -> int:
         check("transfer: Bob -> Alice 70.00",
               t["from"] == bob_id and t["to"] == alice_id and abs(t["amount"] - 70.0) < 0.01, str(t))
 
-    print("\n-- donem kapatma --")
+    print("\n-- odesince donem KENDILIGINDEN kapaniyor --")
+    # Tur 10: donem elle kapatilamiyor. Eskiden kapatma bakiyeleri
+    # SIFIRLIYORDU, yani odesilmeden kapatilan donemin borcu canli ekrandan
+    # siliniyordu. Artik kapanma yalnizca herkes odestiginde oluyor.
     r = c.post(f"{API}/periods/close", headers=auth(alice))
-    check("donem kapatma 200", r.status_code == 200, r.text[:200])
+    check("odesilmeden kapatilamaz (400)", r.status_code == 400, f"got {r.status_code}")
+    odes(c, API, {alice_id: alice, bob_id: bob})
     r = c.get(f"{API}/balances", headers=auth(alice))
     new_net = r.json()["net"]
     check("yeni donemde bakiye sifir", all(abs(v) < 0.01 for v in new_net.values()), str(new_net))

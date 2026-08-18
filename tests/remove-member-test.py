@@ -9,6 +9,8 @@ import uuid
 
 import httpx
 
+from ortak import kapali_donem, odes
+
 BASE = (sys.argv[1] if len(sys.argv) > 1 else "http://localhost:8001").rstrip("/")
 API = f"{BASE}/api"
 TAG = uuid.uuid4().hex[:8]
@@ -76,13 +78,13 @@ onceki_net = r.json()["net"]
 check("Alice +50 (kapatmadan once)", abs(onceki_net.get(alice_id, 0) - 50.0) < 0.01, str(onceki_net))
 check("Carol -10 (kapatmadan once)", abs(onceki_net.get(carol_id, 0) + 10.0) < 0.01, str(onceki_net))
 
-r = c.post(f"{API}/periods/close", headers=hdr(alice))
-check("donem kapatildi", r.status_code == 200, r.text[:200])
-kapali_id = r.json()["closed_period_id"]
+odes(c, API, {alice_id: alice, bob_id: bob, carol_id: carol})
+kapali_id = kapali_donem(c, API, alice)
+check("odesince donem kapandi", kapali_id is not None, "kapali donem bulunamadi")
 
 print("\n-- cikarma --")
 r = c.post(f"{API}/households/remove-member", headers=hdr(alice), json={"user_id": carol_id})
-check("donem kapaninca cikarilabiliyor", r.status_code == 200, r.text[:200])
+check("odesince cikarilabiliyor", r.status_code == 200, r.text[:200])
 r = c.get(f"{API}/households/me", headers=hdr(alice))
 uyeler = [m["user_id"] for m in r.json()["members"]]
 check("Carol uye listesinde yok", carol_id not in uyeler, str(uyeler))
@@ -97,9 +99,18 @@ check("Carol harcamalari gormuyor", len(r.json().get("expenses", [])) == 0, r.te
 print("\n-- GECMIS DONEM BOZULMADI MI --")
 r = c.get(f"{API}/balances?period_id={kapali_id}", headers=hdr(alice))
 sonraki_net = r.json()["net"]
-check("Alice hala +50 (3'e bolunmus)", abs(sonraki_net.get(alice_id, 0) - 50.0) < 0.01, str(sonraki_net))
-check("Bob hala -40", abs(sonraki_net.get(bob_id, 0) + 40.0) < 0.01, str(sonraki_net))
-check("Carol'un payi kayitta duruyor (-10)", abs(sonraki_net.get(carol_id, 0) + 10.0) < 0.01, str(sonraki_net))
+odenen = r.json()["totals_paid"]
+# Yeni modelde kapali donem = ODESILMIS donem, yani netler sifir. Uc kisilik
+# bolusmenin bozulmadigini gosteren capa artik "kim ne odedi": Carol
+# cikarildiktan sonra da 30'u odemis gorunmeli ve donemde UC kisi kalmali.
+# Ikisinden biri kayarsa donem bugunku iki kisilik kadroyla yeniden
+# hesaplaniyor demektir -- testin asil korudugu hata buydu.
+check("donemde hala 3 kisi var", len(sonraki_net) == 3, str(sonraki_net))
+check("Carol donemden dusmedi", carol_id in sonraki_net, str(sonraki_net))
+check("Alice'in odedigi 90 kaldi", abs(odenen.get(alice_id, 0) - 90.0) < 0.01, str(odenen))
+check("Carol'un odedigi 30 kaldi", abs(odenen.get(carol_id, 0) - 30.0) < 0.01, str(odenen))
+check("donem odesilmis (netler sifir)",
+      all(abs(v) < 0.01 for v in sonraki_net.values()), str(sonraki_net))
 isimler = {m["user_id"]: m["name"] for m in r.json().get("members", [])}
 check("Carol'un ismi hala cozulebiliyor", carol_id in isimler, str(isimler))
 

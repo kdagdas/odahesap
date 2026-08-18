@@ -4,6 +4,8 @@ import uuid
 
 import httpx
 
+from ortak import kapali_donem, odes
+
 BASE = (sys.argv[1] if len(sys.argv) > 1 else "http://localhost:8001").rstrip("/")
 API = f"{BASE}/api"
 TAG = uuid.uuid4().hex[:8]
@@ -112,8 +114,12 @@ check("taraf silebilir", r.status_code == 200, r.text[:200])
 net = c.get(f"{API}/balances", headers=hdr(alice)).json()["net"]
 check("Bob'un borcu geri geldi (-30)", abs(net[bob_id] + 30) < 0.01, str(net))
 
-print("\n-- kapali donem korumasi --")
-c.post(f"{API}/periods/close", headers=hdr(alice))
+print("\n-- odesilmis donem korumasi --")
+# Tur 10: donem elle kapatilmiyor, herkes odesince kendiliginden kapaniyor.
+# Yani "kapali donem" artik "odesilmis donem" demek ve dokunulmazligin
+# gerekcesi de bu: odesilmis rakamlar sonradan degismemeli.
+odes(c, API, {alice_id: alice, bob_id: bob, carol_id: carol})
+check("odesince donem kapandi", kapali_donem(c, API, alice) is not None, "kapali donem yok")
 r = c.patch(f"{API}/expenses/{exp_id}", headers=hdr(alice), json={"total": 5.0})
 check("kapali donemde duzenlenemez (400)", r.status_code == 400, f"got {r.status_code}")
 check("sebep aciklaniyor", "dönem" in r.text.lower() or "donem" in r.text.lower(), r.text[:200])

@@ -4,6 +4,8 @@ import uuid
 
 import httpx
 
+from ortak import kapali_donem, odes
+
 BASE = (sys.argv[1] if len(sys.argv) > 1 else "http://localhost:8001").rstrip("/")
 API = f"{BASE}/api"
 TAG = uuid.uuid4().hex[:8]
@@ -75,10 +77,14 @@ c.post(f"{API}/expenses", headers=hdr(alice), json={
     "items": [{"name": "Test", "price": 60.0, "quantity": 1, "category": "diger"}]})
 r = c.post(f"{API}/periods/close", headers=hdr(bob))
 check("normal uye donem kapatamaz (403)", r.status_code == 403, f"got {r.status_code}")
+# Tur 10: yonetici bile odesilmeden kapatamiyor. Kural sunucuda, cunku
+# sahadaki eski surumlerde kapatma dugmesi hala duruyor.
 r = c.post(f"{API}/periods/close", headers=hdr(alice))
-check("yonetici donem kapatabilir", r.status_code == 200, r.text[:200])
+check("yonetici de odesilmeden kapatamaz (400)", r.status_code == 400, f"got {r.status_code}")
+check("sebep aciklaniyor", "ödeş" in r.text.lower(), r.text[:200])
+odes(c, API, {alice_id: alice, bob_id: bob, carol_id: carol})
 r = c.get(f"{API}/periods", headers=hdr(alice))
-check("2 donem var", len(r.json()["periods"]) == 2, str(len(r.json()["periods"])))
+check("odesince 2 donem var", len(r.json()["periods"]) == 2, str(len(r.json()["periods"])))
 
 print("\n-- donem geri alma --")
 r = c.post(f"{API}/periods/reopen", headers=hdr(bob))
@@ -88,8 +94,13 @@ check("yonetici geri alabilir", r.status_code == 200, r.text[:200])
 r = c.get(f"{API}/periods", headers=hdr(alice))
 check("donem sayisi 1'e dondu", len(r.json()["periods"]) == 1, str(len(r.json()["periods"])))
 r = c.get(f"{API}/balances", headers=hdr(alice))
-net = r.json()["net"]
-check("eski harcama geri geldi (Alice +40)", abs(net.get(alice_id, 0) - 40.0) < 0.01, str(net))
+body = r.json()
+# Harcama geri geldi: Alice'in odedigi 60 hala orada. Bakiye ise SIFIR,
+# cunku donem odesildigi icin kapanmisti ve odeme kayitlari da geri geldi.
+check("eski harcama geri geldi (Alice 60 odemis)",
+      abs(body["totals_paid"].get(alice_id, 0) - 60.0) < 0.01, str(body["totals_paid"]))
+check("odemeler de geri geldi (net sifir)",
+      all(abs(v) < 0.01 for v in body["net"].values()), str(body["net"]))
 
 print("\n-- dolu doneme geri alma engeli --")
 c.post(f"{API}/periods/close", headers=hdr(alice))

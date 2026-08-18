@@ -16,6 +16,8 @@ import uuid
 
 import httpx
 
+from ortak import kapali_donem, odes
+
 BASE = (sys.argv[1] if len(sys.argv) > 1 else "http://localhost:8001").rstrip("/")
 API = f"{BASE}/api"
 TAG = uuid.uuid4().hex[:8]
@@ -70,14 +72,25 @@ bal = c.get(f"{API}/balances", headers=hdr(alice)).json()
 check("acik donemde Alice +50", abs(bal["net"][alice_id] - 50) < 0.01, str(bal["net"]))
 check("acik donemde Bob -50", abs(bal["net"][bob_id] + 50) < 0.01, str(bal["net"]))
 
-print("\n== donem kapaniyor ==")
-r = c.post(f"{API}/periods/close", headers=hdr(alice))
-kapali = r.json()["closed_period_id"]
-check("kapatma 200", r.status_code == 200, str(r.status_code))
+print("\n== odesiliyor, donem KENDILIGINDEN kapaniyor ==")
+# Tur 10: donem elle kapatilamiyor. Bakiye sifira deginceye kadar acik
+# kaliyor, degince kendiliginden kapaniyor -- boylece kapanista kaybolan
+# bir borc olmuyor.
+odes(c, API, {alice_id: alice, bob_id: bob})
+kapali = kapali_donem(c, API, alice)
+check("odesince donem kapandi", kapali is not None, "kapali donem bulunamadi")
+acik = c.get(f"{API}/balances", headers=hdr(alice)).json()
+check("yeni donem bos", all(abs(v) < 0.01 for v in acik["net"].values()), str(acik["net"]))
 
 don = c.get(f"{API}/balances?period_id={kapali}", headers=hdr(alice)).json()
-check("kapali donem Alice +50", abs(don["net"][alice_id] - 50) < 0.01, str(don["net"]))
+# Yeni modelde kapali donem = ODESILMIS donem, yani net her zaman sifir.
+# Sifirin kendisi iyi bir parmak izi: uye listesi sonradan degisseydi paylar
+# da degisirdi ve kaydedilmis olan 50'lik odeme bakiyeyi sifira goturmezdi.
+# Odenen toplam ise odesmeden etkilenmiyor, ikinci capa o.
+check("kapali donem odesmis", all(abs(v) < 0.01 for v in don["net"].values()), str(don["net"]))
 check("kapali donemde 2 kisi var", len(don["net"]) == 2, str(don["net"]))
+check("Alice'in odedigi 100", abs(don["totals_paid"][alice_id] - 100) < 0.01,
+      str(don["totals_paid"]))
 
 print("\n== SONRADAN katilan biri gecmisi degistirmemeli ==")
 katil(carol, carol_id, kod, alice)
@@ -85,8 +98,10 @@ katil(carol, carol_id, kod, alice)
 don2 = c.get(f"{API}/balances?period_id={kapali}", headers=hdr(alice)).json()
 check("kapali donem hala 2 kisilik", len(don2["net"]) == 2, str(don2["net"]))
 check("Carol kapali doneme girmedi", carol_id not in don2["net"], str(don2["net"]))
-check("Alice hala +50 (33.33 degil)", abs(don2["net"][alice_id] - 50) < 0.01, str(don2["net"]))
-check("Bob hala -50", abs(don2["net"][bob_id] + 50) < 0.01, str(don2["net"]))
+check("kapali donem hala odesmis (33.33'e bolunmedi)",
+      all(abs(v) < 0.01 for v in don2["net"].values()), str(don2["net"]))
+check("Alice'in odedigi hala 100", abs(don2["totals_paid"][alice_id] - 100) < 0.01,
+      str(don2["totals_paid"]))
 
 akt = c.get(f"{API}/balances", headers=hdr(alice)).json()
 check("Carol AKTIF doneme girdi", carol_id in akt["net"], str(akt["net"]))

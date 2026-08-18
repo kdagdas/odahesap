@@ -5,6 +5,8 @@ from datetime import date, timedelta
 
 import httpx
 
+from ortak import kapali_donem, odes
+
 BASE = (sys.argv[1] if len(sys.argv) > 1 else "http://localhost:8001").rstrip("/")
 API = f"{BASE}/api"
 TAG = uuid.uuid4().hex[:8]
@@ -132,7 +134,8 @@ check("ortalama fis 80 (160/2)", abs(s["avg_expense"] - 80) < 0.01, str(s["avg_e
 check("kalem sayisi 3", s["item_count"] == 3, str(s["item_count"]))
 
 print("\n-- gecen doneme gore degisim --")
-c.post(f"{API}/periods/close", headers=hdr(alice))
+# Tur 10: donem yalnizca odesilince kapaniyor, o yuzden once odesiyoruz.
+odes(c, API, {alice_id: alice, bob_id: bob})
 c.post(f"{API}/expenses", headers=hdr(alice), json={
     "target_type": "household", "total": 240.0, "source": "manual", "items": []})
 s2 = c.get(f"{API}/stats", headers=hdr(alice)).json()
