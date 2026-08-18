@@ -452,6 +452,10 @@ tur başına APK" kuralının sebebi bu.
 
 ## Sonraki adaylar
 
+- **Başlık tasarımlarının elden geçirilmesi** — ev sahibi lacivert üst
+  alanları bir bütün olarak yeniden görmek istiyor (18 Ağustos 2026). Üç boy
+  sistemi bunu **ucuzlattı**: geometri artık `ui.tsx` içindeki tek bir
+  `HEADER_PAD` tablosunda; oran değiştirmek üç sayı demek, 22 ekran değil.
 - **Ödeşme sıklığı hatırlatması** — ev ayarı, **varsayılan kapalı**;
   hatırlatma isteyen ev ile istemeyen ev çok farklı. GitHub Actions günlük
   işi, kira hatırlatmasıyla paylaşımlı. **Hatırlatma asla kendiliğinden
