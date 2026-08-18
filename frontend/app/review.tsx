@@ -159,7 +159,12 @@ export default function Review() {
     try {
       const adlar = rows.map((r) => r.name.trim()).filter(Boolean);
       if (!adlar.length) return [];
-      const res = await apiPost<{ matches: Eslesme[] }>("/shopping/match", { names: adlar });
+      // Fişin ÜSTÜNDEKİ tarih gidiyor: fişten eski olmayan maddeler
+      // eşleşebilir. Bir hafta önceki fişi bugün taratınca dün yazılmış
+      // "Süt" aday çıkıyordu — o sütü almadın, madde daha ortada yoktu.
+      const res = await apiPost<{ matches: Eslesme[] }>("/shopping/match", {
+        names: adlar, expense_date: fromDDMMYYYY(dateInput) || todayISO(),
+      });
       const m = res.matches || [];
       // Emin olunmayan eslesme ISARETSIZ geliyor: yanlis dusurmek,
       // dusurmemekten pahali.

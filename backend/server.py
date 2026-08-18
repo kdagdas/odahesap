@@ -2373,8 +2373,10 @@ async def add_shopping(body: ShoppingItemCreate, user=Depends(get_current_user))
 
 
 class ShoppingMatchReq(BaseModel):
-    """Fişten çıkan kalem adları."""
+    """Fişten çıkan kalem adları ve fişin tarihi."""
     names: List[str] = Field(default_factory=list)
+    # Fişin ÜSTÜNDEKİ tarih (YYYY-MM-DD), kaydedildiği an değil.
+    expense_date: Optional[str] = None
 
 
 @api.post("/shopping/match")
@@ -2402,10 +2404,29 @@ async def match_shopping(body: ShoppingMatchReq, user=Depends(get_current_user))
 
     bekleyen = await db.shopping_items.find(
         {"household_id": hh["household_id"], "scope": "household", "done": False},
-        {"_id": 0, "item_id": 1, "text": 1},
+        {"_id": 0, "item_id": 1, "text": 1, "created_at": 1},
     ).to_list(500)
     if not bekleyen:
         return {"matches": []}
+
+    # TARİH SÜZGECİ — fiş maddeden ESKİYSE eşleştirme yok.
+    #
+    # Somut belirti: bir hafta önceki fişi bugün taratıyorsun ve dün listeye
+    # yazılmış "Süt" işaretlenmeye aday çıkıyor. O sütü almadın; madde daha
+    # ortada yokken kesilmiş bir fişle karşılanamaz.
+    #
+    # Aynı gün ELENMİYOR (`<`, `<=` değil): sabah "Süt" yazılıp öğlen alınan
+    # süt en sık senaryo. Saat karşılaştırması da yapılmıyor — fişin üstünde
+    # saat yok, yalnızca gün var.
+    fis_gun = parse_date(body.expense_date) if body.expense_date else None
+    if fis_gun:
+        bekleyen = [
+            it for it in bekleyen
+            if not it.get("created_at")
+            or make_aware(it["created_at"]).date().isoformat() <= fis_gun
+        ]
+        if not bekleyen:
+            return {"matches": []}
 
     fis = []
     for ham in body.names:

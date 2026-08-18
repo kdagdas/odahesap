@@ -20,6 +20,7 @@ Sunucuyu AYRI veritabaniyla baslatin: DB_NAME=odahesap_test
 """
 import sys
 import uuid
+from datetime import date
 
 import httpx
 
@@ -69,8 +70,11 @@ def ekle(tok, metin, scope="household"):
     return r.json()["item"]["item_id"]
 
 
-def eslestir(tok, adlar):
-    r = c.post(f"{API}/shopping/match", headers=hdr(tok), json={"names": adlar})
+def eslestir(tok, adlar, tarih=None):
+    govde = {"names": adlar}
+    if tarih:
+        govde["expense_date"] = tarih
+    r = c.post(f"{API}/shopping/match", headers=hdr(tok), json=govde)
     r.raise_for_status()
     return r.json()["matches"]
 
@@ -132,6 +136,26 @@ check("kimin isaretledigi yazildi", kayit.get("done_by") == alice_id, str(kayit)
 # Isaretlenen madde artik onerilmiyor.
 m = eslestir(alice, ["Krema"])
 check("alinan madde tekrar onerilmiyor", not any(x["item_id"] == krema for x in m), str(m))
+
+
+print("\n-- 6b. TARIH: fis maddeden ESKIYSE eslestirme yok --")
+# Somut belirti: bir hafta onceki fisi bugun taratiyorsun ve dun listeye
+# yazilmis "Sut" isaretlenmeye aday cikiyor. O sutu almadin -- madde daha
+# ortada yokken kesilmis bir fisle karsilanamaz.
+check("gecmis tarihli fis, bugun yazilan maddeyi ONERMIYOR",
+      eslestir(alice, ["Süt"], "2020-01-15") == [],
+      str(eslestir(alice, ["Süt"], "2020-01-15")))
+# Ayni gun ELENMIYOR: sabah "Sut" yazilip oglen alinan sut en sik senaryo.
+# Fisin ustunde saat yok, yalnizca gun var; saat karsilastirmasi uydurma olur.
+bugun = date.today().isoformat()
+check("bugunku fis, bugun yazilan maddeyi oneriyor",
+      any(x["item_id"] == sut for x in eslestir(alice, ["Süt"], bugun)))
+check("ileri tarihli fis de oneriyor",
+      any(x["item_id"] == sut for x in eslestir(alice, ["Süt"], "2099-01-01")))
+# Tarih GONDERILMEZSE eski davranis suruyor: eski APK'lar calismaya devam
+# ediyor ve suzgecin yoklugu bir kayba yol acmiyor -- yalnizca oneri.
+check("tarihsiz istek eskisi gibi oneriyor",
+      any(x["item_id"] == sut for x in eslestir(alice, ["Süt"])))
 
 
 print("\n-- 7. bos istek dusurmuyor --")
