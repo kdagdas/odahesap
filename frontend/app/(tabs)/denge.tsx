@@ -82,6 +82,9 @@ const periodHint = (p: Period) => {
   return `${durum} · ${p.expense_count} harcama · ${formatEUR(p.expense_total)}`;
 };
 
+/** Ödeme geçmişinde katlanmadan görünen kayıt sayısı. */
+const GECMIS_KISA = 3;
+
 const relativeDay = (iso: string) => {
   const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
   return days <= 0 ? "bugün" : days === 1 ? "dün" : `${days} gün önce`;
@@ -110,6 +113,7 @@ export default function Denge() {
   const [refreshing, setRefreshing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [mode, setMode] = useState<"none" | "close" | "reopen">("none");
+  const [gecmisAcik, setGecmisAcik] = useState(false);
   const [payFor, setPayFor] = useState<Transfer | null>(null);
   const [payAmount, setPayAmount] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -235,44 +239,57 @@ export default function Denge() {
   const myPaid = stats?.my_paid ?? 0;
 
   /**
-   * İnce köprü — ~64 piksel. Öncekinin yarısından az.
+   * Köprü — iki avatar iki ucu tutuyor, tutar ortada.
    *
-   * İki avatar ve aradaki çizgi duruyor çünkü **yönü onlar söylüyor**; giden
-   * şey ikinci avatar, üst üste yığılan düğme sırası ve isim satırıydı.
+   * Tek satırlık "ince" bir sürüm denendi ve GERİ ALINDI: karşı tarafın
+   * avatarı yanında bir de adı yazınca aynı bilgi iki kez geçiyordu. Köprüde
+   * bu sorun yok, çünkü isimler avatarların altında ve yönü konumları
+   * söylüyor.
    *
-   * **Satır anlatır, düğme öder:** düğme dışında her yere dokunmak borcun
-   * nereden geldiğini açacak (sonraki madde).
+   * `ikincil` yalnızca ÖLÇÜ küçültüyor (avatar, tutar) — düğme rengini
+   * değiştirmiyor. **İki borç da senin yapman gereken iş; birinin diğerine
+   * üstünlüğü yok.** Renk yönü izliyor: ödeyecekken koyu, alacakken sessiz.
    *
-   * `koyu` sırayı değil MİKTARI izliyor — önce büyüğü kapatmak istersin.
-   * Alacak tarafında hiç koyu düğme yok: orada yapılacak bir iş değil,
-   * onaylanacak bir şey var.
+   * Düğme ortada ve dar. Tam genişlikte olunca köprünün kendisinden fazla
+   * yer kaplıyordu.
    */
-  const kopruSatiri = (t: Transfer, koyu: boolean) => {
+  const kopruSatiri = (t: Transfer, ikincil: boolean) => {
     const iPay = t.from === me;
-    const oteki = iPay ? t.to : t.from;
+    const boy = ikincil ? 24 : 30;
+    const uc = (id: string) => (
+      <View style={styles.side}>
+        <Avatar name={nameOf(id)} size={boy}
+                avatarId={(member(id) as any)?.avatar_id}
+                userId={id}
+                photoVersion={(member(id) as any)?.photo_version} />
+        <Text style={styles.sideName} numberOfLines={1}>{first(id)}</Text>
+      </View>
+    );
     return (
-      <View style={styles.ince} testID={`debt-${t.from}-${t.to}`}>
-        <Avatar name={nameOf(oteki)} size={30}
-                avatarId={(member(oteki) as any)?.avatar_id}
-                userId={oteki}
-                photoVersion={(member(oteki) as any)?.photo_version} />
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <View style={styles.inceUst}>
-            <Text style={styles.inceAd} numberOfLines={1}>{first(t.from)}</Text>
-            <View style={styles.inceTel} />
-            <Ionicons name="arrow-forward" size={11} color={colors.inkTertiary} />
-            <Text style={styles.inceAd} numberOfLines={1}>{first(t.to)}</Text>
+      <View style={styles.bridge} testID={`debt-${t.from}-${t.to}`}>
+        <View style={styles.bridgeRow}>
+          {uc(t.from)}
+          <View style={styles.middle}>
+            <Money value={t.amount}
+                   style={ikincil ? styles.bridgeAmountSm : styles.bridgeAmount} />
+            <View style={styles.wire}>
+              <View style={styles.wireLine} />
+              <Ionicons name="arrow-forward" size={12} color={colors.inkTertiary} />
+              <View style={styles.wireLine} />
+            </View>
           </View>
-          <Money value={t.amount} style={styles.inceTutar} />
+          {uc(t.to)}
         </View>
         {!archived && (
-          <Pressable style={[styles.inceBtn, koyu ? styles.btnDark : styles.btnQuiet]}
-                     onPress={() => openPay(t)}
-                     testID={iPay ? `mark-paid-to-${t.to}` : `mark-paid-${t.from}`}>
-            <Text style={koyu ? styles.btnDarkTxt : styles.btnQuietTxt}>
-              {iPay ? "Öde" : "Ödedi"}
-            </Text>
-          </Pressable>
+          <View style={styles.kopruDugmeSatir}>
+            <Pressable style={[styles.kopruBtn, iPay ? styles.btnDark : styles.btnQuiet]}
+                       onPress={() => openPay(t)}
+                       testID={iPay ? `mark-paid-to-${t.to}` : `mark-paid-${t.from}`}>
+              <Text style={iPay ? styles.btnDarkTxt : styles.btnQuietTxt}>
+                {iPay ? "Öde" : "Ödedi"}
+              </Text>
+            </Pressable>
+          </View>
         )}
       </View>
     );
@@ -546,14 +563,14 @@ export default function Denge() {
                       {borclarim.map((t, i) => (
                         <View key={`b-${t.to}-${i}`}>
                           {i > 0 && <Divider inset={spacing.lg} />}
-                          {kopruSatiri(t, i === 0)}
+                          {kopruSatiri(t, i > 0)}
                         </View>
                       ))}
 
                       {alacaklarim.map((t, i) => (
                         <View key={`a-${t.from}-${i}`}>
                           {(i > 0 || borclarim.length > 0) && <Divider inset={spacing.lg} />}
-                          {kopruSatiri(t, false)}
+                          {kopruSatiri(t, i > 0)}
                         </View>
                       ))}
 
@@ -596,8 +613,16 @@ export default function Denge() {
                     zaman ne kadar ödedi diye cevap veriyor ve ödeşilmiş
                     geçmiş de dahil, dönemleri aşıyor. */}
                 {settlements.length > 0 && (
-                  <Card title="Ödeme Geçmişi" style={styles.mx}>
-                    {settlements.map((s, i) => {
+                  <Card title="Ödeme Geçmişi" style={styles.mx}
+                        action={settlements.length > GECMIS_KISA
+                          ? (gecmisAcik ? "Daha az" : `Tümü · ${settlements.length}`)
+                          : undefined}
+                        onAction={() => setGecmisAcik((v) => !v)}>
+                    {/* Liste zamanla büyüyor ve Kasa bir EYLEM ekranı: sonuna
+                        kadar aşağı inen bir geçmiş, altındaki "Ödeştik"i
+                        ekranın dışına itiyordu. Son üçü duruyor, gerisi
+                        başlıktaki bağlantıyla açılıyor. */}
+                    {(gecmisAcik ? settlements : settlements.slice(0, GECMIS_KISA)).map((s, i) => {
                       const mine = s.from_user_id === me || s.to_user_id === me;
                       return (
                         <View key={s.settlement_id}>
@@ -686,9 +711,16 @@ export default function Denge() {
                             Dolayisiyla sonuk gostermenin sebebi de kalmadi --
                             tam tersine, dugmenin var olma sebebi odenmemis
                             borctur. Borc yoksa hic cizilmiyor. */}
+                        {/* SÖNÜK, ve bu sefer sebebi farklı. Eski düğme
+                            bakiyeleri siliyordu, o yüzden ödenmemiş borç
+                            varken caydırıcı olsun diye sönüktü. Yenisi
+                            ödemeleri kaydediyor — caydırılacak bir şey yok.
+                            Ama asıl yol yukarıdaki köprülerin koyu "Öde"
+                            düğmeleri; bu, toplu bir kısayol. İkincil olan
+                            ikincil görünmeli. */}
                         <PrimaryButton label="Ödeştik" icon="checkmark-done"
                                        onPress={() => setMode("close")}
-                                       testID="close-period-btn" />
+                                       tone="muted" testID="close-period-btn" />
                         <Text style={styles.footNote}>
                           {ordered.length === 1
                             ? "Kalan borç ödenmiş olarak kaydedilir"
@@ -869,18 +901,15 @@ const styles = StyleSheet.create({
   ekstreVal: { ...T.bodySb, color: colors.onDark },
   ekstreEksi: { color: colors.accentOnDark },
   ekstreCizgi: { height: 1, backgroundColor: colors.darkSurface, marginVertical: 3 },
-  // İnce köprü: ~64 piksel. Öncekinin (~140) yarısından az.
-  ince: {
-    flexDirection: "row", alignItems: "center", gap: spacing.md,
-    paddingHorizontal: spacing.lg, paddingVertical: spacing.md,
+  // İkinci köprü yalnızca ÖLÇÜ olarak küçülüyor; düğme rengi değişmiyor.
+  bridgeAmountSm: {
+    fontSize: 16, lineHeight: 22, fontFamily: fontFamily.semibold, letterSpacing: -0.3,
   },
-  inceUst: { flexDirection: "row", alignItems: "center", gap: 6 },
-  inceAd: { ...T.caption, color: colors.inkSecondary, flexShrink: 1 },
-  inceTel: { flex: 1, height: 1, backgroundColor: colors.border, minWidth: 8 },
-  inceTutar: { ...T.emph, fontSize: 17, color: colors.ink, marginTop: 1 },
-  inceBtn: {
-    minWidth: 68, alignItems: "center", justifyContent: "center",
-    paddingHorizontal: spacing.md, height: 34, borderRadius: radius.md,
+  // Düğme ORTADA ve dar: tam genişlikte olunca köprüden fazla yer kaplıyordu.
+  kopruDugmeSatir: { alignItems: "center", marginTop: spacing.sm },
+  kopruBtn: {
+    minWidth: 108, alignItems: "center", justifyContent: "center",
+    paddingHorizontal: spacing.xl, height: 34, borderRadius: radius.md,
   },
   paylasSatir: {
     flexDirection: "row", alignItems: "center", gap: spacing.sm,
