@@ -99,6 +99,7 @@ export default function Panel() {
         }
       >
         <ScreenHeader
+          size="l"
           overline="EV"
           title={household?.name || "—"}
           right={

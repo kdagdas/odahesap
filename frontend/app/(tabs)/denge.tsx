@@ -332,7 +332,7 @@ export default function Denge() {
                             tintColor={colors.ink} progressBackgroundColor={colors.surface} />
           }
         >
-          <ScreenHeader overline="KASA" title="Senin Hesabın">
+          <ScreenHeader size="l" overline="KASA" title="Senin Hesabın">
             <Text style={styles.heroLabel}>NET DURUMUN</Text>
             {/* Sayarak degisiyor: odeme kaydedince rakamin bir anda atlamasi
                 "oldu mu olmadi mi" sorusunu birakiyordu. */}

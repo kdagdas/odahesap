@@ -52,6 +52,7 @@ export default function MemberDetail() {
       {/* Başlık kaydırma alanının içinde — aşağı inerken beyaz yüzey örtüyor. */}
       <ScrollView contentContainerStyle={[styles.page, altPay]} showsVerticalScrollIndicator={false}>
       <ScreenHeader
+        size="l"
         overline="EV ARKADAŞI"
         title={member?.name || "—"}
         right={

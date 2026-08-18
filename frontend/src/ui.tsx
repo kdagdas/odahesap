@@ -57,30 +57,74 @@ export function Money({
 
 /* ------------------------------------------------------- koyu ekran başlığı */
 
+/** Başlığın üç boyu — bkz. `ScreenHeader`. */
+export type HeaderSize = "s" | "m" | "l";
+
+/**
+ * Boya göre alt boşluk.
+ *
+ * `sheet` yukarı doğru 24 piksel (`spacing.xl`) biniyor, yani bu sayıların
+ * 24'ü kavisin altında kalıyor. Görünen boşluk sırasıyla **8 / 12 / 20.**
+ * Kavis binişi her boyda aynı — uygulamanın imzası olan o katman bozulmuyor.
+ */
+const HEADER_PAD: Record<HeaderSize, number> = {
+  s: spacing.xl + spacing.sm,
+  m: spacing.xl + spacing.md,
+  l: spacing.xxl + spacing.md,
+};
+
 /**
  * Tam genişlikte koyu alan; içerik yüzeyi bunun üzerine kavisle biner.
  * Hero bir kart değil, ekranın kendisidir — "her şey dikdörtgen" hissini
  * kıran asıl hamle bu.
+ *
+ * ### Üç boy
+ *
+ * Boy bir YÜKSEKLİK değil bir **İÇERİK** kuralıdır; Material 3'ün
+ * küçük/orta/büyük üst çubuğu gibi:
+ *
+ * | Boy | İçerik | Ekranlar |
+ * |---|---|---|
+ * | `s` | yalnızca kimlik | Ayarlar, Ev ayarları, Aktivite, Düzenli, Ödeme bilgilerim, Harcama düzenle |
+ * | `m` | kimlik + tek şerit (sekme, süzgeç, tek satır durum) | Alınacaklar, Harcamalar, Bildirimler, Profil |
+ * | `l` | kahraman sayı | Anasayfa, Kasa, İstatistik, üye dökümü, elle giriş |
+ *
+ * Verilmezse çocuk olup olmamasından türetilir (`children` varsa `m`, yoksa
+ * `s`); `l` her zaman **açıkça** yazılır çünkü türetilemez.
+ *
+ * Önceden her başlık boyundan bağımsız olarak aynı alt boşluğu (44) ödüyor ve
+ * `headerTop` çocuk olmasa bile 16 piksel ekliyordu: yalnızca başlık taşıyan
+ * bir ekranda başlığın altında 36 piksel **görünür boşluk** kalıyordu.
+ * Yüksekliklerin ekrandan ekrana gezinmesinin sebebi buydu — her ekranın
+ * kendi sayısını uydurması değil, tek bir sayının her ekrana uymamasıydı.
  */
 export function ScreenHeader({
-  overline: over, title, right, children, testID, onTitlePress,
+  overline: over, title, right, children, testID, onTitlePress, size,
 }: {
   overline?: string; title?: string; right?: React.ReactNode;
   children?: React.ReactNode; testID?: string;
   /** Başlık bir seçici açıyorsa (ör. İstatistik'te ay): yanına ok gelir. */
   onTitlePress?: () => void;
+  /** Verilmezse içerikten türetilir. `l` açıkça yazılmalı. */
+  size?: HeaderSize;
 }) {
   const insets = useSafeAreaInsets();
+  const boy: HeaderSize = size ?? (children ? "m" : "s");
   return (
     <LinearGradient
       colors={[colors.dark, colors.darkAlt]}
       start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-      style={[styles.header, { paddingTop: insets.top + spacing.md }]}
+      style={[styles.header, {
+        paddingTop: insets.top + spacing.md,
+        paddingBottom: HEADER_PAD[boy],
+      }]}
       testID={testID}
     >
       <View style={styles.headerInner}>
       {(over || title || right) && (
-        <View style={styles.headerTop}>
+        /* Boşluk yalnızca ALTINDA bir şey varsa; yoksa başlık boşluğa
+           bakıyordu. */
+        <View style={[styles.headerTop, children ? styles.headerTopGap : null]}>
           <View style={{ flex: 1 }}>
             {over ? <Text style={styles.headerOverline}>{over}</Text> : null}
             {title ? (
@@ -1466,10 +1510,11 @@ export function todayISO(): string {
 const styles = StyleSheet.create({
   header: {
     paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.xxl + spacing.md, // yüzey buraya biner
+    // paddingBottom boya göre veriliyor (HEADER_PAD) — yüzey buraya biner.
   },
   headerInner: { width: "100%", maxWidth: CONTENT_MAX_WIDTH, alignSelf: "center" },
-  headerTop: { flexDirection: "row", alignItems: "center", gap: spacing.md, marginBottom: spacing.lg },
+  headerTop: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  headerTopGap: { marginBottom: spacing.lg },
   headerOverline: { ...overline, color: colors.onDarkMuted },
   headerTitle: { ...T.screen, color: colors.onDark },
   headerTitleRow: { flexDirection: "row", alignItems: "center", gap: 5, alignSelf: "flex-start" },

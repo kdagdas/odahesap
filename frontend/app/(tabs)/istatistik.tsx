@@ -162,6 +162,7 @@ export default function Istatistik() {
     <View style={styles.root} testID="istatistik-screen">
       <ScrollView contentContainerStyle={[styles.page, altPay]} showsVerticalScrollIndicator={false}>
         <ScreenHeader
+          size="l"
           overline="İSTATİSTİK"
           title={ayAdi(month)}
           onTitlePress={() => setAySecici(true)}

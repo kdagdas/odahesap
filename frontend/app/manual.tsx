@@ -94,6 +94,7 @@ export default function Manual() {
         <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.page}
                     keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         <ScreenHeader
+          size="l"
           overline="MANUEL HARCAMA"
           title="Yeni Kayıt"
           right={
