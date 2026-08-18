@@ -222,9 +222,61 @@ export default function Denge() {
     return [...transfers].sort((a, b) => rank(a) - rank(b) || b.amount - a.amount);
   }, [transfers, me]);
 
+  /* Borçların / Alacakların / diğerleri.
+     `simplify_debts` her kişiye tek net veriyor: neti eksi olan yalnızca
+     ödeyen, artı olan yalnızca alan olarak çıkıyor. Yani ilk iki liste
+     **asla aynı anda dolu olamaz** ve ekranda yön hiç karışmıyor. */
+  const borclarim = ordered.filter((t) => t.from === me);
+  const alacaklarim = ordered.filter((t) => t.to === me);
+  const digerleri = ordered.filter((t) => t.from !== me && t.to !== me);
+
   // `by_member` yalnizca EV harcamalarini sayiyor; bu satir ise bakiyeyi
   // acikliyor, yani Salih icin odedigin de dahil olmali.
   const myPaid = stats?.my_paid ?? 0;
+
+  /**
+   * İnce köprü — ~64 piksel. Öncekinin yarısından az.
+   *
+   * İki avatar ve aradaki çizgi duruyor çünkü **yönü onlar söylüyor**; giden
+   * şey ikinci avatar, üst üste yığılan düğme sırası ve isim satırıydı.
+   *
+   * **Satır anlatır, düğme öder:** düğme dışında her yere dokunmak borcun
+   * nereden geldiğini açacak (sonraki madde).
+   *
+   * `koyu` sırayı değil MİKTARI izliyor — önce büyüğü kapatmak istersin.
+   * Alacak tarafında hiç koyu düğme yok: orada yapılacak bir iş değil,
+   * onaylanacak bir şey var.
+   */
+  const kopruSatiri = (t: Transfer, koyu: boolean) => {
+    const iPay = t.from === me;
+    const oteki = iPay ? t.to : t.from;
+    return (
+      <View style={styles.ince} testID={`debt-${t.from}-${t.to}`}>
+        <Avatar name={nameOf(oteki)} size={30}
+                avatarId={(member(oteki) as any)?.avatar_id}
+                userId={oteki}
+                photoVersion={(member(oteki) as any)?.photo_version} />
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <View style={styles.inceUst}>
+            <Text style={styles.inceAd} numberOfLines={1}>{first(t.from)}</Text>
+            <View style={styles.inceTel} />
+            <Ionicons name="arrow-forward" size={11} color={colors.inkTertiary} />
+            <Text style={styles.inceAd} numberOfLines={1}>{first(t.to)}</Text>
+          </View>
+          <Money value={t.amount} style={styles.inceTutar} />
+        </View>
+        {!archived && (
+          <Pressable style={[styles.inceBtn, koyu ? styles.btnDark : styles.btnQuiet]}
+                     onPress={() => openPay(t)}
+                     testID={iPay ? `mark-paid-to-${t.to}` : `mark-paid-${t.from}`}>
+            <Text style={koyu ? styles.btnDarkTxt : styles.btnQuietTxt}>
+              {iPay ? "Öde" : "Ödedi"}
+            </Text>
+          </Pressable>
+        )}
+      </View>
+    );
+  };
   // Pencere KART BASLIGINDA: ayni kelime ("payin") Istatistik'te de
   // geciyor ama orasi takvim ayi. Basliga yazmak karsilastirma
   // sorusunu bastan kapatiyor.
@@ -486,99 +538,58 @@ export default function Denge() {
                       leading={<IconPill name="checkmark-circle" color={colors.accent}
                                          tint={colors.accentSoft} />}
                       title="Herkes ödeşmiş"
-                      subtitle="Bu dönemde kimsenin borcu kalmadı"
+                      subtitle="Kimsenin kimseye borcu kalmadı"
                       minHeight={metrics.rowHeightLg}
                     />
                   ) : (
-                    ordered.map((t, i) => {
-                      const mine = t.from === me || t.to === me;
-                      const iPay = t.from === me;
-                      return (
-                        <View key={`${t.from}-${t.to}-${i}`}>
-                          {i > 0 && <Divider inset={mine ? 0 : spacing.lg} />}
-                          {mine ? (
-                            <View style={styles.bridge} testID={`debt-${t.from}-${t.to}`}>
-                              <View style={styles.bridgeRow}>
-                                <View style={styles.side}>
-                                  <Avatar name={nameOf(t.from)}
-                                          avatarId={(member(t.from) as any)?.avatar_id}
-                                          userId={t.from}
-                                          photoVersion={(member(t.from) as any)?.photo_version} />
-                                  <Text style={styles.sideName} numberOfLines={1}>{first(t.from)}</Text>
-                                </View>
-                                <View style={styles.middle}>
-                                  <Money value={t.amount} style={styles.bridgeAmount} />
-                                  <View style={styles.wire}>
-                                    <View style={styles.wireLine} />
-                                    <Ionicons name="arrow-forward" size={13} color={colors.inkTertiary} />
-                                    <View style={styles.wireLine} />
-                                  </View>
-                                </View>
-                                <View style={styles.side}>
-                                  <Avatar name={nameOf(t.to)}
-                                          avatarId={(member(t.to) as any)?.avatar_id}
-                                          userId={t.to}
-                                          photoVersion={(member(t.to) as any)?.photo_version} />
-                                  <Text style={styles.sideName} numberOfLines={1}>{first(t.to)}</Text>
-                                </View>
-                              </View>
-                              {!archived && (
-                                <>
-                                <View style={styles.bridgeActions}>
-                                  <Pressable
-                                    style={[styles.bridgeBtn, iPay ? styles.btnDark : styles.btnQuiet]}
-                                    onPress={() => openPay(t)}
-                                    testID={iPay ? `mark-paid-to-${t.to}` : `mark-paid-${t.from}`}
-                                  >
-                                    <Text style={iPay ? styles.btnDarkTxt : styles.btnQuietTxt}>
-                                      {iPay ? "Öde" : "Ödedi"}
-                                    </Text>
-                                  </Pressable>
-                                  {/* Alacakliya, ilk paylasima kadar. Hic bilgi
-                                      girmemisse dugme "Paylas" demiyor -- formu
-                                      aciyor; asil kesfedilmeyen sey o form. */}
-                                  {!iPay && bilgim && !bilgim.paylasildi && (
-                                    <Pressable
-                                      style={[styles.bridgeBtn, styles.btnOutline]}
-                                      onPress={paylasBilgim}
-                                      testID={`share-payment-${t.from}`}
-                                    >
-                                      <Text style={styles.btnOutlineTxt} numberOfLines={1}>
-                                        {bilgimVar ? "Bilgimi gönder" : "Ödeme bilgini ekle"}
-                                      </Text>
-                                    </Pressable>
-                                  )}
-                                </View>
-                                {/* Paylastiktan sonra KAYBOLMUYOR, kuculuyor:
-                                    IBAN degisir, eve yeni biri katilir. */}
-                                {!iPay && bilgim?.paylasildi && (
-                                  <Pressable onPress={paylasBilgim} hitSlop={10}
-                                             style={styles.shareAgain}
-                                             testID={`share-payment-${t.from}`}>
-                                    <Ionicons name="share-social-outline" size={13}
-                                              color={colors.inkTertiary} />
-                                    <Text style={styles.shareAgainTxt}>
-                                      Ödeme bilgimi gönder
-                                    </Text>
-                                  </Pressable>
-                                )}
-                                </>
-                              )}
-                            </View>
-                          ) : (
-                            <View style={styles.otherRow}>
-                              <Text style={styles.otherTxt} numberOfLines={1}>
-                                {first(t.from)} <Text style={styles.arrow}>→</Text> {first(t.to)}
-                              </Text>
-                              <Money value={t.amount} color={colors.inkTertiary}
-                                     style={styles.otherAmount} />
-                            </View>
-                          )}
+                    <>
+                      {borclarim.map((t, i) => (
+                        <View key={`b-${t.to}-${i}`}>
+                          {i > 0 && <Divider inset={spacing.lg} />}
+                          {kopruSatiri(t, i === 0)}
                         </View>
-                      );
-                    })
+                      ))}
+
+                      {alacaklarim.map((t, i) => (
+                        <View key={`a-${t.from}-${i}`}>
+                          {(i > 0 || borclarim.length > 0) && <Divider inset={spacing.lg} />}
+                          {kopruSatiri(t, false)}
+                        </View>
+                      ))}
+
+                      {/* Paylasma satiri KARTIN DIBINDE, bir kez. Once her
+                          borclunun satirinda ayri ayri duruyordu, oysa
+                          paylasilan IBAN hepsinde ayni. */}
+                      {!archived && alacaklarim.length > 0 && bilgim && (
+                        <>
+                          <Divider inset={spacing.lg} />
+                          <Pressable style={styles.paylasSatir} onPress={paylasBilgim}
+                                     testID={`share-payment-${alacaklarim[0].from}`}>
+                            <Ionicons name="share-social-outline" size={15} color={colors.accentDark} />
+                            <Text style={styles.paylasTxt}>
+                              {bilgimVar ? "Ödeme bilgini paylaş" : "Ödeme bilgini ekle"}
+                            </Text>
+                            <Ionicons name="chevron-forward" size={15} color={colors.onSurfaceTertiary} />
+                          </Pressable>
+                        </>
+                      )}
+
+                      {digerleri.map((t, i) => (
+                        <View key={`d-${t.from}-${t.to}-${i}`}>
+                          <Divider inset={spacing.lg} />
+                          <View style={styles.otherRow}>
+                            <Text style={styles.otherTxt} numberOfLines={1}>
+                              {first(t.from)} <Text style={styles.arrow}>→</Text> {first(t.to)}
+                            </Text>
+                            <Money value={t.amount} color={colors.inkTertiary}
+                                   style={styles.otherAmount} />
+                          </View>
+                        </View>
+                      ))}
+                    </>
                   )}
                 </Card>
+
 
                 {/* ÖDEME GEÇMİŞİ — dönem seçicisinin yerini alan yer.
                     Hap yalnızca "arşive bak" diyordu; burası kim kime ne
@@ -858,6 +869,24 @@ const styles = StyleSheet.create({
   ekstreVal: { ...T.bodySb, color: colors.onDark },
   ekstreEksi: { color: colors.accentOnDark },
   ekstreCizgi: { height: 1, backgroundColor: colors.darkSurface, marginVertical: 3 },
+  // İnce köprü: ~64 piksel. Öncekinin (~140) yarısından az.
+  ince: {
+    flexDirection: "row", alignItems: "center", gap: spacing.md,
+    paddingHorizontal: spacing.lg, paddingVertical: spacing.md,
+  },
+  inceUst: { flexDirection: "row", alignItems: "center", gap: 6 },
+  inceAd: { ...T.caption, color: colors.inkSecondary, flexShrink: 1 },
+  inceTel: { flex: 1, height: 1, backgroundColor: colors.border, minWidth: 8 },
+  inceTutar: { ...T.emph, fontSize: 17, color: colors.ink, marginTop: 1 },
+  inceBtn: {
+    minWidth: 68, alignItems: "center", justifyContent: "center",
+    paddingHorizontal: spacing.md, height: 34, borderRadius: radius.md,
+  },
+  paylasSatir: {
+    flexDirection: "row", alignItems: "center", gap: spacing.sm,
+    paddingHorizontal: spacing.lg, paddingVertical: spacing.md, minHeight: 44,
+  },
+  paylasTxt: { ...T.bodySb, color: colors.accentDark, flex: 1 },
   chips: { gap: spacing.sm, paddingHorizontal: spacing.lg, paddingBottom: spacing.lg },
   banner: {
     flexDirection: "row", alignItems: "center", gap: spacing.sm,
