@@ -209,22 +209,29 @@ export default function Istatistik() {
               </Text>
             </View>
           )}
+
+          {/* Sekme anahtarı LACIVERTTE. Önce beyaz yüzeydeydi, Alınacaklar'da
+              ise başlıkta — aynı iş iki yerde iki biçimde duruyordu. Anahtar
+              *içerik* değil BAĞLAM: "neye bakıyorum" sorusunun parçası, tıpkı
+              başlık ve toplam gibi. Beyaz yüzeyde kart olarak içerikle aynı
+              ağırlığa giriyordu. İkonlar da Alınacaklar'la aynı, yani kontrol
+              iki ekranda gerçekten tek bir şey. */}
+          <View style={styles.tabWrap}>
+            <TabSwitch
+              value={scope}
+              onChange={setScope}
+              onDark
+              options={[
+                { value: "household" as const, label: "Ev", icon: "home" },
+                { value: "self" as const, label: "Kişisel", icon: "person" },
+              ]}
+              testID="stat-tab"
+            />
+          </View>
         </ScreenHeader>
 
         <Sheet>
           <View style={{ gap: metrics.cardGap }}>
-            <View style={styles.mx}>
-              <TabSwitch
-                value={scope}
-                onChange={setScope}
-                options={[
-                  { value: "household" as const, label: "Ev" },
-                  { value: "self" as const, label: "Kişisel" },
-                ]}
-                testID="stat-tab"
-              />
-            </View>
-
             {loading ? (
               <ActivityIndicator color={colors.ink} style={{ marginTop: spacing.xxl }} />
             ) : !data || data.expense_count === 0 ? (
@@ -490,6 +497,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md, paddingVertical: 5, marginTop: spacing.sm,
   },
   trendTxt: { ...T.captionSb, color: colors.accentOnDark },
+  tabWrap: { marginTop: spacing.lg },
   mx: { marginHorizontal: spacing.lg },
   empty: { alignItems: "center", gap: spacing.sm, paddingVertical: spacing.xxxl, paddingHorizontal: spacing.xl },
   emptyTitle: { ...T.emph, color: colors.ink },
