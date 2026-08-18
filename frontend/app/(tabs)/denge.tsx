@@ -230,7 +230,10 @@ export default function Denge() {
       </View>
     );
     return (
-      <View style={styles.bridge} testID={`debt-${t.from}-${t.to}`}>
+      /* SATIR ANLATIR, DÜĞME ÖDER: düğme dışında her yere dokunmak borcun
+         nereden geldiğini açıyor. Düğme kendi dokunma alanını koruyor. */
+      <Pressable style={styles.bridge} testID={`debt-${t.from}-${t.to}`}
+                 onPress={() => router.push("/borc-dokumu")}>
         <View style={styles.bridgeRow}>
           {uc(t.from)}
           <View style={styles.middle}>
@@ -255,7 +258,7 @@ export default function Denge() {
             </Pressable>
           </View>
         )}
-      </View>
+      </Pressable>
     );
   };
   // Pencere KART BASLIGINDA: ayni kelime ("payin") Istatistik'te de
