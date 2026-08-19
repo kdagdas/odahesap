@@ -27,7 +27,7 @@ import { useHousehold } from "@/src/household";
 import {
   ScreenHeader, Sheet, Card, Row, Divider, Avatar, Money, CategoryIcon,
   categoryLabel, MerchantBadge, Donut, TabSwitch, BottomSheet,
-  formatEUR, formatEURShort, useScrollPad, useGeriDon, useBasaSar,
+  formatEUR, formatEURShort, formatQty, useScrollPad, useGeriDon, useBasaSar,
 } from "@/src/ui";
 import {
   colors, spacing, radius, type as T, overline, fontFamily, metrics, CATEGORY_ICONS,
@@ -47,6 +47,15 @@ type Monthly = {
   cumulative: { day: string; total: number }[];
   prev_cumulative: { day: string; total: number }[];
   months: string[];
+  /** Son 6 ay — YALNIZCA veri olan aylar. Evin ilk harcamasından öncesi
+   *  hiç gelmiyor; "o ay hiç harcamadın" ile "o ay yoktun" farklı şeyler. */
+  son_aylar: { month: string; total: number; expense_count: number }[];
+  /** Ürün bazlı toplam, genel ada göre gruplanmış. İlk sekizi burada. */
+  products: {
+    key: string; name: string; total: number; count: number;
+    market_count: number; qty: number | null; unit: string | null;
+  }[];
+  product_count: number;
 };
 
 /**
@@ -109,6 +118,87 @@ function Curve({ now, prev, height = 132 }: {
     </Svg>
   );
 }
+
+/**
+ * Aylık çubuk — "Son 6 Ay".
+ *
+ * ### Neden her çubuğun üstünde sayı var
+ *
+ * Çıplak çubuk yalnızca sıralama söyler; ekranda görünen her sayının
+ * doğrulanabilir olması uygulamanın kuralı. Kısaltılmış biçim (`1,2b`)
+ * kullanılıyor çünkü altı sütun dar telefonda sütun başına ~45 piksel
+ * bırakıyor ve tam tutar oraya sığmıyor.
+ *
+ * ### Neden bu ay koyu
+ *
+ * Karşılaştırmanın öznesi o. Renk yerine yükseklikle ayırmak olmazdı —
+ * kısa bir ay en alçak çubuk olur ve gözden kaçar.
+ *
+ * ### Ortalama çizgisi
+ *
+ * Tek başına "474 €" bir sayıdır; çubukların arasından geçen bir çizgi ise
+ * "bu ay ortalamanın altındayız" cümlesini kurdurur. Rakam altta yazılı.
+ *
+ * ### Çubuğa dokunmak
+ *
+ * Sayfayı o aya götürüyor. Yeni bir ekran değil, zaten var olan ay
+ * seçicisinin daha hızlı hâli — kademeli açılım kuralı.
+ */
+function AylikCubuk({
+  aylar, buAy, onSec,
+}: {
+  aylar: { month: string; total: number }[];
+  buAy: string;
+  onSec: (m: string) => void;
+}) {
+  const enYuksek = Math.max(...aylar.map((a) => a.total), 0.01);
+  const ortalama = aylar.reduce((s, a) => s + a.total, 0) / Math.max(aylar.length, 1);
+  const TAVAN = 64;
+  return (
+    <>
+      <View style={styles.cubukSatir}>
+        {/* Ortalama çizgisi çubukların ARKASINDAN geçiyor: önlerinden geçse
+            kısa çubukları ikiye böler ve okunmaz olur. */}
+        <View pointerEvents="none"
+              style={[styles.ortCizgi, { bottom: (ortalama / enYuksek) * TAVAN }]} />
+        {aylar.map((a) => {
+          const bu = a.month === buAy;
+          return (
+            <Pressable key={a.month} style={styles.cubukKap} onPress={() => onSec(a.month)}
+                       testID={`cubuk-${a.month}`}>
+              <Text style={[styles.cubukTutar, bu && styles.cubukTutarBu]} numberOfLines={1}>
+                {formatEURShort(a.total)}
+              </Text>
+              <View style={[styles.cubuk, {
+                height: Math.max((a.total / enYuksek) * TAVAN, 3),
+                backgroundColor: bu ? colors.ink : colors.borderStrong,
+              }]} />
+              <Text style={[styles.cubukAy, bu && styles.cubukAyBu]}>
+                {AYLAR[parseInt(a.month.slice(5, 7), 10)]?.slice(0, 3)}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+      <Divider inset={0} />
+      <View style={styles.ortSatir}>
+        <Text style={styles.ortLabel}>{aylar.length} ay ortalaması</Text>
+        <Money value={ortalama} color={colors.ink} />
+      </View>
+    </>
+  );
+}
+
+/** "14 lt · 3 markette" — miktar yalnızca birim tekse yazılıyor.
+ *  2 kg un ile 3 paket unu toplamak anlamsız bir sayı üretir; sunucu
+ *  karışık birimde `qty`'yi zaten `null` gönderiyor. */
+const urunAlt = (u: { qty: number | null; unit: string | null; market_count: number; count: number }) => {
+  const parca: string[] = [];
+  if (u.qty != null && u.unit) parca.push(`${formatQty(u.qty, u.unit)}`);
+  else parca.push(`${u.count} kez`);
+  parca.push(u.market_count === 1 ? "tek markette" : `${u.market_count} markette`);
+  return parca.join(" · ");
+};
 
 const AYLAR = ["", "Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran",
                "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"];
@@ -325,6 +415,57 @@ export default function Istatistik() {
                   </View>
                 </Card>
 
+                {/* SON 6 AY — tek bakışta genel gidiş.
+                    Çubuk sayısı = VERİ OLAN ay sayısı. Evin ilk harcamasından
+                    önceki aylar sunucudan hiç gelmiyor: "o ay hiç harcamadın"
+                    ile "o ay yoktun" farklı şeyler ve ikincisini sıfır çubukla
+                    çizmek yalan olur.
+
+                    İKİDEN AZ ayda kart hiç çizilmiyor — bir çubuğun
+                    karşılaştıracağı bir şey yok ve o ayın rakamı zaten
+                    başlıkta duruyor. Anasayfa'daki trend satırının kuralının
+                    aynısı: karşılaştırılacak geçmiş yoksa çizme, dolgu
+                    metniyle doldurma. */}
+                {(data.son_aylar || []).length >= 2 && (
+                  <Card title={`Son ${data.son_aylar.length} Ay`} style={styles.mx} padded>
+                    <AylikCubuk aylar={data.son_aylar} buAy={data.month}
+                                onSec={(m) => setMonth(m)} />
+                  </Card>
+                )}
+
+                {/* EN ÇOK ALDIKLARIMIZ — ürün bazlı, genel ada göre.
+                    `MILSANI`, `MILBONA` ve `JA! MILCH` tek satırda "Süt"
+                    olarak toplanıyor; bunu rakiplerin hiçbiri üretemez çünkü
+                    hiçbiri fişi kalem kalem okumuyor.
+
+                    Karşılaştırmaya ihtiyacı yok: ilk aydan itibaren dolu
+                    geliyor. Yalnızca EV kapsamında — kişisel sekmede "ne
+                    aldık" sorusunun öznesi kayboluyor. */}
+                {scope === "household" && (data.products || []).length > 0 && (
+                  <Card title="En Çok Aldıklarımız" style={styles.mx}
+                        action={data.product_count > data.products.length
+                          ? `Tümü · ${data.product_count}` : undefined}
+                        onAction={() => router.push({
+                          pathname: "/(tabs)/urunler",
+                          params: { ay: data.month, geri: "/(tabs)/istatistik" },
+                        })}>
+                    {data.products.map((u, i) => (
+                      <View key={u.key}>
+                        {i > 0 && <Divider inset={spacing.lg} />}
+                        <View style={styles.urunRow}>
+                          <View style={{ flex: 1, minWidth: 0 }}>
+                            <Text style={styles.urunAd} numberOfLines={1}>{u.name}</Text>
+                            <Text style={styles.urunAlt} numberOfLines={1}>
+                              {urunAlt(u)}
+                            </Text>
+                          </View>
+                          <Money value={u.total} />
+                        </View>
+                      </View>
+                    ))}
+                  </Card>
+                )}
+
                 {/* Duzenli giderlerin ay ay seyri. Kira aydan aya degismiyor
                     ve zaten listede yok; asil merak edilen elektrik, su,
                     dogalgaz gibi tutari degisen faturalar. Degismeyen satir
@@ -517,6 +658,35 @@ const styles = StyleSheet.create({
   catValue: { minWidth: 74, textAlign: "right" },
   deltaTag: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: radius.sm },
   deltaTxt: { fontSize: 11, lineHeight: 15, fontFamily: fontFamily.medium },
+  /* Çubuklar: sabit yükseklikli bir şerit, altında ay adı.
+     `alignItems: flex-end` çubukları tabana oturtuyor; ortalama çizgisi de
+     aynı tabandan ölçülüyor. */
+  cubukSatir: {
+    flexDirection: "row", alignItems: "flex-end", gap: 5,
+    height: 100, position: "relative", marginBottom: spacing.md,
+  },
+  ortCizgi: {
+    position: "absolute", left: 0, right: 0, height: 1,
+    borderTopWidth: 1, borderTopColor: colors.borderStrong,
+    borderStyle: "dashed", opacity: 0.8,
+  },
+  cubukKap: { flex: 1, alignItems: "center" },
+  cubuk: { width: "100%", borderRadius: 3 },
+  cubukTutar: { ...T.caption, fontSize: 9, color: colors.inkTertiary, marginBottom: 3 },
+  cubukTutarBu: { color: colors.ink, fontFamily: fontFamily.semibold },
+  cubukAy: { ...T.caption, fontSize: 9, color: colors.inkTertiary, marginTop: 4 },
+  cubukAyBu: { color: colors.ink, fontFamily: fontFamily.semibold },
+  ortSatir: {
+    flexDirection: "row", alignItems: "center",
+    paddingTop: spacing.md, paddingHorizontal: 0,
+  },
+  ortLabel: { ...T.caption, color: colors.inkTertiary, flex: 1 },
+  urunRow: {
+    flexDirection: "row", alignItems: "center", gap: spacing.md,
+    paddingHorizontal: spacing.lg, paddingVertical: spacing.md, minHeight: 46,
+  },
+  urunAd: { ...T.bodySb, color: colors.ink },
+  urunAlt: { ...T.caption, fontSize: 11, color: colors.inkTertiary, marginTop: 1 },
   curveLegend: { flexDirection: "row", gap: spacing.lg, marginTop: spacing.sm },
   legendItem: { flexDirection: "row", alignItems: "center", gap: 6 },
   legendLine: { width: 14, height: 2, borderRadius: 1 },

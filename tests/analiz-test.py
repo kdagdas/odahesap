@@ -89,7 +89,12 @@ s = c.get(f"{API}/stats/monthly?month={AY}", headers=hdr(tok)).json()
 
 print("\n-- 1. SON 6 AY serisi --")
 seri = s.get("son_aylar") or []
-check("alti ay donuyor", len(seri) == 6, str(len(seri)))
+# Ev BUGUN kuruldu ve yalnizca bu ayda verisi var: seri o tek ayi donmeli.
+# Var olmayan aylari sifir diye cizmek "o ay hic harcamadin" demek olurdu,
+# oysa o ay ortada yoktun. Ekran basligi da buna gore duzeliyor ("Son 3 Ay")
+# ve tek ay kalirsa kart hic cizilmiyor -- bir cubugun karsilastiracagi
+# bir sey yok.
+check("yalnizca VERI OLAN aylar donuyor", len(seri) == 1, str(seri))
 check("eskiden yeniye sirali",
       [x["month"] for x in seri] == sorted(x["month"] for x in seri), str(seri))
 check("son eleman bu ay", seri and seri[-1]["month"] == AY, str(seri[-1:]))
@@ -97,8 +102,21 @@ check("son eleman bu ay", seri and seri[-1]["month"] == AY, str(seri[-1:]))
 bu = next(x for x in seri if x["month"] == AY)
 check("cubuktaki toplam = ayin toplami",
       abs(bu["total"] - s["total"]) < 0.01, f"{bu['total']} vs {s['total']}")
-check("bos aylar da donuyor (delik yok)",
-      all("total" in x for x in seri), str(seri))
+check("her ay toplam tasiyor", all("total" in x for x in seri), str(seri))
+
+# GECMISE tarihli fis girilince seri geriye aciliyor: alt sinir evin
+# kurulusu degil ilk HARCAMA ayi. Ag~ustos'ta kurulan bir eve Temmuz fisi
+# girilirse Temmuz da cizilmeli.
+gecen = (date.today().replace(day=1) - __import__("datetime").timedelta(days=1))
+harcama(total=20.0, merchant="EDEKA", expense_date=gecen.isoformat(),
+        items=[kalem("Reis", 20.0, kategori="temel_gida", genel="pirinç")])
+s2 = c.get(f"{API}/stats/monthly?month={AY}", headers=hdr(tok)).json()
+check("geriye tarihli fis seriyi aciyor",
+      len(s2["son_aylar"]) == 2, str(s2["son_aylar"]))
+check("acilan ay gecen ay",
+      s2["son_aylar"][0]["month"] == gecen.strftime("%Y-%m"), str(s2["son_aylar"]))
+check("gecen ayin toplami dogru",
+      abs(s2["son_aylar"][0]["total"] - 20.0) < 0.01, str(s2["son_aylar"]))
 
 print("\n-- 2. URUN BAZLI toplam --")
 urunler = s.get("products") or []
@@ -123,6 +141,27 @@ check("liste buyukten kucuge", [u["total"] for u in urunler]
 r = c.get(f"{API}/stats/products?month={AY}", headers=hdr(tok)).json()
 check("tum urunler ucu ayni sayiyi veriyor",
       len(r["products"]) == s.get("product_count"), str(len(r["products"])))
+
+print("\n-- 2b. GENEL AD kayda ULASIYOR mu --")
+# Bu kontrol somut bir hatadan dogdu: OCR `generic` alanini uretiyordu ve
+# sunucu istemciye gonderiyordu, ama fis inceleme ekrani onu kayda TASIMIYORDU
+# (Row tipinde alan yoktu). Sonuc: gercek evde 206 kalemin HICBIRINDE genel ad
+# yoktu ve marka birlestirme hic calismiyordu -- ozellik kuruldugu gunden beri
+# sessizce oluydu. Sunucunun alani kabul edip sakladigini burada kilitliyoruz.
+eid = harcama(total=2.5, merchant="PENNY", items=[
+    kalem("GELBWURZEL 1KG", 2.5, kategori="meyve_sebze", genel="havuç")])
+r = c.get(f"{API}/expenses?month={AY}", headers=hdr(tok)).json()["expenses"]
+kayit = next(e for e in r if e["expense_id"] == eid)
+check("genel ad kayda yazildi",
+      (kayit["items"][0].get("generic") or "") == "havuç", str(kayit["items"][0]))
+# Ve istatistige o adla giriyor -- fisteki "GELBWURZEL" degil.
+s3 = c.get(f"{API}/stats/monthly?month={AY}", headers=hdr(tok)).json()
+havuc = [u for u in s3["products"] if u["key"] == "havuc"]
+check("istatistikte genel adla gorunuyor", len(havuc) == 1,
+      str([u["key"] for u in s3["products"]]))
+check("ekranda 'Havuç' yaziyor", havuc and havuc[0]["name"] == "Havuç",
+      str(havuc[:1]))
+
 
 print("\n-- 3. KATEGORI sayfasi --")
 k = c.get(f"{API}/stats/category?key=sut_urunleri&month={AY}", headers=hdr(tok)).json()

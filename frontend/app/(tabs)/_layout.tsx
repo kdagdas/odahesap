@@ -109,6 +109,7 @@ export default function TabsLayout() {
       <Tabs.Screen name="harcamalar" options={{ href: null }} />
       <Tabs.Screen name="aktivite" options={{ href: null }} />
       <Tabs.Screen name="member-detail" options={{ href: null }} />
+      <Tabs.Screen name="urunler" options={{ href: null }} />
     </Tabs>
   );
 }

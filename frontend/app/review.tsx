@@ -25,7 +25,18 @@ import {
   colors, spacing, radius, type as T, overline, fontFamily, CATEGORY_ICONS, CATEGORY_LABEL_TR,
 } from "@/src/theme";
 
-type Row = { name: string; price: string; quantity: string; unit: string; category: string; split: Split };
+/** `generic`: fişteki ad ile ürünün NE olduğu farklı şeyler — fiş
+ *  "Gelbwurzel 1kg" yazar, satılan şey havuçtur. Modelden geliyor ve
+ *  DEĞİŞTİRİLMİYOR, yalnızca taşınıyor: kullanıcı adı düzeltirse bile
+ *  ürünün ne olduğu değişmiyor.
+ *
+ *  Bu alan kayda kadar taşınmadığı için Tur 8'den beri sessizce
+ *  kayboluyordu (206 kalemin hiçbirinde yoktu) ve ürün istatistiği marka
+ *  adlarını birleştiremiyordu. */
+type Row = {
+  name: string; price: string; quantity: string; unit: string;
+  category: string; generic?: string | null; split: Split;
+};
 
 const CAT_KEYS = Object.keys(CATEGORY_ICONS);
 const nextCategory = (c: string) => CAT_KEYS[(CAT_KEYS.indexOf(c) + 1) % CAT_KEYS.length];
@@ -70,6 +81,8 @@ export default function Review() {
       quantity: String(it.quantity ?? 1).replace(".", ","),
       unit: it.unit || "adet",
       category: it.category || "diger",
+      // Modelden geliyor, ekranda gösterilmiyor, kayda taşınıyor.
+      generic: it.generic || null,
       split: { mode: "equal" as const, with: {} },
     }))
   );
@@ -96,7 +109,9 @@ export default function Review() {
     setRows((rs) => rs.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
   const removeRow = (i: number) => setRows((rs) => rs.filter((_, idx) => idx !== i));
   const addRow = () =>
-    setRows((rs) => [...rs, { name: "", price: "0,00", quantity: "1", unit: "adet", category: "diger", split: bulkSplit }]);
+    // Elle eklenen kalemde genel ad YOK: modelin bilgisi değil kullanıcının
+    // yazdığı ad var, ve uydurmak yanlış birleştirmeye yol açar.
+    setRows((rs) => [...rs, { name: "", price: "0,00", quantity: "1", unit: "adet", category: "diger", generic: null, split: bulkSplit }]);
 
   const applyBulk = (sp: Split) => {
     setBulkSplit(sp);
@@ -234,6 +249,9 @@ export default function Review() {
             quantity: parsedQty(g.quantity),
             unit: g.unit,
             category: g.category,
+            // Modelin ürün bilgisi kayda kadar taşınıyor: "En Çok
+            // Aldıklarımız" üç marketin kendi markasını bununla birleştiriyor.
+            generic: g.generic || null,
           })),
           total: groupTotal,
           source: "receipt",

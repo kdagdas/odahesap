@@ -3909,17 +3909,32 @@ async def _aylik_seri(household_id: str, son_ay: str, scope: str, user_id: str,
     demekti. Seri tek okumadan kovalanıyor; kapsam kuralı `_kapsa` ile
     ortak, yani çubuktaki ay ile o aya girildiğindeki toplam ayrışamaz.
 
-    Boş aylar da dönüyor: "Temmuz'da hiç harcama yok" bir bilgidir, çubuğun
-    orada delik bırakması ise okunmaz bir grafik yapar.
+    **İki farklı "sıfır" var ve ayrımı önemli.** Veri geçmişinin İÇİNDEKİ boş
+    ay bir bilgidir ("Temmuz'da hiç harcama girilmemiş") ve çubuğu sıfır
+    yüksekliğinde çizilir. Ama evin ilk harcamasından ÖNCEKİ aylar hiç
+    dönmüyor: Ağustos'ta kurulan bir eve "Mart 0 €" yazmak, o ay hiç
+    harcamadığını söylemek olur — oysa o ay ortada yoktun. Ekran da başlığı
+    buna göre düzeltiyor ("Son 3 Ay").
     """
+    ilk = await db.expenses.find(
+        {"household_id": household_id, "expense_date": {"$ne": None}},
+        {"_id": 0, "expense_date": 1},
+    ).sort("expense_date", 1).limit(1).to_list(1)
+    alt_sinir = ilk[0]["expense_date"][:7] if ilk and ilk[0].get("expense_date") else None
+
     aylar = []
     y, m = int(son_ay[:4]), int(son_ay[5:7])
     for _ in range(adet):
-        aylar.append(f"{y:04d}-{m:02d}")
+        ay = f"{y:04d}-{m:02d}"
+        if alt_sinir and ay < alt_sinir:
+            break
+        aylar.append(ay)
         m -= 1
         if m == 0:
             y, m = y - 1, 12
     aylar.reverse()
+    if not aylar:
+        return []
 
     lo, _ = _month_bounds(aylar[0])
     _, hi = _month_bounds(aylar[-1])
