@@ -27,7 +27,8 @@ import { useHousehold } from "@/src/household";
 import {
   ScreenHeader, Sheet, Card, Row, Divider, Avatar, Money, CategoryIcon,
   categoryLabel, MerchantBadge, Donut, TabSwitch, BottomSheet,
-  formatEUR, formatEURShort, formatQty, useScrollPad, useGeriDon, useBasaSar,
+  formatEUR, formatEURShort, formatQty, AylikCubuk,
+  useScrollPad, useGeriDon, useBasaSar,
 } from "@/src/ui";
 import {
   colors, spacing, radius, type as T, overline, fontFamily, metrics, CATEGORY_ICONS,
@@ -116,76 +117,6 @@ function Curve({ now, prev, height = 132 }: {
         {now.length}
       </SvgText>
     </Svg>
-  );
-}
-
-/**
- * Aylık çubuk — "Son 6 Ay".
- *
- * ### Neden her çubuğun üstünde sayı var
- *
- * Çıplak çubuk yalnızca sıralama söyler; ekranda görünen her sayının
- * doğrulanabilir olması uygulamanın kuralı. Kısaltılmış biçim (`1,2b`)
- * kullanılıyor çünkü altı sütun dar telefonda sütun başına ~45 piksel
- * bırakıyor ve tam tutar oraya sığmıyor.
- *
- * ### Neden bu ay koyu
- *
- * Karşılaştırmanın öznesi o. Renk yerine yükseklikle ayırmak olmazdı —
- * kısa bir ay en alçak çubuk olur ve gözden kaçar.
- *
- * ### Ortalama çizgisi
- *
- * Tek başına "474 €" bir sayıdır; çubukların arasından geçen bir çizgi ise
- * "bu ay ortalamanın altındayız" cümlesini kurdurur. Rakam altta yazılı.
- *
- * ### Çubuğa dokunmak
- *
- * Sayfayı o aya götürüyor. Yeni bir ekran değil, zaten var olan ay
- * seçicisinin daha hızlı hâli — kademeli açılım kuralı.
- */
-function AylikCubuk({
-  aylar, buAy, onSec,
-}: {
-  aylar: { month: string; total: number }[];
-  buAy: string;
-  onSec: (m: string) => void;
-}) {
-  const enYuksek = Math.max(...aylar.map((a) => a.total), 0.01);
-  const ortalama = aylar.reduce((s, a) => s + a.total, 0) / Math.max(aylar.length, 1);
-  const TAVAN = 64;
-  return (
-    <>
-      <View style={styles.cubukSatir}>
-        {/* Ortalama çizgisi çubukların ARKASINDAN geçiyor: önlerinden geçse
-            kısa çubukları ikiye böler ve okunmaz olur. */}
-        <View pointerEvents="none"
-              style={[styles.ortCizgi, { bottom: (ortalama / enYuksek) * TAVAN }]} />
-        {aylar.map((a) => {
-          const bu = a.month === buAy;
-          return (
-            <Pressable key={a.month} style={styles.cubukKap} onPress={() => onSec(a.month)}
-                       testID={`cubuk-${a.month}`}>
-              <Text style={[styles.cubukTutar, bu && styles.cubukTutarBu]} numberOfLines={1}>
-                {formatEURShort(a.total)}
-              </Text>
-              <View style={[styles.cubuk, {
-                height: Math.max((a.total / enYuksek) * TAVAN, 3),
-                backgroundColor: bu ? colors.ink : colors.borderStrong,
-              }]} />
-              <Text style={[styles.cubukAy, bu && styles.cubukAyBu]}>
-                {AYLAR[parseInt(a.month.slice(5, 7), 10)]?.slice(0, 3)}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
-      <Divider inset={0} />
-      <View style={styles.ortSatir}>
-        <Text style={styles.ortLabel}>{aylar.length} ay ortalaması</Text>
-        <Money value={ortalama} color={colors.ink} />
-      </View>
-    </>
   );
 }
 
@@ -359,7 +290,19 @@ export default function Istatistik() {
                     {data.categories.map((cat, i) => (
                       <View key={cat.key}>
                         <Divider inset={i === 0 ? 0 : spacing.lg} />
-                        <View style={styles.catRow}>
+                        {/* Satır kategorinin içine açılıyor: 6 aylık seyir,
+                            ne alındı, nereden. Halkanın dilimi yerine SATIR
+                            hedef, çünkü dilim ince bir yay ve başparmak için
+                            isabetsiz; satır zaten dilimin adı ve rengiyle
+                            eşleşiyor. */}
+                        <Pressable
+                          style={styles.catRow}
+                          onPress={() => router.push({
+                            pathname: "/(tabs)/kategori",
+                            params: { key: cat.key, ay: month, geri: "/(tabs)/istatistik" },
+                          })}
+                          testID={`kategori-${cat.key}`}
+                        >
                           {/* Once duz renkli bir noktaydi. Anasayfa ayni
                               kategorileri IKONLA gosteriyordu, yani uygulama
                               ayni sey icin iki dil konusuyordu. Ikon rengi
@@ -391,7 +334,9 @@ export default function Istatistik() {
                             </View>
                           ) : null}
                           <Money value={cat.total} style={styles.catValue} />
-                        </View>
+                          <Ionicons name="chevron-forward" size={14}
+                                    color={colors.onSurfaceTertiary} />
+                        </Pressable>
                       </View>
                     ))}
                   </Card>
@@ -665,29 +610,6 @@ const styles = StyleSheet.create({
   catValue: { minWidth: 74, textAlign: "right" },
   deltaTag: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: radius.sm },
   deltaTxt: { fontSize: 11, lineHeight: 15, fontFamily: fontFamily.medium },
-  /* Çubuklar: sabit yükseklikli bir şerit, altında ay adı.
-     `alignItems: flex-end` çubukları tabana oturtuyor; ortalama çizgisi de
-     aynı tabandan ölçülüyor. */
-  cubukSatir: {
-    flexDirection: "row", alignItems: "flex-end", gap: 5,
-    height: 100, position: "relative", marginBottom: spacing.md,
-  },
-  ortCizgi: {
-    position: "absolute", left: 0, right: 0, height: 1,
-    borderTopWidth: 1, borderTopColor: colors.borderStrong,
-    borderStyle: "dashed", opacity: 0.8,
-  },
-  cubukKap: { flex: 1, alignItems: "center" },
-  cubuk: { width: "100%", borderRadius: 3 },
-  cubukTutar: { ...T.caption, fontSize: 9, color: colors.inkTertiary, marginBottom: 3 },
-  cubukTutarBu: { color: colors.ink, fontFamily: fontFamily.semibold },
-  cubukAy: { ...T.caption, fontSize: 9, color: colors.inkTertiary, marginTop: 4 },
-  cubukAyBu: { color: colors.ink, fontFamily: fontFamily.semibold },
-  ortSatir: {
-    flexDirection: "row", alignItems: "center",
-    paddingTop: spacing.md, paddingHorizontal: 0,
-  },
-  ortLabel: { ...T.caption, color: colors.inkTertiary, flex: 1 },
   urunRow: {
     flexDirection: "row", alignItems: "center", gap: spacing.md,
     paddingHorizontal: spacing.lg, paddingVertical: spacing.md, minHeight: 46,
