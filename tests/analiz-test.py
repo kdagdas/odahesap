@@ -193,6 +193,38 @@ check("o kategoride tek market", len(k2["merchants"]) == 1, str(k2["merchants"])
 bos = c.get(f"{API}/stats/category?key=uydurma&month={AY}", headers=hdr(tok)).json()
 check("bilinmeyen kategori bos donuyor", abs(bos["total"]) < 0.01, str(bos["total"]))
 
+print("\n-- 3b. MARKET sayfasi --")
+# Marketler listesi NORMALIZE anahtar tasimali: "BIZIM FLEISCHER GMBH" ile
+# "BIZIM FLEISCHER" ayni market ve ham adla acilsaydi ikisi ayri sayfa olurdu.
+sm = c.get(f"{API}/stats/monthly?month={AY}", headers=hdr(tok)).json()
+lidl = [m for m in sm["merchants"] if "lidl" in m["key"]]
+check("marketler anahtar tasiyor", len(lidl) == 1, str(sm["merchants"]))
+check("gecen ay sutunu donuyor",
+      all("prev_total" in m for m in sm["merchants"]), str(sm["merchants"][:2]))
+
+mk = c.get(f"{API}/stats/merchant?name=lidl&month={AY}", headers=hdr(tok)).json()
+# LIDL'de iki fis var: 10,00 (sut+deterjan) ve 5,00 (tereyagi) = 15,00
+check("market toplami dogru", abs(mk["total"] - 15.0) < 0.01, str(mk["total"]))
+check("fis sayisi dogru", mk["expense_count"] == 2, str(mk["expense_count"]))
+# Ortalama fis: ayni markete 40 EUR birakmak ile dort kez 10 EUR birakmak
+# toplamda ayni, aliskanlikta degil.
+check("ortalama fis 7,50", abs(mk["avg_expense"] - 7.5) < 0.01, str(mk["avg_expense"]))
+check("kategoriler donuyor", len(mk["categories"]) >= 2, str(mk["categories"]))
+check("urunler donuyor", len(mk["products"]) >= 2, str([p["key"] for p in mk["products"]]))
+check("fisler yeniden eskiye",
+      [e["expense_date"] for e in mk["expenses"]]
+      == sorted((e["expense_date"] for e in mk["expenses"]), reverse=True),
+      str(mk["expenses"]))
+check("fis satirlari kalem sayisi tasiyor",
+      all("item_count" in e for e in mk["expenses"]), str(mk["expenses"][:1]))
+check("seri evin ilk ayindan baslıyor", len(mk["series"]) == 2, str(mk["series"]))
+# BASKA marketin fisi bu sayfaya SIZMAMALI.
+toplam_kalem = sum(e["item_count"] for e in mk["expenses"])
+check("baska market sizmadi", toplam_kalem == 3, str(mk["expenses"]))
+bos_mk = c.get(f"{API}/stats/merchant?name=yokboyle&month={AY}", headers=hdr(tok)).json()
+check("bilinmeyen market bos donuyor", bos_mk["expense_count"] == 0, str(bos_mk["total"]))
+
+
 print("\n-- 4. ZAMLANANLAR / UCUZLAYANLAR --")
 # Ayri bir ev: fiyat serileri temiz olsun.
 r = c.post(f"{API}/auth/register", json={

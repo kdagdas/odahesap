@@ -4294,8 +4294,17 @@ async def monthly_stats(
         "products": urunler[:8],
         "product_count": len(urunler),
         "categories": cat_rows,
+        # `key` NORMALİZE anahtar, `name` ekranda görünen ad. Market sayfası
+        # anahtarla açılıyor: "BIZIM FLEISCHER GMBH" ile "BIZIM FLEISCHER"
+        # aynı market ve ham adla açılsaydı ikisi ayrı sayfa olurdu.
+        #
+        # `prev_total` kategori kartındaki değişim diliyle aynı işi yapıyor:
+        # "markete geçen aydan çok mu gidiyoruz" sorusu, kategoriler için
+        # sorulan sorunun aynısı.
         "merchants": sorted(
-            [{"name": bd["merchant_names"].get(k, k), "total": round(v, 2)}
+            [{"key": k, "name": bd["merchant_names"].get(k, k),
+              "total": round(v, 2),
+              "prev_total": round(pbd["merchants"].get(k, 0.0), 2)}
              for k, v in bd["merchants"].items()],
             key=lambda x: -x["total"])[:8],
         # Senin toplam çıkışın: ev harcamalarındaki payın + kişisel harcaman.
@@ -4465,6 +4474,94 @@ async def price_moves(
     asagi.sort(key=lambda x: x["change_pct"])
     return {"month": month, "prev_month": onceki,
             "up": yukari, "down": asagi, "threshold": ESIK}
+
+
+@api.get("/stats/merchant")
+async def merchant_stats(
+    name: str,
+    month: Optional[str] = None,
+    scope: str = "household",
+    user=Depends(get_current_user),
+):
+    """Bir marketin içi: **ne kadar · kaç fiş · ortalama fiş · ne aldık.**
+
+    `name` NORMALİZE anahtar bekliyor (`normalize_merchant` çıktısı), ham ad
+    değil. Sebebi somut: "BIZIM FLEISCHER GMBH" ile "BIZIM FLEISCHER" aynı
+    market ve ham adla sorulsaydı ikisi ayrı sayfa açardı.
+
+    **Ortalama fiş** burada anlamlı bir sayı: aynı markete 40 € bırakmak,
+    dört kez 10 € bırakmakla aynı şey değil. Toplam ikisinde de aynı ama
+    alışkanlık farklı.
+    """
+    hh = await get_user_household(user["user_id"])
+    bos = {"name": name, "month": month, "total": 0, "expense_count": 0,
+           "avg_expense": 0, "series": [], "categories": [], "products": [],
+           "expenses": []}
+    if not hh:
+        return bos
+    month = month if (month and len(month) == 7) else month_key(now_utc().date())
+    uyeler = await period_participants(
+        hh["household_id"],
+        (await get_active_period(hh["household_id"]) or {}).get("period_id", ""),
+        hh["member_ids"],
+    )
+
+    def bu_market(exps: List[dict]) -> List[dict]:
+        out = []
+        for e in exps:
+            ham = (e.get("merchant") or "").strip()
+            if not ham:
+                continue
+            if (normalize_merchant(ham) or ham.casefold()) == name:
+                out.append(e)
+        return out
+
+    ilk = await db.expenses.find(
+        {"household_id": hh["household_id"], "expense_date": {"$ne": None}},
+        {"_id": 0, "expense_date": 1},
+    ).sort("expense_date", 1).limit(1).to_list(1)
+    alt_sinir = ilk[0]["expense_date"][:7] if ilk and ilk[0].get("expense_date") else None
+
+    aylar = []
+    y, m = int(month[:4]), int(month[5:7])
+    for _ in range(6):
+        a = f"{y:04d}-{m:02d}"
+        if alt_sinir and a < alt_sinir:
+            break
+        aylar.append(a)
+        m -= 1
+        if m == 0:
+            y, m = y - 1, 12
+    aylar.reverse()
+
+    seri, bu_ay = [], []
+    for a in aylar:
+        kayit = bu_market(
+            await _month_expenses(hh["household_id"], a, scope, user["user_id"], uyeler))
+        seri.append({"month": a, "total": round(sum(float(e["total"]) for e in kayit), 2)})
+        if a == month:
+            bu_ay = kayit
+
+    toplam = round(sum(float(e["total"]) for e in bu_ay), 2)
+    dokum = _breakdown(bu_ay)
+    return {
+        "name": name, "month": month, "scope": scope,
+        "total": toplam,
+        "expense_count": len(bu_ay),
+        # Ortalama fiş: aynı markete 40 € bırakmak ile dört kez 10 € bırakmak
+        # toplamda aynı, alışkanlıkta değil.
+        "avg_expense": round(toplam / len(bu_ay), 2) if bu_ay else 0,
+        "series": seri,
+        "categories": sorted(
+            [{"key": k, "total": round(v, 2)} for k, v in dokum["cats"].items()],
+            key=lambda x: -x["total"]),
+        "products": _urunler(bu_ay)[:12],
+        "expenses": sorted(
+            [{"expense_id": e["expense_id"], "total": round(float(e["total"]), 2),
+              "expense_date": _expense_day(e), "added_by": e["added_by"],
+              "item_count": len(e.get("items") or [])} for e in bu_ay],
+            key=lambda x: x["expense_date"], reverse=True),
+    }
 
 
 @api.get("/stats/category")

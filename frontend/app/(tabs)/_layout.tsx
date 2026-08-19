@@ -111,6 +111,7 @@ export default function TabsLayout() {
       <Tabs.Screen name="member-detail" options={{ href: null }} />
       <Tabs.Screen name="urunler" options={{ href: null }} />
       <Tabs.Screen name="kategori" options={{ href: null }} />
+      <Tabs.Screen name="market" options={{ href: null }} />
     </Tabs>
   );
 }

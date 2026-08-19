@@ -41,7 +41,7 @@ type Monthly = {
   my_share: number; my_personal: number;
   categories: { key: string; total: number; prev_total: number;
                 change_pct: number | null; is_new?: boolean }[];
-  merchants: { name: string; total: number }[];
+  merchants: { key: string; name: string; total: number; prev_total: number }[];
   by_member: { user_id: string; total: number }[];
   bills: { recurring_id: string; name: string; amount_fixed: boolean;
            total: number; prev_total: number; change_pct: number | null }[];
@@ -560,16 +560,45 @@ export default function Istatistik() {
                   </Card>
                 )}
 
+                {/* Marketler artık LİSTE, yığın değil: satır tıklanabilir
+                    olunca hedefin öngörülebilir yükseklikte olması gerekiyor
+                    ve geçen ay sütunu da hizalanacak bir yer istiyor.
+
+                    Geçen ay sütunu kategori kartındaki değişim rozetiyle aynı
+                    işi yapıyor — "buraya geçen aydan çok mu gidiyoruz" sorusu,
+                    kategoriler için sorulan sorunun aynısı. */}
                 {data.merchants.length > 0 && (
-                  <Card title="Marketler" style={styles.mx} padded>
-                    <View style={styles.merchWrap}>
-                      {data.merchants.map((mm) => (
-                        <View key={mm.name} style={styles.merchRow}>
-                          <MerchantBadge name={mm.name} />
-                          <Text style={styles.merchTotal}>{formatEUR(mm.total)}</Text>
-                        </View>
-                      ))}
-                    </View>
+                  <Card title="Marketler" style={styles.mx}>
+                    {data.merchants.map((mm, i) => (
+                      <View key={mm.key || mm.name}>
+                        {i > 0 && <Divider inset={spacing.lg} />}
+                        <Pressable
+                          style={styles.merchRow}
+                          onPress={() => router.push({
+                            pathname: "/(tabs)/market",
+                            params: { key: mm.key || mm.name, ad: mm.name, ay: month,
+                                      scope, geri: "/(tabs)/istatistik" },
+                          })}
+                          testID={`market-${mm.key || mm.name}`}
+                        >
+                          <View style={{ flex: 1, minWidth: 0 }}>
+                            <MerchantBadge name={mm.name} />
+                          </View>
+                          <View style={{ alignItems: "flex-end" }}>
+                            <Money value={mm.total} />
+                            {/* Geçen ay YALNIZCA varsa: sıfırla karşılaştırmak
+                                "%100 arttı" gibi anlamsız bir sayı üretir. */}
+                            {mm.prev_total > 0.005 && (
+                              <Text style={styles.merchPrev}>
+                                geçen ay {formatEURShort(mm.prev_total)}
+                              </Text>
+                            )}
+                          </View>
+                          <Ionicons name="chevron-forward" size={14}
+                                    color={colors.onSurfaceTertiary} />
+                        </Pressable>
+                      </View>
+                    ))}
                   </Card>
                 )}
               </>
@@ -699,7 +728,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg, paddingVertical: spacing.md, minHeight: 50,
   },
   catName: { ...T.body, color: colors.ink, flex: 1 },
-  merchWrap: { gap: spacing.sm },
-  merchRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  merchTotal: { ...T.bodySb, color: colors.ink },
+  merchRow: {
+    flexDirection: "row", alignItems: "center", gap: spacing.md,
+    paddingHorizontal: spacing.lg, paddingVertical: spacing.md, minHeight: 48,
+  },
+  merchPrev: { ...T.caption, fontSize: 10, color: colors.inkTertiary, marginTop: 1 },
 });
