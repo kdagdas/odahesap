@@ -4557,6 +4557,142 @@ async def search(q: str = "", user=Depends(get_current_user)):
     }
 
 
+def _urun_anahtari(item: dict) -> Optional[str]:
+    """Bir fiş kaleminin ürün anahtarı — `_urunler()` ile birebir aynı kural.
+
+    Genel ad önce (`generic`), yoksa ham ad. Üç yerde tekrarlanıyordu; ayrışsa
+    arama sonucu ile ürün sayfası farklı ürünleri "aynı" sayardı.
+    """
+    genel = (item.get("generic") or "").strip()
+    return product_key(genel) if genel else product_key((item.get("name") or "").strip())
+
+
+@api.get("/stats/product")
+async def product_detail(key: str, user=Depends(get_current_user)):
+    """Tek bir ürünün BÜTÜN geçmişi — aramanın varış yeri.
+
+    Bugün ürünlerin gideceği bir yer yok: "Tüm Ürünler" sayfasındaki satırlar
+    dokunulamıyor ve her ekran tek aya bakıyor. Oysa ürün hakkında insanın
+    sorduğu üç soru da zamanın içinde: **ne zaman aldık · nereden aldık ·
+    kaça.**
+
+    Aylar listesi BOŞ ayları da taşıyor. "Nisan'da hiç almadık" bir bilgi;
+    yalnızca dolu ayları göndermek çubukları yan yana dizip aralarındaki
+    boşluğu siler ve düzenli alınan bir ürünle iki kez alınan ürün aynı
+    görünür.
+
+    Birim fiyat MEDYAN: bir kampanyalı alışveriş ortalamayı aşağı çekip
+    "ucuzladı" dedirtiyor. Birimler karışıksa (kg + paket) hiç
+    gösterilmiyor — 2 kg un ile 3 paket unu toplayan sayı hiçbir şey demek
+    değil.
+    """
+    hh = await get_user_household(user["user_id"])
+    if not hh or not key:
+        return {"key": key, "name": None, "months": [], "merchants": []}
+
+    exps = await db.expenses.find(
+        {"household_id": hh["household_id"], **_visible_filter(user["user_id"])},
+        {"_id": 0},
+    ).sort("expense_date", -1).to_list(3000)
+
+    ad, toplam, adet, miktar = None, 0.0, 0, 0.0
+    birimler: Dict[str, int] = {}
+    aylar: Dict[str, dict] = {}
+    marketler: Dict[str, dict] = {}
+    # Birim fiyatlar PAKET SINIFINA göre ayrı kovalarda. Açık (kilo fiyatı)
+    # ile paketliyi aynı seride toplamak "fiyat iki katına çıktı" gibi yalan
+    # üretir — değişen fiyat değil ambalajdır. `adet` sınıfı hiç alınmıyor:
+    # boyutu bilinmeyen sayılabilir ürün, iki farklı boy karpuzu
+    # karşılaştırılabilir sanıyordu (Tur 11'de fiyat kartından da çıkarıldı).
+    birim_fiyatlar: Dict[str, List[float]] = {}
+    genel_gorulmus = False
+
+    for e in exps:
+        items = e.get("items") or []
+        if not items:
+            continue
+        gun = _expense_day(e) or ""
+        ay = gun[:7]
+        item_sum = sum(float(i.get("price", 0)) * float(i.get("quantity", 1) or 1) for i in items)
+        fis_toplam = float(e["total"])
+        ham_market = (e.get("merchant") or "Diğer").strip() or "Diğer"
+        mkey = normalize_merchant(ham_market) or ham_market.casefold()
+
+        for i in items:
+            if _urun_anahtari(i) != key:
+                continue
+            satir = float(i.get("price", 0)) * float(i.get("quantity", 1) or 1)
+            tutar = satir / item_sum * fis_toplam if item_sum else satir
+            genel = (i.get("generic") or "").strip()
+            ham = (i.get("name") or "").strip()
+            # Gösterilecek ad: genel ad varsa o, yoksa ham adların en kısası —
+            # `_urunler()` ile aynı kural.
+            if genel:
+                ad, genel_gorulmus = genel, True
+            elif not genel_gorulmus and (ad is None or len(ham) < len(ad)):
+                ad = ham
+
+            toplam += tutar
+            adet += 1
+            mik = float(i.get("quantity", 1) or 1)
+            miktar += mik
+            birim = (i.get("unit") or "adet").strip() or "adet"
+            birimler[birim] = birimler.get(birim, 0) + 1
+
+            a = aylar.setdefault(ay, {"month": ay, "total": 0.0, "qty": 0.0, "count": 0})
+            a["total"] += tutar; a["qty"] += mik; a["count"] += 1
+
+            m = marketler.setdefault(mkey, {"key": mkey, "name": ham_market,
+                                            "total": 0.0, "qty": 0.0, "count": 0})
+            if len(ham_market) < len(m["name"]):
+                m["name"] = ham_market
+            m["total"] += tutar; m["qty"] += mik; m["count"] += 1
+
+            p = price_of_item(i)
+            if p and p.get("unit_price") and p.get("price_unit") in ("kg", "lt"):
+                birim_fiyatlar.setdefault(p["price_unit"], []).append(float(p["unit_price"]))
+
+    if not aylar:
+        return {"key": key, "name": None, "months": [], "merchants": []}
+
+    # Aradaki BOŞ aylar da dolduruluyor (yukarıdaki gerekçe).
+    ilk, son = min(aylar), max(aylar)
+    dizi, imleç = [], date.fromisoformat(ilk + "-01")
+    bitis = date.fromisoformat(son + "-01")
+    while imleç <= bitis:
+        k = imleç.strftime("%Y-%m")
+        v = aylar.get(k)
+        dizi.append({"month": k,
+                     "total": round(v["total"], 2) if v else 0.0,
+                     "qty": round(v["qty"], 2) if v else 0.0,
+                     "count": v["count"] if v else 0})
+        imleç = (imleç.replace(day=28) + timedelta(days=8)).replace(day=1)
+
+    karisik = len(birimler) > 1
+    baskin = max(birimler, key=birimler.get) if birimler else None
+    return {
+        "key": key,
+        "name": (ad[:1].upper() + ad[1:]) if ad else "?",
+        "total": round(toplam, 2),
+        "count": adet,
+        "qty": None if karisik else round(miktar, 2),
+        "unit": None if karisik else baskin,
+        # Yalnızca TEK bir fiyat birimi varsa gösteriliyor. Bir ürün hem kilo
+        # hem litre olarak alındıysa (nadir ama mümkün) hangisini yazacağımız
+        # belirsiz; uydurmak yerine satır hiç çizilmiyor.
+        "unit_price": (round(_medyan(next(iter(birim_fiyatlar.values()))), 2)
+                       if len(birim_fiyatlar) == 1 else None),
+        "price_unit": next(iter(birim_fiyatlar)) if len(birim_fiyatlar) == 1 else None,
+        "first_month": ilk,
+        "last_month": son,
+        "months": dizi,
+        "merchants": sorted(
+            [{**m, "total": round(m["total"], 2), "qty": round(m["qty"], 2)}
+             for m in marketler.values()],
+            key=lambda x: -x["total"]),
+    }
+
+
 def _medyan(sayilar: List[float]) -> float:
     """Ortanca. Ortalama DEĞİL, ve fark burada kritik.
 

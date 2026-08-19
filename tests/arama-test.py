@@ -165,6 +165,47 @@ if ag_sut:
     check("Agustos tutari 1,19", abs(ag_sut["total"] - 1.19) < 0.01, str(ag_sut))
 
 print()
+print("== URUN SAYFASI: butun gecmis tek yerde ==")
+d = c.get(f"{API}/stats/product", headers=hdr(alice), params={"key": sut["key"]}).json()
+check("ad Sut", (d.get("name") or "").lower() == "süt", str(d.get("name")))
+check("toplam arama ile ayni", abs(d["total"] - sut["total"]) < 0.01,
+      f'{d["total"]} vs {sut["total"]}')
+check("alis sayisi ayni", d["count"] == sut["count"], str(d["count"]))
+check("miktar 6 lt", abs((d.get("qty") or 0) - 6) < 0.01, str(d.get("qty")))
+
+# Mart, Nisan, Mayis, Haziran, Temmuz, Agustos = 6 ay. ARADAKI BOS AYLAR DA
+# geliyor: "Nisan'da hic almadik" bir bilgi ve cubuk grafigi ancak boyle
+# dogru okunuyor.
+aylar = d["months"]
+check("alti ay geliyor", len(aylar) == 6, str([a["month"] for a in aylar]))
+check("ilk ay Mart", aylar[0]["month"] == "2026-03", str(aylar[0]))
+check("son ay Agustos", aylar[-1]["month"] == "2026-08", str(aylar[-1]))
+nisan = next(a for a in aylar if a["month"] == "2026-04")
+check("bos ay sifir olarak var", nisan["total"] == 0 and nisan["count"] == 0, str(nisan))
+check("aylarin toplami urunun toplami",
+      abs(sum(a["total"] for a in aylar) - d["total"]) < 0.02,
+      str(sum(a["total"] for a in aylar)))
+
+check("iki market", len(d["merchants"]) == 2, str(d["merchants"]))
+check("marketler tutara gore sirali",
+      d["merchants"][0]["total"] >= d["merchants"][1]["total"], str(d["merchants"]))
+check("market toplamlari urunun toplami",
+      abs(sum(m["total"] for m in d["merchants"]) - d["total"]) < 0.02, str(d["merchants"]))
+# Sut litre cinsinden alindi; birim fiyat medyan olarak geliyor.
+check("litre fiyati geliyor", d.get("price_unit") == "lt" and d.get("unit_price"),
+      str((d.get("unit_price"), d.get("price_unit"))))
+
+print()
+print("== bilinmeyen urun BOS doner ==")
+d = c.get(f"{API}/stats/product", headers=hdr(alice), params={"key": "boyle-bir-urun-yok"}).json()
+check("bos ama patlamiyor", d["months"] == [] and d["name"] is None, str(d))
+
+print()
+print("== baskasinin kisisel urunu acilamiyor ==")
+d = c.get(f"{API}/stats/product", headers=hdr(alice), params={"key": "mantar"}).json()
+check("Alice mantar sayfasini goremiyor", d["months"] == [], str(d))
+
+print()
 print("== temizlik ==")
 for t in (alice, bob, carol):
     c.post(f"{API}/households/leave", headers=hdr(t))
