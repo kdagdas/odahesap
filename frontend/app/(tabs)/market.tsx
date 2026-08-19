@@ -23,10 +23,11 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
 import { apiGet } from "@/src/api";
+import { useAuth } from "@/src/auth";
 import { useHousehold } from "@/src/household";
 import {
   ScreenHeader, HeaderSplit, HeaderPills, HeaderPill, Sheet, Card, Divider, Money,
-  Avatar, CategoryIcon, categoryLabel, MerchantBadge, AylikCubuk,
+  Avatar, CategoryIcon, AylikCubuk,
   formatEUR, formatQty, formatDateTR, ayAdi, buAy, sonAylar,
   useScrollPad, useGeriDon, useBasaSar, yenileme,
 } from "@/src/ui";
@@ -45,6 +46,7 @@ type Market = {
   expenses: {
     expense_id: string; total: number; expense_date: string;
     added_by: string; item_count: number;
+    items: { name: string; price: number; quantity?: number; category: string }[];
   }[];
 };
 
@@ -57,6 +59,7 @@ export default function MarketDetay() {
   useBasaSar(scrollRef);
   const router = useRouter();
   const geriDon = useGeriDon("/(tabs)/istatistik");
+  const { user } = useAuth();
   const { household, members } = useHousehold();
   const params = useLocalSearchParams<{
     key?: string; ad?: string; ay?: string; scope?: string;
@@ -70,6 +73,9 @@ export default function MarketDetay() {
   const [veri, setVeri] = useState<Market | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  /** Açık fiş — aynı anda tek tane. İki fiş birden açık olsa liste
+   *  kaybolur ve "hangi kalem hangi fişin" sorusu doğar. */
+  const [acikFis, setAcikFis] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -147,26 +153,6 @@ export default function MarketDetay() {
                   </Card>
                 )}
 
-                {/* Hangi kategoriler: aynı markete gidip her seferinde başka
-                    şey almak ile hep aynı reyondan almak farklı alışkanlıklar
-                    ve toplam ikisini de aynı gösteriyor. */}
-                {veri.categories.length > 0 && (
-                  <Card title="Ne Reyonu" style={styles.mx}>
-                    {veri.categories.map((k, i) => (
-                      <View key={k.key}>
-                        {i > 0 && <Divider inset={spacing.lg} />}
-                        <View style={styles.satir}>
-                          <CategoryIcon category={k.key} size={30} />
-                          <Text style={styles.ad} numberOfLines={1}>
-                            {categoryLabel(k.key)}
-                          </Text>
-                          <Money value={k.total} />
-                        </View>
-                      </View>
-                    ))}
-                  </Card>
-                )}
-
                 {veri.products.length > 0 && (
                   <Card title="Ne Alındı" style={styles.mx}>
                     {veri.products.map((u, i) => (
@@ -194,10 +180,7 @@ export default function MarketDetay() {
                         {i > 0 && <Divider inset={spacing.lg} />}
                         <Pressable
                           style={styles.satir}
-                          onPress={() => router.push({
-                            pathname: "/expense-edit",
-                            params: { expenseId: e.expense_id },
-                          })}
+                          onPress={() => setAcikFis(acikFis === e.expense_id ? null : e.expense_id)}
                           testID={`market-fis-${e.expense_id}`}
                         >
                           <Avatar name={kim(e.added_by)} size={28}
@@ -214,9 +197,42 @@ export default function MarketDetay() {
                             </Text>
                           </View>
                           <Money value={e.total} />
-                          <Ionicons name="chevron-forward" size={14}
-                                    color={colors.onSurfaceTertiary} />
+                          <Ionicons name={acikFis === e.expense_id ? "chevron-down" : "chevron-forward"}
+                                    size={14} color={colors.onSurfaceTertiary} />
                         </Pressable>
+                        {/* Fiş YERİNDE açılıyor, düzenleme ekranına gitmiyor.
+                            Önce `expense-edit`'e gidiyordu ve bir fişe BAKMAK
+                            isteyen kişiyi düzenleme formunun içine
+                            düşürüyordu — üstelik başkasının fişinde
+                            yapılamayacak bir işi teklif ediyordu.
+
+                            Kademeli açılım: market → fiş → kalemler, hepsi
+                            aynı sayfada. Düzenleme yalnızca SAHİBİNE ve ayrı
+                            bir satır olarak. */}
+                        {acikFis === e.expense_id && (
+                          <View style={styles.kalemler}>
+                            {(e.items || []).map((it, ii) => (
+                              <View key={ii} style={styles.kalemRow}>
+                                <CategoryIcon category={it.category} size={26} />
+                                <Text style={styles.kalemAd} numberOfLines={1}>{it.name}</Text>
+                                <Text style={styles.kalemFiyat}>
+                                  {formatEUR((it.quantity || 1) * it.price)}
+                                </Text>
+                              </View>
+                            ))}
+                            {e.added_by === user?.user_id && (
+                              <Pressable style={styles.duzenle}
+                                         onPress={() => router.push({
+                                           pathname: "/expense-edit",
+                                           params: { expenseId: e.expense_id },
+                                         })}
+                                         testID={`market-duzenle-${e.expense_id}`}>
+                                <Ionicons name="create-outline" size={14} color={colors.accentDark} />
+                                <Text style={styles.duzenleTxt}>Düzenle</Text>
+                              </Pressable>
+                            )}
+                          </View>
+                        )}
                       </View>
                     ))}
                   </Card>
@@ -249,4 +265,15 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xxxl, paddingHorizontal: spacing.xl,
   },
   emptyTitle: { ...T.emph, color: colors.ink, textAlign: "center" },
+  kalemler: {
+    backgroundColor: colors.surfaceAlt, paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md, gap: spacing.md,
+  },
+  kalemRow: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  kalemAd: { ...T.body, color: colors.ink, flex: 1 },
+  kalemFiyat: { ...T.bodySb, color: colors.ink, fontVariant: ["tabular-nums"] },
+  duzenle: {
+    flexDirection: "row", alignItems: "center", gap: 5, alignSelf: "flex-start",
+  },
+  duzenleTxt: { ...T.captionSb, color: colors.accentDark },
 });

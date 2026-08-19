@@ -4556,10 +4556,14 @@ async def merchant_stats(
             [{"key": k, "total": round(v, 2)} for k, v in dokum["cats"].items()],
             key=lambda x: -x["total"]),
         "products": _urunler(bu_ay)[:12],
+        # Kalemler de geliyor: fiş market sayfasında YERİNDE açılıyor, ayrı
+        # bir istek atmıyor. Bir ayda tek markette az sayıda fiş oluyor, yük
+        # ihmal edilebilir.
         "expenses": sorted(
             [{"expense_id": e["expense_id"], "total": round(float(e["total"]), 2),
               "expense_date": _expense_day(e), "added_by": e["added_by"],
-              "item_count": len(e.get("items") or [])} for e in bu_ay],
+              "item_count": len(e.get("items") or []),
+              "items": e.get("items") or []} for e in bu_ay],
             key=lambda x: x["expense_date"], reverse=True),
     }
 

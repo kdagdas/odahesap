@@ -294,6 +294,82 @@ export default function Istatistik() {
               </View>
             ) : (
               <>
+                {/* ZAMLANANLAR / UCUZLAYANLAR — evin KENDİ sepetinin enflasyonu.
+                    Resmî enflasyon herkesin sepetidir; bu sizinki. Rakiplerin
+                    hiçbirinde yok çünkü hiçbiri fişi kalem kalem okumuyor.
+
+                    Ucuzlayanlar da listede: yalnızca zam göstermek insanı her
+                    ay kötü haberle karşılar ve bir süre sonra kimse bakmaz.
+
+                    Veri yoksa kart hiç çizilmiyor — bu ev üç farklı marketten
+                    çoğunlukla market markası alıyor, kart aylarca boş
+                    kalabilir ve bu sorun değil. */}
+                {(fiyat?.up.length || fiyat?.down.length) ? (
+                  <Card title="Fiyat Hareketleri" style={styles.mx}>
+                    {[...(fiyat.up || []), ...(fiyat.down || [])].map((f, i) => (
+                      <View key={`${f.merchant}-${f.key}-${f.pack_type}`}>
+                        {i > 0 && <Divider inset={spacing.lg} />}
+                        <View style={styles.fiyatRow}>
+                          <View style={{ flex: 1, minWidth: 0 }}>
+                            <Text style={styles.fiyatAd} numberOfLines={1}>{f.name}</Text>
+                            {/* Market YAZILI: karşılaştırma aynı market içinde
+                                yapıldığı için hangisi olduğu bilginin parçası. */}
+                            <Text style={styles.fiyatAlt} numberOfLines={1}>
+                              {f.merchant.toLocaleUpperCase("tr")} · {formatEUR(f.prev)} → {formatEUR(f.now)}
+                              {f.unit !== "adet" ? `/${f.unit}` : ""}
+                            </Text>
+                          </View>
+                          <View style={[styles.fiyatTag, {
+                            backgroundColor: f.change_pct > 0 ? colors.negativeSoft : colors.accentSoft,
+                          }]}>
+                            <Text style={[styles.fiyatTagTxt, {
+                              color: f.change_pct > 0 ? colors.negative : colors.accentDark,
+                            }]}>
+                              {f.change_pct > 0 ? "↑" : "↓"} %{Math.abs(f.change_pct)}
+                            </Text>
+                          </View>
+                        </View>
+                      </View>
+                    ))}
+                  </Card>
+                ) : null}
+
+                {/* SON 6 AY — tek bakışta genel gidiş.
+                    Çubuk sayısı = VERİ OLAN ay sayısı. Evin ilk harcamasından
+                    önceki aylar sunucudan hiç gelmiyor: "o ay hiç harcamadın"
+                    ile "o ay yoktun" farklı şeyler ve ikincisini sıfır çubukla
+                    çizmek yalan olur.
+
+                    İKİDEN AZ ayda kart hiç çizilmiyor — bir çubuğun
+                    karşılaştıracağı bir şey yok ve o ayın rakamı zaten
+                    başlıkta duruyor. Anasayfa'daki trend satırının kuralının
+                    aynısı: karşılaştırılacak geçmiş yoksa çizme, dolgu
+                    metniyle doldurma. */}
+                {(data.son_aylar || []).length >= 2 && (
+                  <Card title={`Son ${data.son_aylar.length} Ay`} style={styles.mx} padded>
+                    <AylikCubuk aylar={data.son_aylar} buAy={data.month}
+                                onSec={(m) => setMonth(m)} />
+                  </Card>
+                )}
+
+                <Card title="Ay Boyunca" style={styles.mx} padded>
+                  <Curve now={data.cumulative} prev={data.prev_cumulative} />
+                  <View style={styles.curveLegend}>
+                    <View style={styles.legendItem}>
+                      <View style={[styles.legendLine, { backgroundColor: colors.ink }]} />
+                      <Text style={styles.legendLabel}>bu ay {formatEURShort(data.total)}</Text>
+                    </View>
+                    {data.prev_total > 0 && (
+                      <View style={styles.legendItem}>
+                        <View style={[styles.legendLine, styles.legendDashed]} />
+                        <Text style={styles.legendLabel}>
+                          geçen ay {formatEURShort(data.prev_total)}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                </Card>
+
                 {/* Halka ve kategori dokumu TEK kartta. Listedeki renk noktasi
                     halkanin dilimiyle eslesiyor, yani liste ayni zamanda
                     aciklama gorevi goruyor -- ayri bir legend satirina gerek
@@ -365,42 +441,6 @@ export default function Istatistik() {
                         </Pressable>
                       </View>
                     ))}
-                  </Card>
-                )}
-
-                <Card title="Ay Boyunca" style={styles.mx} padded>
-                  <Curve now={data.cumulative} prev={data.prev_cumulative} />
-                  <View style={styles.curveLegend}>
-                    <View style={styles.legendItem}>
-                      <View style={[styles.legendLine, { backgroundColor: colors.ink }]} />
-                      <Text style={styles.legendLabel}>bu ay {formatEURShort(data.total)}</Text>
-                    </View>
-                    {data.prev_total > 0 && (
-                      <View style={styles.legendItem}>
-                        <View style={[styles.legendLine, styles.legendDashed]} />
-                        <Text style={styles.legendLabel}>
-                          geçen ay {formatEURShort(data.prev_total)}
-                        </Text>
-                      </View>
-                    )}
-                  </View>
-                </Card>
-
-                {/* SON 6 AY — tek bakışta genel gidiş.
-                    Çubuk sayısı = VERİ OLAN ay sayısı. Evin ilk harcamasından
-                    önceki aylar sunucudan hiç gelmiyor: "o ay hiç harcamadın"
-                    ile "o ay yoktun" farklı şeyler ve ikincisini sıfır çubukla
-                    çizmek yalan olur.
-
-                    İKİDEN AZ ayda kart hiç çizilmiyor — bir çubuğun
-                    karşılaştıracağı bir şey yok ve o ayın rakamı zaten
-                    başlıkta duruyor. Anasayfa'daki trend satırının kuralının
-                    aynısı: karşılaştırılacak geçmiş yoksa çizme, dolgu
-                    metniyle doldurma. */}
-                {(data.son_aylar || []).length >= 2 && (
-                  <Card title={`Son ${data.son_aylar.length} Ay`} style={styles.mx} padded>
-                    <AylikCubuk aylar={data.son_aylar} buAy={data.month}
-                                onSec={(m) => setMonth(m)} />
                   </Card>
                 )}
 
@@ -479,93 +519,6 @@ export default function Istatistik() {
                   </Card>
                 )}
 
-                {/* Senin toplam cikisin: ev payin + kisiselin. Oran degil
-                    toplam -- "kisiselin evin yuzde 35'i" garip bir sayi,
-                    "bu ay toplam su kadar harcadin" gercek bir soruya cevap. */}
-                {scope === "household" && (
-                  <Card title="Senin Katkın" style={styles.mx} padded>
-                    <View style={styles.outRow}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.legendLabel}>Ev payın</Text>
-                        <Text style={styles.outValue}>{formatEUR(data.my_share)}</Text>
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.legendLabel}>Kişisel</Text>
-                        <Text style={styles.outValue}>{formatEUR(data.my_personal)}</Text>
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.legendLabel}>Toplam</Text>
-                        {/* Nötr, yeşil DEĞİL. Yeşil bu uygulamada tek bir şey
-                            demek: alacak. Senin toplam çıkışın bir alacak
-                            değil, harcadığın para. Renk anlamını bir yerde
-                            kaybederse her yerde kaybeder. */}
-                        <Text style={styles.outValue}>
-                          {formatEUR(data.my_share + data.my_personal)}
-                        </Text>
-                      </View>
-                    </View>
-                  </Card>
-                )}
-
-                {/* ZAMLANANLAR / UCUZLAYANLAR — evin KENDİ sepetinin enflasyonu.
-                    Resmî enflasyon herkesin sepetidir; bu sizinki. Rakiplerin
-                    hiçbirinde yok çünkü hiçbiri fişi kalem kalem okumuyor.
-
-                    Ucuzlayanlar da listede: yalnızca zam göstermek insanı her
-                    ay kötü haberle karşılar ve bir süre sonra kimse bakmaz.
-
-                    Veri yoksa kart hiç çizilmiyor — bu ev üç farklı marketten
-                    çoğunlukla market markası alıyor, kart aylarca boş
-                    kalabilir ve bu sorun değil. */}
-                {(fiyat?.up.length || fiyat?.down.length) ? (
-                  <Card title="Fiyat Hareketleri" style={styles.mx}>
-                    {[...(fiyat.up || []), ...(fiyat.down || [])].map((f, i) => (
-                      <View key={`${f.merchant}-${f.key}-${f.pack_type}`}>
-                        {i > 0 && <Divider inset={spacing.lg} />}
-                        <View style={styles.fiyatRow}>
-                          <View style={{ flex: 1, minWidth: 0 }}>
-                            <Text style={styles.fiyatAd} numberOfLines={1}>{f.name}</Text>
-                            {/* Market YAZILI: karşılaştırma aynı market içinde
-                                yapıldığı için hangisi olduğu bilginin parçası. */}
-                            <Text style={styles.fiyatAlt} numberOfLines={1}>
-                              {f.merchant.toLocaleUpperCase("tr")} · {formatEUR(f.prev)} → {formatEUR(f.now)}
-                              {f.unit !== "adet" ? `/${f.unit}` : ""}
-                            </Text>
-                          </View>
-                          <View style={[styles.fiyatTag, {
-                            backgroundColor: f.change_pct > 0 ? colors.negativeSoft : colors.accentSoft,
-                          }]}>
-                            <Text style={[styles.fiyatTagTxt, {
-                              color: f.change_pct > 0 ? colors.negative : colors.accentDark,
-                            }]}>
-                              {f.change_pct > 0 ? "↑" : "↓"} %{Math.abs(f.change_pct)}
-                            </Text>
-                          </View>
-                        </View>
-                      </View>
-                    ))}
-                  </Card>
-                ) : null}
-
-                {scope === "household" && data.by_member.length > 0 && (
-                  <Card title="Kim Ne Kadar Ödedi" style={styles.mx}>
-                    {data.by_member.map((bm, i) => {
-                      const m = member(bm.user_id);
-                      return (
-                        <View key={bm.user_id}>
-                          {i > 0 && <Divider />}
-                          <Row
-                            leading={<Avatar name={m?.name} avatarId={(m as any)?.avatar_id}
-                                             userId={m?.user_id} photoVersion={(m as any)?.photo_version} />}
-                            title={m?.user_id === user?.user_id ? `${m?.name} (sen)` : (m?.name || "—")}
-                            right={<Money value={bm.total} />}
-                          />
-                        </View>
-                      );
-                    })}
-                  </Card>
-                )}
-
                 {/* Marketler artık LİSTE, yığın değil: satır tıklanabilir
                     olunca hedefin öngörülebilir yükseklikte olması gerekiyor
                     ve geçen ay sütunu da hizalanacak bir yer istiyor.
@@ -607,6 +560,54 @@ export default function Istatistik() {
                     ))}
                   </Card>
                 )}
+
+                {/* Senin toplam cikisin: ev payin + kisiselin. Oran degil
+                    toplam -- "kisiselin evin yuzde 35'i" garip bir sayi,
+                    "bu ay toplam su kadar harcadin" gercek bir soruya cevap. */}
+                {scope === "household" && (
+                  <Card title="Senin Katkın" style={styles.mx} padded>
+                    <View style={styles.outRow}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.legendLabel}>Ev payın</Text>
+                        <Text style={styles.outValue}>{formatEUR(data.my_share)}</Text>
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.legendLabel}>Kişisel</Text>
+                        <Text style={styles.outValue}>{formatEUR(data.my_personal)}</Text>
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.legendLabel}>Toplam</Text>
+                        {/* Nötr, yeşil DEĞİL. Yeşil bu uygulamada tek bir şey
+                            demek: alacak. Senin toplam çıkışın bir alacak
+                            değil, harcadığın para. Renk anlamını bir yerde
+                            kaybederse her yerde kaybeder. */}
+                        <Text style={styles.outValue}>
+                          {formatEUR(data.my_share + data.my_personal)}
+                        </Text>
+                      </View>
+                    </View>
+                  </Card>
+                )}
+
+                {scope === "household" && data.by_member.length > 0 && (
+                  <Card title="Kim Ne Kadar Ödedi" style={styles.mx}>
+                    {data.by_member.map((bm, i) => {
+                      const m = member(bm.user_id);
+                      return (
+                        <View key={bm.user_id}>
+                          {i > 0 && <Divider />}
+                          <Row
+                            leading={<Avatar name={m?.name} avatarId={(m as any)?.avatar_id}
+                                             userId={m?.user_id} photoVersion={(m as any)?.photo_version} />}
+                            title={m?.user_id === user?.user_id ? `${m?.name} (sen)` : (m?.name || "—")}
+                            right={<Money value={bm.total} />}
+                          />
+                        </View>
+                      );
+                    })}
+                  </Card>
+                )}
+
               </>
             )}
           </View>
