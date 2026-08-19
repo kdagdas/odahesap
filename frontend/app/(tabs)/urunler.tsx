@@ -39,11 +39,16 @@ type Urun = {
 /** "14 lt · 3 markette" — miktar yalnızca birim tekse.
  *  2 kg un ile 3 paket unu toplamak anlamsız bir sayı üretir; sunucu karışık
  *  birimde `qty`'yi zaten `null` gönderiyor. */
+/** "16,18 kg · 3 markette" — ama **market sayısı yalnızca BİRDEN ÇOKSA.**
+ *
+ *  "Tek markette" beklenen durum; her satırda yazınca kart yazı yığınına
+ *  dönüyordu. Bilgi olan şey aynı ürünü birkaç yerden almış olmak — o da
+ *  istisna, yani yazılmayı hak eden taraf o. */
 const altSatir = (u: Urun) => {
   const p: string[] = [];
   if (u.qty != null && u.unit) p.push(formatQty(u.qty, u.unit));
   else p.push(`${u.count} kez`);
-  p.push(u.market_count === 1 ? "tek markette" : `${u.market_count} markette`);
+  if (u.market_count > 1) p.push(`${u.market_count} markette`);
   return p.join(" · ");
 };
 
@@ -132,6 +137,10 @@ export default function Urunler() {
               testID="urunler-ay"
             />
           </HeaderPills>
+          {/* Kendi üst boşluğunda: `HeaderPills` ile `TabSwitch` arka arkaya
+              gelince ikisi de kendi `marginTop`una güveniyor ve şerit hapın
+              üstüne biniyordu. İstatistik'teki `tabWrap` ile aynı kalıp. */}
+          <View style={styles.tabWrap}>
           <TabSwitch
             value={sira}
             onChange={setSira}
@@ -142,6 +151,7 @@ export default function Urunler() {
             ]}
             testID="urun-sira"
           />
+          </View>
         </ScreenHeader>
 
         <Sheet>
@@ -195,6 +205,7 @@ const styles = StyleSheet.create({
     width: 36, height: 36, borderRadius: 18, backgroundColor: colors.darkSurface,
     alignItems: "center", justifyContent: "center",
   },
+  tabWrap: { marginTop: spacing.lg },
   scroll: {
     padding: spacing.lg, paddingTop: spacing.sm,
     gap: metrics.cardGap, paddingBottom: spacing.xxxl,

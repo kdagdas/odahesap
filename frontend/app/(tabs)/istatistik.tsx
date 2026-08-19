@@ -127,7 +127,8 @@ const urunAlt = (u: { qty: number | null; unit: string | null; market_count: num
   const parca: string[] = [];
   if (u.qty != null && u.unit) parca.push(`${formatQty(u.qty, u.unit)}`);
   else parca.push(`${u.count} kez`);
-  parca.push(u.market_count === 1 ? "tek markette" : `${u.market_count} markette`);
+  // "Tek markette" beklenen durum; yalnızca istisna yazılıyor.
+  if (u.market_count > 1) parca.push(`${u.market_count} markette`);
   return parca.join(" · ");
 };
 

@@ -4389,10 +4389,23 @@ async def category_stats(
                 out.append(e)
         return out
 
+    # Seri evin ilk harcamasından öncesine inmiyor — `_aylik_seri` ile aynı
+    # kural. Ağustos'ta kurulan bir eve "Mart 0 €" yazmak o ay hiç
+    # harcamadığını söylemek olur, oysa o ay ortada yoktun; üstelik ortalama
+    # da o sahte sıfırlarla aşağı çekiliyordu.
+    ilk = await db.expenses.find(
+        {"household_id": hh["household_id"], "expense_date": {"$ne": None}},
+        {"_id": 0, "expense_date": 1},
+    ).sort("expense_date", 1).limit(1).to_list(1)
+    alt_sinir = ilk[0]["expense_date"][:7] if ilk and ilk[0].get("expense_date") else None
+
     aylar = []
     y, m = int(month[:4]), int(month[5:7])
     for _ in range(6):
-        aylar.append(f"{y:04d}-{m:02d}")
+        a = f"{y:04d}-{m:02d}"
+        if alt_sinir and a < alt_sinir:
+            break
+        aylar.append(a)
         m -= 1
         if m == 0:
             y, m = y - 1, 12

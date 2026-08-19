@@ -169,7 +169,14 @@ k = c.get(f"{API}/stats/category?key=sut_urunleri&month={AY}", headers=hdr(tok))
 # fisin tamamini sayarsa 20 cikar ve halkadaki dilimle celisir.
 check("fisin YALNIZCA o kategorideki kismi sayildi",
       abs(k["total"] - 19.0) < 0.01, str(k["total"]))
-check("alti aylik seri var", len(k.get("series") or []) == 6, str(len(k.get("series") or [])))
+# Seri KATEGORI sayfasinda da evin ilk harcamasindan oncesine inmiyor.
+# Onceden her zaman 6 ay donuyordu ve yeni kurulan bir evde bes ay SIFIR
+# cizilip ortalamayi asagi cekiyordu -- "o ay hic harcamadin" demek olur,
+# oysa o ay ortada yoktun. Bu senaryoda veri iki ayda: gecen ay ve bu ay.
+check("seri yalnizca VERI OLAN aylari kapsiyor",
+      len(k.get("series") or []) == 2, str(k.get("series")))
+check("serinin ilk ayi evin ilk harcama ayi",
+      k["series"][0]["month"] == gecen.strftime("%Y-%m"), str(k["series"]))
 check("serinin son ayi bu ayin toplamini tutuyor",
       abs(k["series"][-1]["total"] - k["total"]) < 0.01, str(k["series"][-1:]))
 check("ne alindi: sut tek satir",
