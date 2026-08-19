@@ -1653,20 +1653,21 @@ export function buAy(): string {
  * olmadığı bir aya bakmak "kayıt yok" demekten başka bir şey söylemiyor ve
  * seçiciyi boş aylarla uzatıyordu. Verilmezse son 12 ay — güvenli bir tavan.
  */
-export function sonAylar(baslangic?: string | null): string[] {
+export function sonAylar(...sinirlar: (string | null | undefined)[]): string[] {
   const d = new Date();
-  const buAyKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-  const alt = (baslangic || "").slice(0, 7);
+  // Verilen sınırların (ev kuruluşu, en eski harcama) EN ERKENİ. Geriye
+  // tarihli fiş created_at'ten önceye düşebiliyor; o ay gizlenmemeli.
+  const altlar = sinirlar.map((x) => (x || "").slice(0, 7)).filter(Boolean);
+  const alt = altlar.length ? altlar.sort()[0] : "";
   const out: string[] = [];
   for (let i = 0; i < 60; i++) {
     const x = new Date(d.getFullYear(), d.getMonth() - i, 1);
     const key = `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, "0")}`;
     out.push(key);
-    // Evin kurulduğu aya inince dur. Tavan 60 ay: `created_at` yoksa ya da
-    // gelecekteyse liste sonsuza gitmesin.
+    // Sınıra inince dur. Tavan 60 ay: sınır yoksa ya da gelecekteyse liste
+    // sonsuza gitmesin.
     if (alt && key <= alt) break;
     if (!alt && out.length >= 12) break;
-    if (key === buAyKey && i > 0) { /* buAy hep başta */ }
   }
   return out;
 }

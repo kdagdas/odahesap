@@ -87,7 +87,7 @@ export default function MemberDetail() {
         <HeaderPills>
           <HeaderPill
             value={ay}
-            options={sonAylar(household?.created_at).map((m) => ({
+            options={sonAylar(household?.created_at, household?.first_expense_month).map((m) => ({
               value: m, label: ayAdi(m).split(" ")[0],
               hint: ayAdi(m), icon: "calendar-outline",
               iconAccent: m === buAy(),

@@ -1013,8 +1013,23 @@ async def my_household(user=Depends(get_current_user)):
                 "period_id": active_period["period_id"],
                 "target_type": "household",
             })
+        # En eski harcamanın ayı — ay seçicinin alt sınırı.
+        #
+        # Yalnızca evin `created_at`'ine dayanmak yetmiyor: fiş GERİYE TARİHLİ
+        # girilebiliyor (ev bugün kurulup dün alınan Temmuz fişi eklenebilir).
+        # O zaman created_at Ağustos, ama Temmuz'da veri var ve seçici onu
+        # gizlerse kullanıcı "verilerim nerede" diyor. İkisinin ERKENİ alınıyor.
+        ilk_ay = None
+        ilk = await db.expenses.find(
+            {"household_id": hh["household_id"], "expense_date": {"$ne": None}},
+            {"_id": 0, "expense_date": 1},
+        ).sort("expense_date", 1).limit(1).to_list(1)
+        if ilk and ilk[0].get("expense_date"):
+            ilk_ay = ilk[0]["expense_date"][:7]
+        hh_out = dict(hh)
+        hh_out["first_expense_month"] = ilk_ay
         return {
-            "household": hh,
+            "household": hh_out,
             "members": members,
             "pending_members": pending,
             "active_period": active_period,

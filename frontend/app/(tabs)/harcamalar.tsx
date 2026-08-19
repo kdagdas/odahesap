@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   View, Text, StyleSheet, ScrollView, RefreshControl, Pressable, ActivityIndicator,
 } from "react-native";
@@ -10,7 +10,7 @@ import { useHousehold } from "@/src/household";
 import {
   ScreenHeader, HeaderSplit, Sheet, Card, Divider, Avatar, CategoryIcon,
   MerchantBadge, Money, splitBadge, formatEUR, formatQty,
-  HeaderPills, HeaderPill, HeaderClearPill, useScrollPad, useGeriDon,
+  HeaderPills, HeaderPill, useScrollPad, useGeriDon,
   ayAdi, buAy, sonAylar,
 } from "@/src/ui";
 import { colors, spacing, radius, type as T, overline, metrics } from "@/src/theme";
@@ -32,18 +32,26 @@ type Expense = {
 };
 
 /**
- * Akış süzgecinin ekrandaki adı.
+ * Akış süzgeci — "kimin için / kim ödedi" ekseni.
  *
  * Anahtarlar sunucudaki `akis_paylari()` ile birebir aynı; Kasa'daki ekstre
- * satırı da onları kullanıyor. Hap üzerindeki yazı ekstredeki satırın
- * KISALTILMIŞ hâli — birebir aynısı olsaydı hap taşardı, bambaşka bir
- * kelime olsaydı "aynı şeye mi bakıyorum" sorusu doğardı.
+ * satırı da onları kullanıyor. Bu, kişi (kim ekledi) ve ay süzgeçlerinden
+ * bağımsız ÜÇÜNCÜ bir eksen: "bu harcama kimi ilgilendiriyor".
+ *
+ * `senin_icin` gizliliğe takılmıyor: karşı taraf zaten senin için almış,
+ * "bana ne alındı" senin görebileceğin bir şey.
  */
 const AKIS_ADI: Record<string, string> = {
   pay: "Sana düşen",
   ev_odedigin: "Senin ödediklerin",
   baskasi_icin: "Başkası için aldıkların",
   senin_icin: "Senin için alınanlar",
+};
+const AKIS_ICON: Record<string, string> = {
+  pay: "pie-chart-outline",
+  ev_odedigin: "card-outline",
+  baskasi_icin: "arrow-up-circle-outline",
+  senin_icin: "gift-outline",
 };
 
 const AY_UZUN = ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran",
@@ -89,6 +97,19 @@ export default function Harcamalar() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  /* Kasa'dan gelen süzgeci UYGULA — asıl hata buradaydı.
+     Harcamalar bir sekme ekranı; Kasa'dan buraya "atlamak" onu yeniden
+     kurmuyor, zaten kurulu ekrana yeni parametre veriyor. `useState` yalnızca
+     İLK kuruluşta okuduğu için, daha önce bu sekmeye uğramış biri Kasa'dan
+     "Senin için alınanlar"a dokununca hiçbir şey değişmiyordu — filtre eski
+     hâlinde kalıyordu. Parametre değiştikçe durumu senkronluyoruz. */
+  useEffect(() => {
+    setAkis(params.akis && AKIS_ADI[params.akis] ? params.akis : undefined);
+  }, [params.akis]);
+  useEffect(() => {
+    if (typeof params.ay === "string" && params.ay.length === 7) setAy(params.ay);
+  }, [params.ay]);
 
   const load = useCallback(async () => {
     try {
@@ -145,40 +166,43 @@ export default function Harcamalar() {
               { label: "Kayıt", value: `${expenses.length} harcama` },
             ]}
           />
-          {/* Süzgeç bağlamdır: başlık ve toplamlarla aynı yerde durur.
-              Akış hapı EN BAŞTA ve kaldırılabilir — bu ekrana Kasa'dan gelen
-              birinin gördüğü liste ayın tamamı değil ve bunu söyleyen tek
-              şey o hap. Ay hapı kaldırılamaz: bir pencere her zaman var,
-              yalnızca hangisi olduğu değişir. */}
+          {/* Üç bağımsız eksen, üç hap: KİMİN İÇİN (akış) · NE ZAMAN (ay) ·
+              KİM EKLEDİ (kişi). Kasa'dan gelen birinin süzgeci akış hapında
+              seçili geliyor; oradan başka bir akışa da geçebiliyor. */}
           <HeaderPills>
-            {akis && (
-              <HeaderClearPill label={AKIS_ADI[akis]}
-                               onClear={() => setAkis(undefined)}
-                               testID="filter-akis" />
-            )}
+            {/* KİMİN İÇİN — seçilebilir. Önce yalnızca Kasa'dan gelen bir çip
+                olarak vardı ve doğrudan seçilemiyordu; oysa "bana ne alındı"
+                buraya girip bakılacak bir soru. */}
+            <HeaderPill
+              value={akis ?? ""}
+              options={[
+                { value: "", label: "Tüm hareketler", icon: "swap-vertical-outline" },
+                ...(["pay", "ev_odedigin", "senin_icin", "baskasi_icin"] as const).map((k) => ({
+                  value: k, label: AKIS_ADI[k], icon: AKIS_ICON[k],
+                })),
+              ]}
+              onSelect={(v) => setAkis(v || undefined)}
+              testID="filter-akis"
+            />
             <HeaderPill
               value={ay}
-              options={sonAylar(household?.created_at).map((m) => ({
-                value: m, label: ayAdi(m).split(" ")[0],
-                hint: ayAdi(m), icon: "calendar-outline",
-                iconAccent: m === buAy(),
-              }))}
+              options={sonAylar(household?.created_at, household?.first_expense_month)
+                .map((m) => ({
+                  value: m, label: ayAdi(m).split(" ")[0],
+                  hint: ayAdi(m), icon: "calendar-outline",
+                  iconAccent: m === buAy(),
+                }))}
               onSelect={setAy}
               testID="filter-ay"
             />
             {/* Kişi süzgeci. Alt satır (hint) YOK: "Kemal" başlığının altına
-                yine "Kemal" yazmak boş bir tekrardı. Tek kelimelik isimlerde
-                zaten aynıydı, iki kelimelikte de ayırt edici bir şey
-                söylemiyordu. "Herkes" ise kaç kişi olduğunu söylüyor — o bir
-                bilgi, tekrar değil. */}
+                yine "Kemal" yazmak boş bir tekrardı. Her kişi kendi avatarını
+                taşıyor; "Herkes" ikonla kalıyor — üç avatarın yığını dar hapta
+                yazıyla çakışıyordu. */}
             <HeaderPill
               value={memberFilter ?? ""}
               options={[
-                { value: "", label: "Herkes", hint: `${members.length} kişi`,
-                  avatarlar: members.map((m) => ({
-                    name: m.name, avatarId: (m as any).avatar_id,
-                    userId: m.user_id, photoVersion: (m as any).photo_version,
-                  })) },
+                { value: "", label: "Herkes", icon: "people", hint: `${members.length} kişi` },
                 ...members.map((m) => ({
                   value: m.user_id, label: m.name.split(" ")[0],
                   avatar: {
