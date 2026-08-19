@@ -61,6 +61,25 @@ export default function ExpenseEdit() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  /**
+   * SAHİPLİK — ekran artık başkasının fişini düzenlemeye açmıyor.
+   *
+   * Sunucu zaten engelliyordu (`_get_editable_expense` 403 döndürüyor), yani
+   * veri hiçbir zaman risk altında değildi. Ama istemci bunu bilmediği için
+   * formu açıyor, alanları düzenletiyor ve ancak KAYDET'e basınca hata
+   * veriyordu: yapılamayacak bir işi teklif eden bir kapı.
+   *
+   * Market sayfasından bir fişe dokununca ortaya çıktı ve ev sahibi haklı
+   * olarak "ben Salih'in harcamasını düzenleyebiliyorum" diye bildirdi.
+   *
+   * Başkasının fişi yine de AÇILIYOR, çünkü onu görmeye hakkın var
+   * (bölüşme listesindesin); yalnızca salt okunur.
+   */
+  const benimMi = !!expense && expense.added_by === user?.user_id;
+  const ekleyen = expense
+    ? (members.find((m) => m.user_id === expense.added_by)?.name || "Bir ev arkadaşın")
+    : "";
+
   const load = useCallback(async () => {
     try {
       const res = await apiGet<{ expenses: Expense[] }>("/expenses");
@@ -172,8 +191,8 @@ export default function ExpenseEdit() {
         <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.page}
                     keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         <ScreenHeader
-          overline="DÜZENLE"
-          title="Harcamayı Düzenle"
+          overline={benimMi ? "DÜZENLE" : "HARCAMA"}
+          title={benimMi ? "Harcamayı Düzenle" : "Harcama Detayı"}
           right={
             <Pressable onPress={() => router.back()} hitSlop={12} testID="edit-back" style={styles.headBtn}>
               <Ionicons name="close" size={20} color={colors.onDark} />
@@ -185,11 +204,29 @@ export default function ExpenseEdit() {
         </ScreenHeader>
 
         <Sheet>
-          <View style={styles.form}>
+          {/* Başkasının fişinde form DOKUNULMAZ. Alanları düzenletip
+              KAYDET'te hata vermek, yapılamayacak bir işi teklif etmekti.
+              `pointerEvents="none"` tek satırda bütün girdileri kapatıyor ve
+              dokunuşlar ScrollView'a geçtiği için sayfa yine kayıyor. */}
+          <View style={styles.form} pointerEvents={benimMi ? "auto" : "none"}>
             {!expense ? (
               <Text style={styles.error}>{error}</Text>
             ) : (
               <>
+                {/* Neden düzenleyemediğini SÖYLÜYOR. Sessizce salt okunur
+                    yapmak "uygulama bozuk mu" sorusu bırakırdı; kural basit
+                    ve savunulabilir: bir harcamayı yalnızca ekleyen
+                    değiştirebilir, çünkü onu gören tek kişi o değil ama
+                    fişi elinde tutan o. */}
+                {!benimMi && (
+                  <View style={styles.saltOkunur}>
+                    <Ionicons name="lock-closed-outline" size={16} color={colors.inkSecondary} />
+                    <Text style={styles.saltOkunurTxt}>
+                      Bu harcamayı {ekleyen.split(" ")[0]} ekledi. Görebilirsin
+                      ama yalnızca ekleyen kişi değiştirebilir.
+                    </Text>
+                  </View>
+                )}
                 {/* Kalemler tek kap içinde: sekiz kalem sekiz kenarlık demek değil. */}
                 <Card title="Kalemler">
                   {rows.map((r, i) => (
@@ -326,7 +363,7 @@ export default function ExpenseEdit() {
         </Sheet>
         </ScrollView>
 
-        {expense && (
+        {expense && benimMi && (
           <View style={[styles.footer, { paddingBottom: spacing.lg + insets.bottom }]}>
               <View style={{ flex: 1 }}>
                 <Text style={styles.footerLabel}>YENİ TOPLAM</Text>
@@ -351,6 +388,12 @@ export default function ExpenseEdit() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.dark },
   page: { backgroundColor: colors.bg, flexGrow: 1 },
+  saltOkunur: {
+    flexDirection: "row", alignItems: "center", gap: spacing.sm,
+    backgroundColor: colors.surfaceSecondary, borderRadius: radius.md,
+    paddingHorizontal: spacing.md, paddingVertical: spacing.md,
+  },
+  saltOkunurTxt: { ...T.caption, color: colors.inkSecondary, flex: 1 },
   headBtn: {
     width: 36, height: 36, borderRadius: 18, backgroundColor: colors.darkSurface,
     alignItems: "center", justifyContent: "center",

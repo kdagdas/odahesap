@@ -295,7 +295,7 @@ export default function Panel() {
                   <Pressable style={styles.doorRow} testID="open-stats-btn"
                              onPress={() => router.push("/istatistik")}>
                     <Ionicons name="stats-chart" size={15} color={colors.accentDark} />
-                    <Text style={styles.doorTxt}>Tüm istatistikler</Text>
+                    <Text style={styles.doorTxt}>Tüm analizler</Text>
                     <Ionicons name="chevron-forward" size={15} color={colors.onSurfaceTertiary} />
                   </Pressable>
                 </Card>

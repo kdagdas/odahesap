@@ -1,4 +1,10 @@
-/** İstatistikler — TAKVİM AYI bazlı, Ev / Kişisel sekmeli.
+/** Analizler — TAKVİM AYI bazlı, Ev / Kişisel sekmeli.
+ *
+ *  Ekranda adı "İstatistik" değil **ANALİZ**: sayfa artık sayı listelemiyor,
+ *  soru cevaplıyor — kategorinin içine, marketin içine, ürünün geçmişine
+ *  giriliyor. "İstatistik" kelimesi bakılıp geçilen bir tablo çağrıştırıyordu.
+ *  Dosya ve rota adı `istatistik` olarak KALDI: yeniden adlandırmak sekiz
+ *  dosyada import kırar ve kazancı sıfır.
  *
  *  Kasa'ya değil kendi sayfasına konuldu: Kasa bir *eylem* ekranı ("kim kime
  *  borçlu, dönemi kapat"), istatistik ise *gezinme* ekranı. İkisini aynı yere
@@ -205,7 +211,7 @@ export default function Istatistik() {
                   showsVerticalScrollIndicator={false}>
         <ScreenHeader
           size="l"
-          overline="İSTATİSTİK"
+          overline="ANALİZ"
           title={ayAdi(month)}
           onTitlePress={() => setAySecici(true)}
           right={

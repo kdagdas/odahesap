@@ -205,7 +205,7 @@ export function TrendBadge({
         <>
           {hasTrend && <View style={styles.trendSep} />}
           <Ionicons name="stats-chart" size={12} color={colors.accentOnDark} />
-          <Text style={styles.trendTxt}>İstatistikler</Text>
+          <Text style={styles.trendTxt}>Analizler</Text>
           <Ionicons name="chevron-forward" size={12} color={colors.accentOnDark} />
         </>
       )}
