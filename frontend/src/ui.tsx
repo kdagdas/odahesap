@@ -380,6 +380,10 @@ export function yenileme(refreshing: boolean, onRefresh: () => void) {
  * Sayfayı o aya götürüyor. Yeni bir ekran değil, zaten var olan ay
  * seçicisinin daha hızlı hâli — kademeli açılım kuralı.
  */
+/** Ay adının çubuktan uzaklığı — `cubukAy.marginTop` ile aynı sayı olmak
+ *  zorunda; çizginin tabanı buradan hesaplanıyor. */
+const ETIKET_BOSLUK = 4;
+
 export function AylikCubuk({
   aylar, buAy, onSec,
 }: {
@@ -396,6 +400,19 @@ export function AylikCubuk({
    *  yapılamıyor, çünkü kartın genişliği ekrana göre değişiyor. */
   const SLOT = 6;
   const [genislik, setGenislik] = React.useState(0);
+  /**
+   * Ay adının kapladığı yükseklik — ORTALAMA ÇİZGİSİNİN TABANI.
+   *
+   * Çizgi ile çubuklar iki ayrı tabandan ölçülüyordu: çizgi kabın en
+   * altından, çubuklar ise ay adının üstünden (yazı sütunun içinde, çubuğun
+   * altında duruyor). Aradaki fark 21 piksel, yani 64 piksellik ölçeğin
+   * üçte biri — çizgi HER ZAMAN olması gerekenden aşağıda çiziliyordu ve
+   * "ortalamanın altında" görünüyordu. Ev sahibi bunu cihazda fark etti.
+   *
+   * Sabit yazmak yerine ÖLÇÜLÜYOR: telefonun yazı boyutu ayarı büyütülünce
+   * etiket de büyüyor ve sabit bir sayı yeniden kayardı.
+   */
+  const [etiketYuk, setEtiketYuk] = React.useState(0);
   const slotGen = genislik > 0
     ? Math.max((genislik - (SLOT - 1) * ARA) / SLOT, 8)
     : 0;
@@ -411,10 +428,11 @@ export function AylikCubuk({
             onLayout={(e) => setGenislik(e.nativeEvent.layout.width)}>
         {/* Çizgi çubukların ARKASINDAN geçiyor: önlerinden geçse kısa
             çubukları ikiye böler ve okunmaz olur. */}
-        {cizgiGen > 0 && (
+        {cizgiGen > 0 && etiketYuk > 0 && (
           <View pointerEvents="none"
                 style={[styles.ortCizgi,
-                        { width: cizgiGen, bottom: (ortalama / enYuksek) * TAVAN }]} />
+                        { width: cizgiGen,
+                          bottom: etiketYuk + (ortalama / enYuksek) * TAVAN }]} />
         )}
         {slotGen > 0 && aylar.map((a) => {
           const bu = a.month === buAy;
@@ -428,7 +446,12 @@ export function AylikCubuk({
                 height: Math.max((a.total / enYuksek) * TAVAN, 3),
                 backgroundColor: bu ? colors.ink : colors.borderStrong,
               }]} />
-              <Text style={[styles.cubukAy, bu && styles.cubukAyBu]} numberOfLines={1}>
+              <Text style={[styles.cubukAy, bu && styles.cubukAyBu]} numberOfLines={1}
+                    onLayout={(e) => {
+                      // Üst boşluğu da dahil: çubuğun tabanı bu kadar yukarıda.
+                      const h = e.nativeEvent.layout.height + ETIKET_BOSLUK;
+                      setEtiketYuk((v) => (Math.abs(v - h) > 0.5 ? h : v));
+                    }}>
                 {AYLAR[parseInt(a.month.slice(5, 7), 10)]?.slice(0, 3)}
               </Text>
             </Pressable>
@@ -2170,9 +2193,14 @@ const styles = StyleSheet.create({
   },
   cubukKap: { alignItems: "center" },
   cubuk: { width: "100%", borderRadius: 3 },
-  cubukTutar: { ...T.caption, fontSize: 9, color: colors.inkTertiary, marginBottom: 3 },
+  // `lineHeight` AÇIKÇA veriliyor: `...T.caption` 12 punto için 17 satır
+  // yüksekliği taşıyor ve 9 puntoya inildiğinde o değer olduğu gibi kalıyordu
+  // — yazının etrafında sekiz piksel boş yer, grafiğin de tepesi kapaktan
+  // taşmış oluyordu.
+  cubukTutar: { ...T.caption, fontSize: 9, lineHeight: 12, color: colors.inkTertiary, marginBottom: 3 },
   cubukTutarBu: { color: colors.ink, fontFamily: fontFamily.semibold },
-  cubukAy: { ...T.caption, fontSize: 9, color: colors.inkTertiary, marginTop: 4 },
+  // `marginTop` = ETIKET_BOSLUK. İkisi ayrışırsa ortalama çizgisi kayar.
+  cubukAy: { ...T.caption, fontSize: 9, lineHeight: 12, color: colors.inkTertiary, marginTop: 4 },
   cubukAyBu: { color: colors.ink, fontFamily: fontFamily.semibold },
   ortSatir: {
     flexDirection: "row", alignItems: "center",
