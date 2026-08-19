@@ -1,11 +1,16 @@
-# Sıradaki turlar — Tur 10: para çekirdeği · Tur 11: analiz sayfası
+# Sıradaki tur — Tur 12
 
 > Bu dosya yeni bir sohbet penceresine geçerken bağlamı taşımak için yazıldı.
 >
-> Son durum: **APK v43 (sürüm 1.1.0)**, `main` canlıya deploy edildi.
-> Tur 10 bitti; aşağıdaki kararların hepsi koda girdi.
+> Son durum: **APK v44 (sürüm 1.2.0)**, `main` canlıya deploy edildi.
+> **Tur 10 (para çekirdeği) ve Tur 11 (analiz sayfası) bitti.**
 > Uygulamanın bugünkü hâli için [PROJE-DOKUMANI.md](PROJE-DOKUMANI.md),
 > günlük operasyon için [DEVAM.md](DEVAM.md).
+>
+> Aşağıdaki KARAR başlıkları Tur 10/11'in gerekçeleridir ve **hâlâ
+> geçerlidir** — bir sonraki oturum bunları yeniden tartışmasın diye duruyor.
+
+---
 
 ## Bu tur nasıl bu hâle geldi
 
@@ -674,42 +679,94 @@ Madde başına ayrı commit, turun sonunda tek APK (v43).
     takım: ödeşilmemiş bakiye, devir, ödeşme çizgisi.
 14. **Belgeler + APK v43.**
 
-## Tur 11 planı — analiz sayfası
+## Tur 11 — BİTTİ (19 Ağustos 2026, APK v44 · sürüm 1.2.0)
 
-Kaba tahmin ~15 saat.
+Ekranda adı artık **"Analiz"** — sayfa sayı listelemiyor, soru cevaplıyor.
+Dosya/rota adı `istatistik` olarak kaldı (yeniden adlandırmak sekiz dosyada
+import kırardı).
 
-1. Halkanın derinleşmesi + **kategori sayfası** (6 aylık seyir, ne alındı,
-   nereden)
-2. **Son 6 Ay** çubuğu
-3. **En Çok Aldıklarımız** + "tüm ürünler" sayfası
-4. **Market sayfası**
-5. **Zamlananlar / Ucuzlayanlar**
-6. Marketler kartına geçen ay sütunu
-7. Sayfa sırası + iki kapı
-8. Belgeler + APK v44
+### Gelenler
 
-**Neden ayrıldı:** para matematiği ile analiz ekranı aynı APK'da değişirse,
-bir şey bozulduğunda hangisinden geldiği ayırt edilemez. "Madde başına commit,
-tur başına APK" kuralının sebebi bu.
+**Son N Ay çubuğu** · **En Çok Harcadıklarımız / En Sık Aldıklarımız** (iki
+ikonlu eksen anahtarı) · **Tüm Ürünler** sayfası · **Kategori sayfası**
+(6 aylık seyir + ne alındı + nereden) · **Market sayfası** (seyir + ne
+alındı + fişler, fiş yerinde açılıyor) · **Fiyat Hareketleri** ·
+Marketler kartına geçen ay sütunu · sayfa değere göre sıralandı.
+
+Ayrıca Tur 11'in başına alınan üç jest işi: silme kaydırması parmağı takip
+ediyor · bir kerelik kaydırma ipucu · alt sayfa tutamağı.
+
+### Sayfa sırası ve GEREKÇESİ
+
+İlke: **ilk ekran Anasayfa'da olmayan bir şey göstermeli.** Halka ve "Kim Ne
+Kadar Ödedi" orada zaten var.
+
+1. **Fiyat Hareketleri** — sürpriz; insanı geri getiren şey grafik değil,
+   "kahve %25 zamlanmış" cümlesi
+2. **Son N Ay** — genel gidiş, tek bakış
+3. **Ay Boyunca** — ay ortasında değerli
+4. **Nereye Gitti** — dokuz kategori + değişim, içine girilebilir
+5. **En Çok Harcadıklarımız** — eksen anahtarlı
+6. **Faturalar** · 7. **Marketler** · 8. **Senin Katkın** ·
+9. **Kim Ne Kadar Ödedi** (Anasayfa'da zaten var)
+
+### Bu turda ORTAYA ÇIKAN sessiz hatalar
+
+Hepsi yalnızca yeni ekranlar veriyi **okumaya başlayınca** göründü. Testler
+hiçbirini yakalamadı.
+
+| Ne | Kök sebep |
+|---|---|
+| **`generic` kayda hiç ulaşmıyormuş** | OCR üretiyor, sunucu gönderiyor, `review.tsx` düşürüyordu. Tur 8'den beri ölü; 206 kalemin hiçbirinde yoktu |
+| **Birim etiketi yanlış** | 12 kalem "kesirli adet" (7,105 adet tavuk olmaz). `tests/birim-duzelt.py` ile kg'ye çevrildi |
+| **Fiyat kartı yalan söylüyordu** | `adet` sınıfında boyut bilinmiyor: "Wassermel. XXL 6→10,60 = +%77" iki farklı boy karpuzdu. O sınıf çıkarıldı |
+| **Kapsam taşınmıyordu** | "Kişisel"den girilen kategori evin harcamasını gösteriyordu |
+| **Başkasının fişi düzenlenebilir görünüyordu** | Sunucu 403 veriyordu (veri risk altında değildi) ama istemci formu açıyordu |
+| **Donanım geri tuşu** | X düğmesi doğruydu, telefonun geri jesti sekme yığınının dibine düşüyordu |
+
+### Kalıcı ders
+
+**Ölçmeden gönderme.** Fiyat kartı ilk sürümünde dört satır üretiyordu ve
+dördü de yanlıştı; gerçek veriye bakılmasa kullanıcıya "zam" diye
+gösterilecekti. Ev sahibinin cümlesi kural olarak kalsın:
+*"yanlış bir şey göstermek, göstermeye çalışmaktan daha kötü."*
 
 ---
 
-## Sonraki adaylar
+## Tur 12 planı — öncelik sırasıyla
 
-- **Başlık tasarımlarının elden geçirilmesi** — ev sahibi lacivert üst
-  alanları bir bütün olarak yeniden görmek istiyor (18 Ağustos 2026). Üç boy
-  sistemi bunu **ucuzlattı**: geometri artık `ui.tsx` içindeki tek bir
-  `HEADER_PAD` tablosunda; oran değiştirmek üç sayı demek, 22 ekran değil.
-- **Ödeşme sıklığı hatırlatması** — ev ayarı, **varsayılan kapalı**;
-  hatırlatma isteyen ev ile istemeyen ev çok farklı. GitHub Actions günlük
-  işi, kira hatırlatmasıyla paylaşımlı. **Hatırlatma asla kendiliğinden
-  ödeştirmez.**
-- **Uygulama içinden tema seçimi (Yol A)** — Ayarlarda Açık/Koyu/Sistem, bir
-  sonraki açılışta geçerli, ~30 dk. Yol B (canlı tema) 22 dosyada 1.234
-  satırlık riskli refaktör, önerilmiyor.
-- Alınacaklar–fiyat köprüsü · arama · avatarlar · CSV/PDF · çevrimdışı kuyruk
-- Hız sınırlaması ve paralel toplu tarama — **faturalandırma bekliyor**
-  (ev sahibi 17 Ağustos 2026'da şimdilik açmayacağını söyledi)
+1. **Arama** (market · ürün · kişi). 49 ürün oldu, bir yıl sonra 400 olacak;
+   veri büyüdükçe bulunamaz hale geliyor. Splitwise Pro'da var, bizde yok.
+2. **Çevrimdışı kuyruk.** Sunucu uykudayken girilen harcama şu an
+   **kayboluyor** — listedeki tek VERİ KAYBI maddesi, o yüzden yukarıda.
+3. **Uygulama içinden tema seçimi (Yol A)** — Ayarlarda Açık/Koyu/Sistem, bir
+   sonraki açılışta geçerli, ~30 dk. Yol B (canlı tema) 22 dosyada 1.234
+   satırlık riskli refaktör, **önerilmiyor.**
+4. **Ürün sözlüğü** — `generic` tutarlılığı. ÖNCE ÖLÇ: birkaç fiş tara, aynı
+   ürünün farklı yazımları aynı genel ada düşüyor mu? Tutarsızlık çıkarsa evin
+   kendi sözlüğü kurulur (market adlarında zaten yaptığımız kalıp:
+   `normalize_merchant`). Yapıştırma **muhafazakâr** olmalı — yanlış
+   birleştirmek, birleştirmemekten pahalı.
+5. **Başlıkların elden geçirilmesi.** Üç boy sistemi bunu ucuzlattı: geometri
+   `ui.tsx` içindeki tek bir `HEADER_PAD` tablosunda.
+6. Dışa aktarma (CSV/PDF) · avatarlar · ödeşme sıklığı hatırlatması.
+
+### Tur 12'de KARAR BEKLEYENLER
+
+- **Eksik kategoriler** (eczane, yapı market, giyim). Ev sahibi kararsız:
+  yeni kategori sayfayı uzatıyor ama bu ürünler nadir alınıyor. 19 Ağustos'ta
+  ertelendi.
+- **Anasayfa'ya tek satırlık "bu ay dikkat çeken şey"** — grafik değil CÜMLE,
+  ve yalnızca gerçekten kayda değer bir şey varsa. Analiz sayfasını açmayan
+  kullanıcıya değerin bir kırıntısını taşır.
+- **Veri paylaşımı.** Ev sahibi iş ortaklarıyla paylaşmak istiyor. Veri
+  gerçekten değerli ama **GDPR kapsamında kişisel veri** ve bugün rıza
+  katmanı, gizlilik metni, saklama süresi YOK. Doğru sıra: rıza + gizlilik
+  metni → sonra yalnızca **kimliksiz toplulaştırılmış** veri. Not: `price_points`
+  koleksiyonu zaten bilerek kimlik alanı taşımıyor — paylaşılabilir verinin
+  doğru kalıbı o.
+
+---
 
 ## Genele açma paketi
 
@@ -790,5 +847,17 @@ elle değiştirilmemeli. Debug yavaştır — performans yargısı release'de ve
 ```
 D:\SettleUp\OdaHesap üzerinde çalışıyoruz. Önce şu üç dosyayı oku:
 SIRADAKI-TUR.md, PROJE-DOKUMANI.md, DEVAM.md.
-Sonra Tur 10'a başla.
+Tur 10 ve 11 bitti (APK v44 / sürüm 1.2.0). Tur 12'ye başla.
 ```
+
+### Yeni oturumun İLK yapması gerekenler
+
+1. **Geliştirme ortamını kur:** `iex (gc D:\SettleUp\gelistir.ps1 -Raw)`
+   Tek komut: `.env`'i kontrol eder, arka ucu başlatır, `adb reverse`
+   tünellerini kurar, Metro'yu **yeniden başlatır** (`.env` açılışta bir kez
+   okunuyor).
+2. **`.env` yerelde mi?** Geliştirme sırasında `localhost:8098` olmalı.
+   Üretim adresi yalnızca APK anında konur — bkz. DEVAM.md "APK KONTROL
+   LİSTESİ".
+3. **Test sunucusu AYRI veritabanında:** `DB_NAME=odahesap_test`. Yapılmazsa
+   üretim kirlenir ve fiyat kayıtları geri ayıklanamaz.

@@ -268,6 +268,8 @@ cd backend
 | `aylik-test.py` | takvim ayı istatistiği: ay sınırı, kapsam, sabit/değişken | 54 |
 | `aylik-kapsam-test.py` | ev/kişisel/ikili kapsam ayrımı | 29 |
 | `fiyat-test.py` | birim fiyat, paket sınıfı, fiyat hafızası | 51 |
+| `akis-test.py` | kimin için ekseni, ödeşme çizgisi, ekstre satırları | 38 |
+| `analiz-test.py` | Son 6 Ay, ürün/kategori/market uçları, fiyat hareketleri | 58 |
 | `kopru-test.py` | alınacaklar ↔ fiş köprüsü + **tarih süzgeci** | 22 |
 | `odestik-test.py` | ödeşme, üyelik günlüğü, **ayrılma bildirimi/rozeti** | 49 |
 | `akis-test.py` | **hareket akışları: ekstre satırı == süzülen liste** | 38 |

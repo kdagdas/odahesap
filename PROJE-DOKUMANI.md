@@ -5,7 +5,7 @@
 > ihtiyaç duymaz. Günlük operasyon için [DEVAM.md](DEVAM.md), kurulum için
 > [README.md](README.md).
 >
-> Son güncelleme: 19 Ağustos 2026 · Uygulama sürümü **1.1.0** (versionCode 43)
+> Son güncelleme: 19 Ağustos 2026 · Uygulama sürümü **1.2.0** (versionCode 44)
 
 ---
 
@@ -626,6 +626,50 @@ dokunmaz. Yardımcılar: `fcm-verify.py` (Firebase kimlik bilgisi gerçekten
   sayıyı gösteriyor.
 - **Göç olmadı.** Bugüne kadar kapalı dönemler kapalı (ödeşilmiş) kaldı, açık
   olan açık; hiçbir harcamanın dönemi değişmedi.
+
+### ✓ ANALİZ SAYFASI — Tur 11 (19 Ağustos 2026)
+
+"İstatistik" ekranı **"Analiz"** oldu ve içine girilebilir hale geldi.
+Dosya/rota adı `istatistik` olarak kaldı.
+
+**Yeni uçlar:** `/stats/products` · `/stats/category` · `/stats/merchant` ·
+`/stats/prices`. `/stats/monthly` ayrıca `son_aylar`, `products`,
+`products_frequent` taşıyor.
+
+**Ekranlar:** kategori sayfası (6 aylık seyir + ne alındı + nereden) · market
+sayfası (seyir + ne alındı + fişler, fiş yerinde açılıyor) · tüm ürünler.
+
+**Ürün gruplama fiş kalemlerindeki `generic` alanına dayanıyor** — "bu ürün
+aslında NE", markadan ve ambalajdan bağımsız. `MILSANI`, `MILBONA` ve
+`JA! MILCH` tek satırda "Süt" olarak toplanıyor. **Bunu rakiplerin hiçbiri
+üretemez, çünkü hiçbiri fişi kalem kalem okumuyor.** Genel adı olmayan
+kayıtlar ham addan üretilen anahtarla kendi satırında duruyor — o yedek yol
+kaldırılmamalı.
+
+> **`product_key` marka adını TEMİZLEMEZ**, yalnızca boyutu ayırır. Bu
+> ölçümle bulundu: gruplama `generic` üzerinden yapılmazsa üç market markası
+> üç ayrı satır olarak kalıyor.
+
+**Fiyat hareketleri (Zamlananlar/Ucuzlayanlar) — üç sert kural:**
+
+1. **Aynı market içinde.** Marketler arası karşılaştırma barkod olmadan fiyat
+   farkını değil *ürün farkını* ölçer.
+2. **Ayın MEDYANI**, son fiyatı değil. Kampanyalı bir hafta "ucuzladı" deyip
+   ertesi ay "zamlandı" demesin.
+3. **`adet` sınıfı DIŞARIDA.** Boyut bilinmiyorsa fiyat farkı ürün farkı
+   olabiliyor. Gerçek veride ölçüldü: "Wassermel. XXL 6,00 → 10,60 (+%77)"
+   bir zam değil, iki farklı boy karpuzdu. Yalnızca `paketli` (boyut adın
+   içinde) ve `acik` (kasada tartılan) sınıfları karşılaştırılıyor.
+
+Eşik **%8**; altındaki oynamalar yuvarlama ve kampanya gürültüsü. Ucuzlayanlar
+da listede — yalnızca zam göstermek insanı her ay kötü haberle karşılar.
+
+**Grafik serileri evin ilk harcamasından öncesine inmiyor.** Ağustos'ta
+kurulan bir eve "Mart 0 €" yazmak o ay hiç harcamadığını söylemek olur, oysa
+o ay ortada yoktun. Çubuk genişliği kapaklı ve sola dayalı: iki aylık evle
+altı aylık evin çubukları aynı kalınlıkta, sağdaki boşluk zamanla doluyor.
+
+`tests/analiz-test.py` 58 kontrolle koruyor.
 
 ### İKİ EKSEN — "kimin için" × "kim aldı"
 
