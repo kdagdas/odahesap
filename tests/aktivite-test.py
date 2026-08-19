@@ -105,6 +105,76 @@ carol, carol_id = reg("carol")
 nc = c.get(f"{API}/notifications", headers=hdr(carol)).json()
 check("yabanci hicbir sey gormuyor", nc["notifications"] == [], str(nc))
 
+print()
+print("== bildirim GIDECEGI YERI tasiyor ==")
+# Bildirime dokunanin ilk sorusu "benim icin ne aldi" -- cevabin bulundugu fis
+# `data`da yaziyor. `ay` de sart: Harcamalar ekrani AY bazli calisiyor, ay
+# yazilmazsa geriye tarihli bir fis bugunun listesinde bulunamaz.
+r = c.post(f"{API}/expenses", headers=hdr(alice), json={
+    "target_type": "household", "total": 33.0, "source": "manual",
+    "merchant": "LIDL", "expense_date": "2026-06-14", "items": []})
+exp_id = r.json()["expense"]["expense_id"]
+nb = c.get(f"{API}/notifications", headers=hdr(bob)).json()
+son = nb["notifications"][0]
+check("data alani geliyor", isinstance(son.get("data"), dict), str(son.get("data")))
+check("expense_id yaziyor", son["data"].get("expense_id") == exp_id, str(son["data"]))
+check("ay FISIN ayi, bugunun degil", son["data"].get("ay") == "2026-06", str(son["data"]))
+
+print()
+print("== silinen harcamanin bildirimi de fisi tasiyor ==")
+c.delete(f"{API}/expenses/{exp_id}", headers=hdr(alice))
+nb = c.get(f"{API}/notifications", headers=hdr(bob)).json()
+sil = nb["notifications"][0]
+check("silme bildirimi geldi", sil["kind"] == "expense_edit", sil["kind"])
+check("silinen fisin kimligi duruyor", sil["data"].get("expense_id") == exp_id,
+      str(sil["data"]))
+
+print()
+print("== tek bildirim silme ==")
+onceki = len(nb["notifications"])
+hedef = nb["notifications"][0]["notification_id"]
+r = c.delete(f"{API}/notifications/{hedef}", headers=hdr(bob))
+check("silme 200", r.status_code == 200, str(r.status_code))
+nb = c.get(f"{API}/notifications", headers=hdr(bob)).json()
+check("satir gitti", len(nb["notifications"]) == onceki - 1, str(len(nb["notifications"])))
+check("silinen artik yok",
+      all(x["notification_id"] != hedef for x in nb["notifications"]))
+
+print()
+print("== baskasinin bildirimi silinemiyor ==")
+na = c.get(f"{API}/notifications", headers=hdr(alice)).json()
+alice_ntf = na["notifications"][0]["notification_id"]
+r = c.delete(f"{API}/notifications/{alice_ntf}", headers=hdr(bob))
+check("yabanci 404 aliyor", r.status_code == 404, str(r.status_code))
+na = c.get(f"{API}/notifications", headers=hdr(alice)).json()
+check("Alice'in kaydi duruyor",
+      any(x["notification_id"] == alice_ntf for x in na["notifications"]))
+
+print()
+print("== topluca temizleme YALNIZCA okunmuslari siliyor ==")
+c.post(f"{API}/notifications/read", headers=hdr(bob))
+c.post(f"{API}/expenses", headers=hdr(alice), json={
+    "target_type": "household", "total": 9.0, "source": "manual",
+    "merchant": "EDEKA", "items": []})
+nb = c.get(f"{API}/notifications", headers=hdr(bob)).json()
+okunmus = sum(1 for x in nb["notifications"] if x["read"])
+check("temizlemeden once okunmus var", okunmus > 0, str(okunmus))
+r = c.post(f"{API}/notifications/clear-read", headers=hdr(bob))
+check("temizleme 200", r.status_code == 200, str(r.status_code))
+check("silinen sayisi bildiriliyor", r.json().get("deleted") == okunmus, str(r.json()))
+nb = c.get(f"{API}/notifications", headers=hdr(bob)).json()
+check("okunmus kalmadi", all(not x["read"] for x in nb["notifications"]),
+      str([x["read"] for x in nb["notifications"]]))
+check("okunmamis HAYATTA", nb["unread"] == 1, str(nb["unread"]))
+check("okunmamis EDEKA", "EDEKA" in nb["notifications"][0]["body"],
+      nb["notifications"][0]["body"])
+
+print()
+print("== Alice'in kayitlari etkilenmedi ==")
+na = c.get(f"{API}/notifications", headers=hdr(alice)).json()
+check("Alice hala kayitli", len(na["notifications"]) > 0, str(len(na["notifications"])))
+
+print()
 print("\n== temizlik ==")
 for t in (alice, bob, carol):
     c.post(f"{API}/households/leave", headers=hdr(t))
