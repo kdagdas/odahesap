@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   View, Text, StyleSheet, ScrollView, RefreshControl, Pressable, ActivityIndicator,
 } from "react-native";
@@ -98,7 +98,11 @@ export default function Harcamalar() {
   const geriDon = useGeriDon();
   const { members, household } = useHousehold();
   /* Kasa'daki bir ekstre satırından gelinmişse süzgeç hazır geliyor. */
-  const params = useLocalSearchParams<{ akis?: string; ay?: string; kisi?: string }>();
+  const params = useLocalSearchParams<{
+    akis?: string; ay?: string; kisi?: string; expense?: string }>();
+  const scrollRef = useRef<ScrollView>(null);
+  /* Bildirimden gelinen fiş — ekrana getirebilmek için satırın kendisi. */
+  const hedefSatir = useRef<View | null>(null);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [akis, setAkis] = useState<string | undefined>(
     params.akis && AKIS_ADI[params.akis] ? params.akis : undefined);
@@ -126,6 +130,37 @@ export default function Harcamalar() {
   useEffect(() => {
     setMemberFilter(typeof params.kisi === "string" && params.kisi ? params.kisi : undefined);
   }, [params.kisi]);
+
+  /* BİLDİRİMDEN GELEN FİŞ.
+     "Kadir ortak bir harcama yaptı" bildirimine dokunan kişinin sorusu
+     "benim için ne aldı" — cevabı satırın açılımındaki kalemler. Ayrı bir
+     fiş ekranı çizilmiyor, var olan açılım kullanılıyor.
+
+     Fiş listede YOKSA (silinmiş, ya da eski bir bildirimde `ay` yazmadığı
+     için başka bir ay açılmış) hiçbir şey açılmıyor ve hiçbir yere
+     kaydırılmıyor: yanlış bir fişi doğruymuş gibi göstermektense sessiz
+     kalmak. */
+  const acilacak = typeof params.expense === "string" ? params.expense : undefined;
+  useEffect(() => { if (acilacak) setExpandedId(acilacak); }, [acilacak]);
+
+  useEffect(() => {
+    if (!acilacak || loading) return;
+    if (!expenses.some((e) => e.expense_id === acilacak)) return;
+    // Açılım yerleşsin diye kısa bir bekleme; ölçüm ondan önce yapılırsa
+    // satırın son konumu değil eski konumu bulunuyor.
+    const t = setTimeout(() => {
+      const kok = (scrollRef.current as any)?.getInnerViewNode?.();
+      const satir = hedefSatir.current as any;
+      if (kok == null || !satir?.measureLayout) return;
+      satir.measureLayout(
+        kok,
+        (_x: number, y: number) =>
+          scrollRef.current?.scrollTo({ y: Math.max(y - 90, 0), animated: true }),
+        () => { /* ölçülemediyse satır yine açık; kaydırma bir konfor */ },
+      );
+    }, 320);
+    return () => clearTimeout(t);
+  }, [acilacak, loading, expenses]);
 
   const load = useCallback(async () => {
     try {
@@ -161,6 +196,7 @@ export default function Harcamalar() {
       {/* Başlık kaydırma alanının içinde: aşağı inerken beyaz yüzey koyu alanı
           örtüp yerini alıyor. Sabit kalan koyu bant listeden yer çalıyordu. */}
       <ScrollView
+        ref={scrollRef}
         contentContainerStyle={[styles.page, altPay]}
         showsVerticalScrollIndicator={false}
         refreshControl={
@@ -285,7 +321,8 @@ export default function Harcamalar() {
                 const istisna = !e.odesme
                   && expenses.slice(0, idx).some((o) => !!o.odesme);
                 return (
-                  <View key={e.expense_id}>
+                  <View key={e.expense_id}
+                        ref={(r) => { if (e.expense_id === acilacak) hedefSatir.current = r; }}>
                     {cizgi && (
                       <View style={styles.odesmeCizgi} testID={`odesme-${cizgi}`}>
                         <Ionicons name="checkmark-circle" size={14} color={colors.accentDark} />

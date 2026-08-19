@@ -8,7 +8,7 @@ import {
 } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import { Ionicons } from "@expo/vector-icons";
-import { useFocusEffect, useRouter } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 
 import { apiGet, apiPost, apiDelete } from "@/src/api";
 import { useAuth } from "@/src/auth";
@@ -162,6 +162,30 @@ export default function Denge() {
   const [busy, setBusy] = useState(false);
   const [mode, setMode] = useState<"none" | "close" | "reopen">("none");
   const [gecmisAcik, setGecmisAcik] = useState(false);
+  /* Ödeme bildiriminden gelindi: geçmiş açık gelsin ve ekrana getirilsin.
+     Kasa uzun bir ekran; kartı açıp kullanıcıyı en üstte bırakmak, bildirimin
+     söylediği şeyi yine göstermemek olurdu. */
+  const { gecmis } = useLocalSearchParams<{ gecmis?: string }>();
+  const gecmisKarti = useRef<View | null>(null);
+  useEffect(() => {
+    if (gecmis !== "1") return;
+    setGecmisAcik(true);
+  }, [gecmis]);
+  useEffect(() => {
+    if (gecmis !== "1" || loading || settlements.length === 0) return;
+    const t = setTimeout(() => {
+      const kok = (scrollRef.current as any)?.getInnerViewNode?.();
+      const kart = gecmisKarti.current as any;
+      if (kok == null || !kart?.measureLayout) return;
+      kart.measureLayout(
+        kok,
+        (_x: number, y: number) =>
+          scrollRef.current?.scrollTo({ y: Math.max(y - 24, 0), animated: true }),
+        () => { /* ölçülemediyse kart yine açık */ },
+      );
+    }, 380);
+    return () => clearTimeout(t);
+  }, [gecmis, loading, settlements.length]);
   /**
    * Ekstrenin açık satırı — `carried` · `share` · `paid`, ya da kapalı.
    *
@@ -802,6 +826,7 @@ export default function Denge() {
                     zaman ne kadar ödedi diye cevap veriyor ve ödeşilmiş
                     geçmiş de dahil, dönemleri aşıyor. */}
                 {settlements.length > 0 && (
+                  <View ref={gecmisKarti}>
                   <Card title="Ödeme Geçmişi" style={styles.mx}
                         action={settlements.length > GECMIS_KISA
                           ? (gecmisAcik ? "Daha az" : `Tümü · ${settlements.length}`)
@@ -837,6 +862,7 @@ export default function Denge() {
                       );
                     })}
                   </Card>
+                  </View>
                 )}
 
                 {message && <Text style={[styles.msg, styles.mx]}>{message}</Text>}
