@@ -4403,6 +4403,160 @@ async def product_stats(
     return {"month": month, "scope": scope, "products": _urunler(exps)}
 
 
+def _arama_anahtari(s: str) -> str:
+    """Serbest metni, ürün ve market anahtarlarıyla AYNI biçime indirger.
+
+    Yol bilerek `product_key()` ile aynı: `_fold_german` + `_FOLD` + harf/rakam
+    dışını boşluğa çevir. Böylece "sut" → "süt", "SUTU" → "sutu", "Kaufland"
+    → "kaufland" oluyor ve kullanıcı Türkçe karakterleri yazmak zorunda
+    kalmıyor. Aramada bu şart: telefon klavyesinde "ü" bulmak bir engel ve
+    engelin ödülü sıfır.
+
+    `product_key`'den tek farkı boyutu SÖKMEMESİ — "1 lt süt" yazan biri
+    "lt"yi de kastediyor olabilir ve elemek yerine eşleşmeye bırakmak daha az
+    varsayım.
+    """
+    t = _fold_german(s or "").translate(_FOLD)
+    t = "".join(ch if ch.isalnum() or ch.isspace() else " " for ch in t)
+    return " ".join(t.split())
+
+
+def _eslesme_sirasi(anahtar: str, q: str) -> Optional[int]:
+    """Sorgu bu anahtarla eşleşiyor mu, ne kadar iyi? Küçük olan daha iyi.
+
+    Üç kademe var ve sırası önemli: "su" yazan biri önce **Su**'yu görmeli,
+    sonra **Su**cuk'u, en sonda Ku**şsu**yu'nu. Baştan eşleşme insanın
+    aklındaki kelimedir; ortadan eşleşme çoğu zaman tesadüftür.
+
+    **Bulanık (fuzzy) eşleşme YOK.** Yazım hatasını tolere etmek 400 ürünlük
+    bir listede yanlış satırları da yukarı taşır ve bu projede kural zaten
+    yazılı: *yanlış birleştirmek, birleştirmemekten pahalı.* Kullanıcı bir
+    harf eksik yazdığında hiçbir şey bulamaz ve harfi ekler — yanlış ürünü
+    doğru sanmasından iyidir.
+    """
+    if not q:
+        return None
+    if anahtar.startswith(q):
+        return 0
+    if any(w.startswith(q) for w in anahtar.split()):
+        return 1
+    if q in anahtar:
+        return 2
+    return None
+
+
+def _ay_araligi(exps: List[dict]) -> tuple:
+    """Bu kayıtların ilk ve son ayı — `("2026-03", "2026-08")`."""
+    aylar = sorted({(_expense_day(e) or "")[:7] for e in exps if _expense_day(e)})
+    return (aylar[0], aylar[-1]) if aylar else (None, None)
+
+
+@api.get("/search")
+async def search(q: str = "", user=Depends(get_current_user)):
+    """Ürün · market · kişi araması — **bütün geçmişte.**
+
+    ### Neden var
+
+    Her ekran takvim ayına kilitli. "Sütü en son ne zaman aldık, kaça?"
+    sorusunun bugün cevabı yok: kullanıcı ayları tek tek gezmek zorunda ve 49
+    ürün 400 olduğunda bu imkânsızlaşıyor. Aramanın varlık sebebi **ayı
+    aşması**; yalnızca bulunduğu ayı süzseydi zaten var olan listeye ikinci
+    bir yol olurdu.
+
+    Bu yüzden her satır bir ZAMAN ARALIĞI taşıyor ("Mart – Ağustos"), tek bir
+    ay değil.
+
+    ### Neden Mongo metin indeksi değil
+
+    Eşleştirme Python'da, evin tüm kayıtları üzerinde. Ölçek bunu kaldırıyor:
+    bir ev yılda ~600 fiş üretiyor. Metin indeksi ürün adlarını **ham** hâliyle
+    indeksler, oysa gruplama `generic` + `product_key` üzerinden yapılıyor —
+    indeks "MILBONA VOLLMILCH" bulur, kullanıcının aradığı "Süt" ise
+    veritabanında hiçbir belgede yazmıyor. Yani indeks daha hızlı ama **yanlış
+    şeyi** arardı.
+
+    Ürün ve market toplamları `_urunler()` ve `_breakdown()`'dan geliyor —
+    Analiz sayfasıyla aynı fonksiyonlar. Arama sonucundaki "Süt 62,40 €" ile
+    Tüm Ürünler'deki satırın ayrışması bu yüzden mümkün değil.
+    """
+    hh = await get_user_household(user["user_id"])
+    anahtar = _arama_anahtari(q)
+    bos = {"q": q, "products": [], "merchants": [], "members": []}
+    # İki harften kısa sorgu her şeyle eşleşiyor ve sonuç listesi rastgele
+    # görünüyor; kullanıcı "arama bozuk" diye okuyor.
+    if not hh or len(anahtar) < 2:
+        return bos
+
+    exps = await db.expenses.find(
+        {"household_id": hh["household_id"], **_visible_filter(user["user_id"])},
+        {"_id": 0},
+    ).sort("expense_date", -1).to_list(3000)
+
+    # --- Ürünler ---
+    urunler = []
+    for u in _urunler(exps):
+        sira = _eslesme_sirasi(_arama_anahtari(u["name"]), anahtar)
+        if sira is None:
+            sira = _eslesme_sirasi(u["key"], anahtar)
+        if sira is None:
+            continue
+        ilgili = [
+            e for e in exps
+            if any(
+                (product_key((i.get("generic") or "").strip())
+                 if (i.get("generic") or "").strip()
+                 else product_key((i.get("name") or "").strip())) == u["key"]
+                for i in (e.get("items") or [])
+            )
+        ]
+        ilk, son = _ay_araligi(ilgili)
+        urunler.append({**u, "sira": sira, "first_month": ilk, "last_month": son})
+    urunler.sort(key=lambda x: (x["sira"], -x["total"]))
+
+    # --- Marketler ---
+    bd = _breakdown(exps)
+    marketler = []
+    for mkey, tutar in bd["merchants"].items():
+        ad = bd["merchant_names"].get(mkey, mkey)
+        sira = _eslesme_sirasi(_arama_anahtari(ad), anahtar)
+        if sira is None:
+            sira = _eslesme_sirasi(_arama_anahtari(mkey), anahtar)
+        if sira is None:
+            continue
+        ilgili = [
+            e for e in exps
+            if (normalize_merchant((e.get("merchant") or "Diğer").strip() or "Diğer")
+                or ((e.get("merchant") or "Diğer").strip() or "Diğer").casefold()) == mkey
+        ]
+        ilk, son = _ay_araligi(ilgili)
+        marketler.append({
+            "key": mkey, "name": ad, "total": round(tutar, 2),
+            "receipts": len(ilgili), "first_month": ilk, "last_month": son,
+            "sira": sira,
+        })
+    marketler.sort(key=lambda x: (x["sira"], -x["total"]))
+
+    # --- Kişiler ---
+    # Ev arkadaşları isimden aranıyor; sonuç o kişinin ay dökümüne götürüyor.
+    uyeler = await db.users.find(
+        {"user_id": {"$in": hh.get("member_ids", [])}},
+        {"_id": 0, "user_id": 1, "name": 1},
+    ).to_list(50)
+    kisiler = []
+    for m in uyeler:
+        sira = _eslesme_sirasi(_arama_anahtari(m.get("name") or ""), anahtar)
+        if sira is not None:
+            kisiler.append({"user_id": m["user_id"], "name": m.get("name") or "?", "sira": sira})
+    kisiler.sort(key=lambda x: x["sira"])
+
+    return {
+        "q": q,
+        "products": urunler[:12],
+        "merchants": marketler[:8],
+        "members": kisiler[:5],
+    }
+
+
 def _medyan(sayilar: List[float]) -> float:
     """Ortanca. Ortalama DEĞİL, ve fark burada kritik.
 
