@@ -13,7 +13,7 @@
 import React from "react";
 import {
   View, Text, Pressable, StyleSheet, ViewStyle, StyleProp, Image, TextStyle,
-  Keyboard, Platform, Modal, Alert, TextInput, Animated,
+  Keyboard, Platform, Modal, Alert, TextInput, Animated, BackHandler,
   LayoutAnimation, UIManager,
   useWindowDimensions,
 } from "react-native";
@@ -286,10 +286,31 @@ export const tabBarHeight = (bottomInset: number) => 60 + Math.max(bottomInset, 
 export function useGeriDon(varsayilan = "/(tabs)/panel") {
   const router = useRouter();
   const { geri } = useLocalSearchParams<{ geri?: string }>();
-  return React.useCallback(() => {
+  const don = React.useCallback(() => {
     const hedef = typeof geri === "string" && geri.startsWith("/") ? geri : varsayilan;
     router.replace(hedef as any);
   }, [geri, varsayilan, router]);
+
+  /* DONANIM GERİ TUŞU da aynı yere gitmeli.
+     Köşedeki X düğmesi bu kancayı kullanıyordu ama telefonun kendi geri
+     jesti kullanmıyordu: o, sekme gezgininin varsayılanına düşüyor ve
+     yığının dibindeki Anasayfa'ya gidiyordu. İstatistik → kategori → geri
+     yapan insan İstatistik'e değil Anasayfa'ya çıkıyordu.
+
+     `true` döndürmek olayı burada bitiriyor; ekran odakta değilken
+     dinleyici kaldırılıyor ki üst üste açılan ekranlarda yalnızca en
+     üsttekinin geri tuşu çalışsın. */
+  useFocusEffect(
+    React.useCallback(() => {
+      const abone = BackHandler.addEventListener("hardwareBackPress", () => {
+        don();
+        return true;
+      });
+      return () => abone.remove();
+    }, [don]),
+  );
+
+  return don;
 }
 
 /**

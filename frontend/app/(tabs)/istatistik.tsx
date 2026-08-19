@@ -315,7 +315,11 @@ export default function Istatistik() {
                           style={styles.catRow}
                           onPress={() => router.push({
                             pathname: "/(tabs)/kategori",
-                            params: { key: cat.key, ay: month, geri: "/(tabs)/istatistik" },
+                            // KAPSAM da taşınıyor: "Kişisel" sekmesinden
+                            // girilen kategori, ev harcamasını değil senin
+                            // kendine aldıklarını göstermeli.
+                            params: { key: cat.key, ay: month, scope,
+                                      geri: "/(tabs)/istatistik" },
                           })}
                           testID={`kategori-${cat.key}`}
                         >
@@ -409,13 +413,13 @@ export default function Istatistik() {
                     Karşılaştırmaya ihtiyacı yok: ilk aydan itibaren dolu
                     geliyor. Yalnızca EV kapsamında — kişisel sekmede "ne
                     aldık" sorusunun öznesi kayboluyor. */}
-                {scope === "household" && (data.products || []).length > 0 && (
+                {(data.products || []).length > 0 && (
                   <Card title="En Çok Harcadıklarımız" style={styles.mx}
                         action={data.product_count > data.products.length
                           ? `Tümü · ${data.product_count}` : undefined}
                         onAction={() => router.push({
                           pathname: "/(tabs)/urunler",
-                          params: { ay: data.month, geri: "/(tabs)/istatistik" },
+                          params: { ay: data.month, scope, geri: "/(tabs)/istatistik" },
                         })}>
                     {data.products.map((u, i) => (
                       <View key={u.key}>

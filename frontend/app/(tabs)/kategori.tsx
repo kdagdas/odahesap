@@ -53,8 +53,12 @@ export default function KategoriDetay() {
   useBasaSar(scrollRef);
   const geriDon = useGeriDon("/(tabs)/istatistik");
   const { household } = useHousehold();
-  const params = useLocalSearchParams<{ key?: string; ay?: string }>();
+  const params = useLocalSearchParams<{ key?: string; ay?: string; scope?: string }>();
   const anahtar = typeof params.key === "string" ? params.key : "diger";
+  /* KAPSAM geldiği yerden taşınıyor. Önce her zaman "household" varsayılıyordu
+     ve "Kişisel" sekmesinden girilen kategori, kendine aldıklarını değil evin
+     215 €'luk harcamasını gösteriyordu. */
+  const kapsam = params.scope === "self" ? "self" : "household";
 
   const [ay, setAy] = useState<string>(
     typeof params.ay === "string" && params.ay.length === 7 ? params.ay : buAy());
@@ -64,10 +68,11 @@ export default function KategoriDetay() {
 
   const load = useCallback(async () => {
     try {
-      setVeri(await apiGet<Kategori>(`/stats/category?key=${anahtar}&month=${ay}`));
+      setVeri(await apiGet<Kategori>(
+        `/stats/category?key=${anahtar}&month=${ay}&scope=${kapsam}`));
     } catch (e) { console.log(e); }
     finally { setLoading(false); setRefreshing(false); }
-  }, [anahtar, ay]);
+  }, [anahtar, ay, kapsam]);
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
   /* Değişim seriden hesaplanıyor, ayrı bir alan istenmiyor: seri zaten
@@ -90,7 +95,7 @@ export default function KategoriDetay() {
       >
         <ScreenHeader
           size="l"
-          overline="KATEGORİ"
+          overline={kapsam === "self" ? "KİŞİSEL · KATEGORİ" : "KATEGORİ"}
           title={categoryLabel(anahtar)}
           right={
             <Pressable onPress={geriDon} hitSlop={12} testID="kategori-back" style={styles.headBtn}>

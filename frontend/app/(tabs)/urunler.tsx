@@ -58,7 +58,8 @@ export default function Urunler() {
   useBasaSar(scrollRef);
   const geriDon = useGeriDon("/(tabs)/istatistik");
   const { household } = useHousehold();
-  const params = useLocalSearchParams<{ ay?: string }>();
+  const params = useLocalSearchParams<{ ay?: string; scope?: string }>();
+  const kapsam = params.scope === "self" ? "self" : "household";
 
   const [ay, setAy] = useState<string>(
     typeof params.ay === "string" && params.ay.length === 7 ? params.ay : buAy());
@@ -80,11 +81,12 @@ export default function Urunler() {
 
   const load = useCallback(async () => {
     try {
-      const r = await apiGet<{ products: Urun[] }>(`/stats/products?month=${ay}`);
+      const r = await apiGet<{ products: Urun[] }>(
+        `/stats/products?month=${ay}&scope=${kapsam}`);
       setUrunler(r.products || []);
     } catch (e) { console.log(e); }
     finally { setLoading(false); setRefreshing(false); }
-  }, [ay]);
+  }, [ay, kapsam]);
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
   const toplam = urunler.reduce((s, u) => s + u.total, 0);
@@ -106,7 +108,7 @@ export default function Urunler() {
       >
         <ScreenHeader
           size="l"
-          overline="ÜRÜNLER"
+          overline={kapsam === "self" ? "KİŞİSEL · ÜRÜNLER" : "ÜRÜNLER"}
           title={ayAdi(ay)}
           right={
             <Pressable onPress={geriDon} hitSlop={12} testID="urunler-back" style={styles.headBtn}>
