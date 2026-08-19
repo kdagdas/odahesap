@@ -4034,7 +4034,7 @@ def _urunler(exps: List[dict]) -> List[dict]:
             k = kova.setdefault(anahtar, {
                 "key": anahtar, "name": genel or ad, "generic": bool(genel),
                 "total": 0.0, "count": 0,
-                "markets": set(), "units": {}, "qty": 0.0,
+                "markets": set(), "units": {}, "qty": 0.0, "bozuk_birim": False,
             })
             # Genel ad varsa ekranda O yazılıyor ("Süt"), market markası değil.
             # Yoksa ham adların en kısası — ticari ek taşımayan hâli insanların
@@ -4047,15 +4047,24 @@ def _urunler(exps: List[dict]) -> List[dict]:
             k["count"] += 1
             k["markets"].add(market)
             birim = (i.get("unit") or "adet").strip() or "adet"
+            miktar = float(i.get("quantity", 1) or 1)
+            # KESİRLİ "adet" imkânsız (7,105 adet tavuk diye bir şey yok) ve
+            # birimin yanlış olduğunu kanıtlar. Sayının kendisi doğru ama
+            # neyin sayısı olduğu bilinmiyor — kilo mu, litre mi? Uydurmak
+            # yerine miktar hiç gösterilmiyor, satır "3 kez"e düşüyor.
+            # Geçmiş kayıtlar `tests/birim-duzelt.py` ile onarıldı; bu,
+            # bundan sonrası için sessiz bir güvenlik ağı.
+            if birim == "adet" and abs(miktar - round(miktar)) > 1e-9:
+                k["bozuk_birim"] = True
             k["units"][birim] = k["units"].get(birim, 0) + 1
-            k["qty"] += float(i.get("quantity", 1) or 1)
+            k["qty"] += miktar
 
     out = []
     for k in kova.values():
         birimler = k["units"]
         baskin = max(birimler, key=birimler.get) if birimler else None
         # Birim karışıksa (kg + paket) miktar toplamı anlamsız; gizleniyor.
-        karisik = len(birimler) > 1
+        karisik = len(birimler) > 1 or k.get("bozuk_birim", False)
         out.append({
             "key": k["key"],
             # Genel ad küçük harfle geliyor ("süt"); ekranda satır başı büyük.

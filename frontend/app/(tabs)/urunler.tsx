@@ -1,9 +1,12 @@
 /** Tüm ürünler — bir ayın ürün bazlı dökümü.
  *
- *  İstatistik'teki "En Çok Aldıklarımız" kartı ilk sekizi gösteriyor; bu
+ *  İstatistik'teki "En Çok Harcadıklarımız" kartı ilk sekizi gösteriyor; bu
  *  sayfa tamamını. Ayrı durmasının sebebi maliyet: her açılışta yüzlerce
  *  satır taşımanın anlamı yok, ama buraya giren de kesilmiş bir liste
  *  istemiyor.
+ *
+ *  Burada ayrıca **sıralama seçilebiliyor** (Tutar / Sıklık): kartta tek
+ *  eksen var çünkü kart bir özet, sayfa ise gezinilen yer.
  *
  *  ### Neden bu sayfa rakiplerde yok
  *
@@ -23,8 +26,8 @@ import { apiGet } from "@/src/api";
 import { useHousehold } from "@/src/household";
 import {
   ScreenHeader, HeaderSplit, HeaderPills, HeaderPill, Sheet, Card, Divider, Money,
-  formatEUR, formatQty, ayAdi, buAy, sonAylar, useScrollPad, useGeriDon, useBasaSar,
-  yenileme,
+  TabSwitch, formatEUR, formatQty, ayAdi, buAy, sonAylar,
+  useScrollPad, useGeriDon, useBasaSar, yenileme,
 } from "@/src/ui";
 import { colors, spacing, type as T, metrics, fontFamily } from "@/src/theme";
 
@@ -55,6 +58,18 @@ export default function Urunler() {
   const [ay, setAy] = useState<string>(
     typeof params.ay === "string" && params.ay.length === 7 ? params.ay : buAy());
   const [urunler, setUrunler] = useState<Urun[]>([]);
+  /**
+   * Sıralama ekseni — **iki ayrı soru.**
+   *
+   * *Tutar*: "paramız neye gidiyor". *Sıklık*: "en çok neyi alıyoruz".
+   * İkisi aynı şey değil ve karıştırılması kolay: kilosu 20 € olan etten
+   * 2 kilo ile kilosu 1 € olan undan 40 kilo aynı tutarı verir, ama biri
+   * ayda bir, öteki her hafta alınır.
+   *
+   * Miktara göre sıralama YOK: kilo ile adet toplanamaz, sıralanamaz da.
+   * "Kaç kez alındı" birim tanımaz ve her satırda karşılaştırılabilir.
+   */
+  const [sira, setSira] = useState<"tutar" | "siklik">("tutar");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -68,6 +83,11 @@ export default function Urunler() {
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
   const toplam = urunler.reduce((s, u) => s + u.total, 0);
+  // Sunucu tutara göre sıralı gönderiyor; sıklık istemcide sıralanıyor
+  // (liste zaten elde, ikinci bir istek anlamsız).
+  const sirali = sira === "tutar"
+    ? urunler
+    : [...urunler].sort((a, b) => b.count - a.count || b.total - a.total);
 
   return (
     <View style={styles.root} testID="urunler-screen">
@@ -112,6 +132,16 @@ export default function Urunler() {
               testID="urunler-ay"
             />
           </HeaderPills>
+          <TabSwitch
+            value={sira}
+            onChange={setSira}
+            onDark
+            options={[
+              { value: "tutar" as const, label: "Tutar", icon: "cash-outline" },
+              { value: "siklik" as const, label: "Sıklık", icon: "repeat-outline" },
+            ]}
+            testID="urun-sira"
+          />
         </ScreenHeader>
 
         <Sheet>
@@ -130,7 +160,7 @@ export default function Urunler() {
               </View>
             ) : (
               <Card title="Tüm Ürünler">
-                {urunler.map((u, i) => (
+                {sirali.map((u, i) => (
                   <View key={u.key}>
                     {i > 0 && <Divider inset={spacing.lg} />}
                     <View style={styles.row}>
@@ -141,7 +171,11 @@ export default function Urunler() {
                         <Text style={styles.ad} numberOfLines={1}>{u.name}</Text>
                         <Text style={styles.alt} numberOfLines={1}>{altSatir(u)}</Text>
                       </View>
-                      <Money value={u.total} />
+                      {/* Sağdaki sayı SIRALANAN şey: sıklık kipinde tutarı
+                          göstermek "neye göre sıralı" sorusunu bırakırdı. */}
+                      {sira === "tutar"
+                        ? <Money value={u.total} />
+                        : <Text style={styles.kez}>{u.count} kez</Text>}
                     </View>
                   </View>
                 ))}
@@ -174,6 +208,7 @@ const styles = StyleSheet.create({
     width: 18, textAlign: "right", fontVariant: ["tabular-nums"],
   },
   ad: { ...T.bodySb, color: colors.ink },
+  kez: { ...T.bodySb, color: colors.ink, fontVariant: ["tabular-nums"] },
   alt: { ...T.caption, fontSize: 11, color: colors.inkTertiary, marginTop: 1 },
   empty: { alignItems: "center", paddingVertical: spacing.xxxl, gap: spacing.md },
   emptyRing: {

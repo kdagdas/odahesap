@@ -433,16 +433,23 @@ export default function Istatistik() {
                   </Card>
                 )}
 
-                {/* EN ÇOK ALDIKLARIMIZ — ürün bazlı, genel ada göre.
+                {/* EN ÇOK HARCADIKLARIMIZ — ürün bazlı, genel ada göre.
                     `MILSANI`, `MILBONA` ve `JA! MILCH` tek satırda "Süt"
                     olarak toplanıyor; bunu rakiplerin hiçbiri üretemez çünkü
                     hiçbiri fişi kalem kalem okumuyor.
+
+                    **Adı "aldıklarımız" değil "HARCADIKLARIMIZ".** Liste
+                    tutara göre sıralı ve ikisi farklı sorular: kilosu 20 €
+                    olan etten 2 kilo ile kilosu 1 € olan undan 40 kilo aynı
+                    tutarı verir. "Aldıklarımız" miktar ima ediyordu ve sıralama
+                    onu tutmuyordu. Sıklığa göre sıralama "Tüm Ürünler"
+                    sayfasında, kendi anahtarıyla.
 
                     Karşılaştırmaya ihtiyacı yok: ilk aydan itibaren dolu
                     geliyor. Yalnızca EV kapsamında — kişisel sekmede "ne
                     aldık" sorusunun öznesi kayboluyor. */}
                 {scope === "household" && (data.products || []).length > 0 && (
-                  <Card title="En Çok Aldıklarımız" style={styles.mx}
+                  <Card title="En Çok Harcadıklarımız" style={styles.mx}
                         action={data.product_count > data.products.length
                           ? `Tümü · ${data.product_count}` : undefined}
                         onAction={() => router.push({
