@@ -5,7 +5,7 @@
 > ihtiyaç duymaz. Günlük operasyon için [DEVAM.md](DEVAM.md), kurulum için
 > [README.md](README.md).
 >
-> Son güncelleme: 16 Ağustos 2026 · Uygulama sürümü 1.0.0 (versionCode 32)
+> Son güncelleme: 19 Ağustos 2026 · Uygulama sürümü **1.1.0** (versionCode 43)
 
 ---
 
@@ -626,6 +626,36 @@ dokunmaz. Yardımcılar: `fcm-verify.py` (Firebase kimlik bilgisi gerçekten
   sayıyı gösteriyor.
 - **Göç olmadı.** Bugüne kadar kapalı dönemler kapalı (ödeşilmiş) kaldı, açık
   olan açık; hiçbir harcamanın dönemi değişmedi.
+
+### İKİ EKSEN — "kimin için" × "kim aldı"
+
+Harcamalar ekranının süzgeci Tur 10'un sonunda yeniden kuruldu ve bugün
+uygulamanın ana gözat aracı. Kural **alıcıdan bağımsız**: kategoriyi bölüşme
+listesi belirliyor, kimin ödediği değil.
+
+| `akis=` | Ne demek |
+|---|---|
+| `ev` | liste evin TAMAMI — kim almış olursa olsun ev harcaması |
+| `bana` | seni İÇEREN alt küme, alan başkası (yalnız sana da, sen+Kemal de) |
+| `baskasi` | alan sen, listede senden başkası da var |
+| `kendim` | yalnızca sen — kişisel, bakiyeye hiç girmez |
+
+İkinci eksen `member_id` (kim ekledi) ve **çarpılabiliyorlar**:
+`akis=ev&member_id=kemal` = "Kemal'in eve aldıkları". Bu yüzden "senin
+ödediğin" diye ayrı bir seçenek yok — kişi süzgecinde kendini seçmek onu
+veriyor.
+
+Tanım `kime_kategori()` içinde. `akis_paylari()` onu çağırıyor, yani Kasa
+ekstresinin satırları bu dört kategoriyle **birebir** eşleşiyor
+(`ev_pay`+`ev_odedigin` · `bana_pay` · `baskasi_pay`+`baskasi_odedigin`) ve her
+satır dokunulduğunda Harcamalar'da tam o kümeyi açıyor.
+
+> **"Payın × üye sayısı" ASLA yapılmaz.** Ekstredeki pay satırı bir bölme
+> işleminin sonucu değil, `split_with`'ten okunan gerçek tutar. Kira
+> 350/400/450 bölündüğünde senin payın `1200 ÷ 3` değil `350`. Evin toplamını
+> öğrenmek için süzgecin başlığındaki **iki sayıya** bakılır: fişin tamamı ve
+> senin payın. (Bu, v43 öncesinde ekstre etiketinin yanlış olmasından doğan
+> gerçek bir karışıklıktı — bkz. SIRADAKI-TUR.md "CİHAZ TURU".)
 
 Gerekçeler, elenen alternatifler ve **neden** elendikleri, ekran tasarımları:
 [SIRADAKI-TUR.md](SIRADAKI-TUR.md). §5 hâlâ dönemin bugünkü çalışma biçimini

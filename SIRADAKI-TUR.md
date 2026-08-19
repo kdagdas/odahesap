@@ -2,8 +2,8 @@
 
 > Bu dosya yeni bir sohbet penceresine geçerken bağlamı taşımak için yazıldı.
 >
-> Son durum: **APK v42**, **596 kontrol** geçiyor, `main` çalışır durumda.
-> Aşağıdaki kararlar **konuşuldu ve onaylandı, koda girmedi.**
+> Son durum: **APK v43 (sürüm 1.1.0)**, `main` canlıya deploy edildi.
+> Tur 10 bitti; aşağıdaki kararların hepsi koda girdi.
 > Uygulamanın bugünkü hâli için [PROJE-DOKUMANI.md](PROJE-DOKUMANI.md),
 > günlük operasyon için [DEVAM.md](DEVAM.md).
 
@@ -480,9 +480,7 @@ tüketim karşılaştırması.
 
 ---
 
-## Tur 10 — NEREDE KALDIK (18 Ağustos 2026)
-
-**23 commit atıldı, 617 kontrol geçiyor, `main` çalışır durumda.**
+## Tur 10 — BİTTİ (19 Ağustos 2026, APK v43 · sürüm 1.1.0)
 
 ### Biten
 
@@ -524,12 +522,11 @@ Aşağıdaki 13 maddenin tamamı koda girdi. Madde başına ayrı commit; `main`
 1. ✓ **Ekstre satırları tıklanabilir**, açılım kavisin altında beyaz kartta;
    dokunulan satır lacivertte vurgulu, oku açıkken aşağı dönüyor
 2. ✓ **Hareket satırı → Harcamalar**, süzgeçli (`?akis=…&ay=…`)
-3. ✓ **Süzgeç SUNUCUYA taşındı.** `akis_paylari()` tek tanım; `_ekstre()` ve
-   `/expenses?akis=` aynı fonksiyondan besleniyor, ayrışamazlar.
-   `akis-test.py` her satırın tutarını süzülen listenin toplamıyla
-   karşılaştırıyor (değişmezlik). "Senin için alınanlar 3 €" boş açılması bu
-   yüzden çözüldü — gizlilik değil, eksik veriydi.
-4. ✓ Harcamalar başlığında kaldırılabilir süzgeç hapı (`HeaderClearPill`)
+3. ✓ **Süzgeç SUNUCUYA taşındı.** "Senin için alınanlar 3 €" boş açılması bu
+   yüzden çözüldü — gizlilik değil, eksik veriydi (Tur 4 öncesi kayıtlarda
+   `split_with` yok, `split_of()` yedek yolu yalnızca sunucuda çalışıyor).
+4. ✓ Harcamalar başlığında süzgeç hapı — **seçilebilir**, yalnızca
+   kaldırılabilir değil (aşağıdaki cihaz turuna bakın)
 5. ✓ `borc-dokumu.tsx` silindi + rota kaydı kaldırıldı
 6. ✓ **Geri Kasa'ya** — `useGeriDon` geldiği yeri `?geri=` ile taşıyor
 7. ✓ **Sekmeye dokununca en üstten** — `useBasaSar`, animasyonsuz
@@ -538,8 +535,79 @@ Aşağıdaki 13 maddenin tamamı koda girdi. Madde başına ayrı commit; `main`
 10. ✓ İstatistik'te "Toplam"ın yeşili nötre
 11. ✓ Köprüde tarih filtresi (fiş maddeden eskiyse eşleşme yok)
 12. ✓ `member-detail` ay bazlı + kapısı Anasayfa'da + "Kişisel" doğru sayı
-13. **`.env` APK'dan HEMEN ÖNCE geri konacak** (`.env.yedek-tur10`) — şu an
-    hâlâ `localhost:8098` çünkü cihaz denemesi sürüyor
+13. ✓ `.env` üretime döndü, sürüm **1.1.0 / versionCode 43**, APK derlendi
+
+### CİHAZ TURU — asıl hatalar burada çıktı (19 Ağustos 2026)
+
+Testlerin **hiçbiri** aşağıdakileri yakalamadı; hepsi ev sahibinin
+telefonunda ortaya çıktı. Bu, "her turun sonunda APK" kuralının kanıtı.
+
+**1. Kasa→Harcamalar süzgeci hiç çalışmıyordu.** Harcamalar bir sekme ekranı;
+oraya "atlamak" ekranı yeniden kurmuyor, zaten kurulu ekrana yeni parametre
+veriyor. `useState` yalnızca ilk kuruluşta okuduğu için, o sekmeye bir kez
+uğramış biri Kasa'dan bir satıra dokunduğunda **hiçbir şey değişmiyordu.**
+Çözüm `useEffect` ile parametre senkronu.
+
+**2. Süzgeç ekseni yeniden kuruldu — alıcıdan BAĞIMSIZ.** Ev sahibinin
+modeli daha temizdi: kategoriyi *bölüşme listesi* belirlesin, kimin ödediği
+değil. Böylece iki eksen çarpılabiliyor:
+
+| Kimin için | Tanım |
+|---|---|
+| **Eve alınanlar** | liste evin tamamı, kim almış olursa olsun |
+| **Sana alınanlar** | seni İÇEREN alt küme, alan başkası (sen+Kemal de) |
+| **Başkası için aldıkların** | alan sen, listede senden başkası da var |
+| **Kendine aldıkların** | yalnızca sen |
+
+`akis=ev` + `member_id=kemal` = "Kemal'in eve aldıkları". *"Senin ödediğin"*
+diye ayrı bir seçenek YOK: kişi süzgecinde kendini seçmek zaten onu veriyor.
+
+**3. Ekstre etiketi YALAN SÖYLÜYORDU.** *"Ev alışverişlerindeki payın
+107,32"* satırı, ev harcaması **olmayan** ikili bir alışverişteki payı
+(2,99) da içine katıyordu. Ev sahibi o sayıyı üçle çarpıp evin toplamını
+bulmaya çalıştı ve yanlış rakama vardı. Gerçek veride ölçüldü:
+`107,32 = 104,33 (gerçek ev payı) + 2,99`; evin toplamı 312,99, doğru
+çarpan `104,33 × 3`.
+
+`akis_paylari()` artık `kime_kategori()`'yi çağırıyor ve satırlar dört
+kategoriyle **birebir**: `ev_pay`+`ev_odedigin` · `bana_pay` ·
+`baskasi_pay`+`baskasi_odedigin` · (kendim hiçbiri). Her satır dokunulduğunda
+Harcamalar'da tam o kümeyi açıyor. Toplamlar korunuyor.
+
+> **×3 genel olarak YANLIŞ.** Bu evde tutmasının sebebi bütün ev
+> harcamalarının tesadüfen eşit üçe bölünmüş olması. Kira 350/400/450
+> bölündüğünde `payın × 3` evin toplamını asla vermez. Doğru yol her zaman
+> süzgecin başlığındaki **iki sayıya** bakmak: fişin tamamı ve senin payın.
+
+**4. Ödeşme çizgisi (ev sahibi önerdi).** Aylık pencerede bir ayın içinde
+ödeşilmiş ve ödeşilmemiş harcamalar yan yana düşüyor. Liste artık
+*"15 Temmuz · buraya kadar ödeşildi"* çizgisi çiziyor. **Soluklaştırma yok** —
+çizginin bir kez söylediğini her satırda tekrar ederdi ve ayın çoğu satırı
+ödeşilmiş olduğu için ekranın büyüğü "kapalı" görünürdü. (Bankacılıkta da
+BEKLEYEN işlem işaretlenir, gerçekleşmiş olan değil.) Çizgi tarihe çizildiği
+ama ödeşilmişlik döneme bağlı olduğu için, geç girilen fiş çizginin altında
+kalıp **"ödeşilmedi"** işareti alıyor — çizgi böylece yalan söylemiyor.
+
+**5. Ay seçici Temmuz'u gizliyordu.** Yalnızca `created_at`'e dayanıyordu;
+geriye tarihli fiş ondan önceye düşebiliyor. Sunucu `first_expense_month`
+döndürüyor, seçici **iki sınırın erkenine** iniyor.
+
+**6. Başlıktaki "Süzülen toplam 417,18" kafa karıştırıyordu** — ev
+harcamasını, kişiseli, başkası için alınanı bir torbaya atıyordu. Artık
+süzgeçsizken tek sayı (kaç kayıt), süzgeçliyken o filtrenin toplamı **ve**
+senin payın.
+
+**7. Kişi süzgecinde isim tekrarı + avatar.** "Kemal" başlığının altında yine
+"Kemal" yazıyordu. Alt satır kalktı, her kişi kendi avatarını taşıyor.
+"Herkes" ikonla kaldı — üç avatarın yığını dar hapta yazıyla çakışıyordu.
+
+**8. "ev" artık DONMUŞ bilgiden okunuyor** (`target_type`), bugünkü üye
+listesinden değil — biri evden ayrıldığında geçmişteki bütün ev harcamaları
+"ev değil" olacaktı.
+
+Ayrıca: `member-detail`'de "Kişisel" yazan sayı `roommate_total` okuyordu,
+oysa `roommate` *bir başkası için alınan* demek. Sunucu üçünü ayrı döndürüyor.
+Ve proje ilk kez `tsc --noEmit` altında tamamen temiz.
 
 ### Cihaz denemesinden gelen ek düzeltmeler (19 Ağustos)
 
