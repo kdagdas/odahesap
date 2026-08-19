@@ -4,6 +4,7 @@ import { View, Text, ScrollView, StyleSheet, Pressable, ActivityIndicator } from
 import { useLocalSearchParams, useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { apiGet } from "@/src/api";
+import { useAuth } from "@/src/auth";
 import { useHousehold } from "@/src/household";
 import {
   ScreenHeader, HeaderSplit, Sheet, Card, Divider, Avatar, CategoryIcon,
@@ -28,6 +29,7 @@ export default function MemberDetail() {
   const router = useRouter();
   /* Geri, geldiği yere. Sekme gezgininde `back()` Anasayfa'ya düşüyor. */
   const geriDon = useGeriDon();
+  const { user } = useAuth();
   const { members, household } = useHousehold();
 
   /* Dönem değil AY. Görüntülemenin her yeri takvim ayı: bu ekranın penceresi
@@ -37,6 +39,7 @@ export default function MemberDetail() {
     typeof params.ay === "string" && params.ay.length === 7 ? params.ay : buAy());
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [evToplam, setEvToplam] = useState(0);
+  const [kisiselToplam, setKisiselToplam] = useState(0);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
@@ -44,12 +47,14 @@ export default function MemberDetail() {
       const res = await apiGet<any>(`/members/${memberId}/expenses?month=${ay}`);
       setExpenses(res.expenses || []);
       setEvToplam(res.household_total || 0);
+      setKisiselToplam(res.personal_total || 0);
     } catch (e) { console.log(e); }
     finally { setLoading(false); }
   }, [memberId, ay]);
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
   const member = members.find((m) => m.user_id === memberId);
+  const benMiyim = memberId === user?.user_id;
 
   return (
     <View style={styles.root} testID="member-detail-screen">
@@ -74,20 +79,27 @@ export default function MemberDetail() {
           />
           <Text style={styles.heroCaption}>{ayAdi(ay)} harcamaları</Text>
         </View>
-        {/* "Kişisel" sütunu YOK.
-            Başkasının kişisel harcaması sana zaten görünmüyor (gizlilik
-            kuralı), yani o sütun her zaman 0,00 yazıyordu — bilgi değil
-            gürültü. Kendine bakarken de burası doğru yer değil: kendi
-            kişiselin İstatistik'te, kendi ekseninde duruyor.
+        {/* "Kişisel" sütunu YALNIZCA kendine bakarken.
+            Başkasının kişisel harcaması sana görünmüyor (gizlilik kuralı),
+            yani onun dökümünde o sütun her zaman 0,00 yazardı — bilgi değil
+            gürültü. Kendi dökümünde ise gerçek bir sayı ve ait olduğu yer
+            burası.
 
-            Yerine KAYIT SAYISI geldi: "8 harcama" bir bağlam veriyor,
-            560 €'nun tek bir alışverişten mi yoksa sekiz fişten mi geldiğini
-            söylüyor. */}
+            KAYIT SAYISI her iki durumda da duruyor: 560 €'nun tek bir
+            alışverişten mi yoksa sekiz fişten mi geldiğini söylüyor. Üç
+            sütunda değer kısalıyor ("8"), çünkü dar telefonda "8 harcama"
+            sütunu taşırıyor. */}
         <HeaderSplit
-          items={[
-            { label: "Ev için", value: formatEUR(evToplam), accent: true },
-            { label: "Kayıt", value: `${expenses.length} harcama` },
-          ]}
+          items={benMiyim
+            ? [
+                { label: "Ev için", value: formatEUR(evToplam), accent: true },
+                { label: "Kişisel", value: formatEUR(kisiselToplam) },
+                { label: "Kayıt", value: String(expenses.length) },
+              ]
+            : [
+                { label: "Ev için", value: formatEUR(evToplam), accent: true },
+                { label: "Kayıt", value: `${expenses.length} harcama` },
+              ]}
         />
         <HeaderPills>
           <HeaderPill

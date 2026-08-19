@@ -152,14 +152,26 @@ export function ScreenHeader({
 
 /** Koyu başlığın içindeki iki sütunlu istatistik bloğu. */
 export function HeaderSplit({ items }: { items: { label: string; value: string; accent?: boolean }[] }) {
+  /* ÜÇ sütun dar telefona sığmıyor: 360dp ekranda kenar boşlukları ve
+     ayraçlar düşünce sütun başına ~95dp kalıyor, "1.240,50 €" ise 17 puntoda
+     oraya sığmayıp alt satıra düşüyor. Üçten itibaren ölçü küçülüyor, ayraç
+     boşluğu daralıyor ve satırlar tek satıra kilitleniyor.
+
+     `minWidth: 0` şart: flex çocuğu varsayılan olarak içeriğinden daha dar
+     olmayı reddediyor ve `numberOfLines` tek başına taşmayı durdurmuyor. */
+  const sik = items.length >= 3;
   return (
     <View style={styles.split}>
       {items.map((it, i) => (
         <React.Fragment key={it.label}>
-          {i > 0 && <View style={styles.splitLine} />}
-          <View style={{ flex: 1 }}>
-            <Text style={styles.splitLabel}>{it.label}</Text>
-            <Text style={[styles.splitValue, it.accent && { color: colors.accentOnDark }]}>
+          {i > 0 && <View style={[styles.splitLine, sik && { marginRight: spacing.md }]} />}
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={styles.splitLabel} numberOfLines={1}>{it.label}</Text>
+            <Text
+              numberOfLines={1}
+              style={[styles.splitValue, sik && styles.splitValueSik,
+                      it.accent && { color: colors.accentOnDark }]}
+            >
               {it.value}
             </Text>
           </View>
@@ -1771,6 +1783,9 @@ const styles = StyleSheet.create({
   splitLine: { width: 1, height: 34, backgroundColor: "rgba(255,255,255,0.14)", marginRight: spacing.lg },
   splitLabel: { ...T.caption, color: colors.onDarkMuted },
   splitValue: { ...T.emph, color: colors.onDark, marginTop: 1 },
+  /* Üç sütunda ölçü küçülüyor ve harf aralığı sıkışıyor: aynı genişlikte
+     iki hane daha sığıyor, okunurluk gözle fark edilecek kadar düşmüyor. */
+  splitValueSik: { fontSize: 15, lineHeight: 20, letterSpacing: -0.3 },
   trend: {
     flexDirection: "row", alignItems: "center", gap: 5, alignSelf: "flex-start",
     backgroundColor: "rgba(16,185,129,0.18)", paddingHorizontal: spacing.md,

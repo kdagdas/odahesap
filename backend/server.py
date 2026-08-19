@@ -4000,7 +4000,16 @@ def _urunler(exps: List[dict]) -> List[dict]:
         toplam = float(e["total"])
         for i in items:
             ad = (i.get("name") or "").strip()
-            anahtar = product_key(ad)
+            # GENEL AD önce: Tur 8'de fiş okunurken her kaleme "bu ürün
+            # aslında NE" diye kısa bir ad yazılıyor (`generic`), markadan ve
+            # ambalajdan bağımsız. Gruplama onunla yapılınca `MILSANI`,
+            # `MILBONA` ve `JA! MILCH` tek satırda "süt" olarak toplanıyor.
+            #
+            # `product_key(ad)` tek başına YETMİYOR ve bu ölçüldü: marka adını
+            # temizlemiyor, yalnızca boyutu ayırıyor — üç market markası üç
+            # ayrı satır olarak kalıyordu.
+            genel = (i.get("generic") or "").strip()
+            anahtar = product_key(genel) if genel else product_key(ad)
             if not anahtar:
                 continue
             satir = float(i.get("price", 0)) * float(i.get("quantity", 1) or 1)
@@ -4008,10 +4017,16 @@ def _urunler(exps: List[dict]) -> List[dict]:
             # kalem toplamı fiş toplamını tutmuyor.
             tutar = satir / item_sum * toplam if item_sum else satir
             k = kova.setdefault(anahtar, {
-                "key": anahtar, "name": ad, "total": 0.0, "count": 0,
+                "key": anahtar, "name": genel or ad, "generic": bool(genel),
+                "total": 0.0, "count": 0,
                 "markets": set(), "units": {}, "qty": 0.0,
             })
-            if len(ad) < len(k["name"]):
+            # Genel ad varsa ekranda O yazılıyor ("Süt"), market markası değil.
+            # Yoksa ham adların en kısası — ticari ek taşımayan hâli insanların
+            # kullandığı addır (`_breakdown`'daki market adı kuralının aynısı).
+            if genel:
+                k["name"], k["generic"] = genel, True
+            elif not k["generic"] and len(ad) < len(k["name"]):
                 k["name"] = ad
             k["total"] += tutar
             k["count"] += 1
@@ -4027,7 +4042,9 @@ def _urunler(exps: List[dict]) -> List[dict]:
         # Birim karışıksa (kg + paket) miktar toplamı anlamsız; gizleniyor.
         karisik = len(birimler) > 1
         out.append({
-            "key": k["key"], "name": k["name"],
+            "key": k["key"],
+            # Genel ad küçük harfle geliyor ("süt"); ekranda satır başı büyük.
+            "name": k["name"][:1].upper() + k["name"][1:] if k["name"] else "?",
             "total": round(k["total"], 2),
             "count": k["count"],
             "market_count": len(k["markets"]),
@@ -4072,7 +4089,8 @@ async def monthly_stats(
         "prev_total": 0, "change_pct": None, "fixed": 0, "variable": 0,
         "categories": [], "merchants": [], "by_member": [],
         "cumulative": [], "prev_cumulative": [], "bills": [],
-        "months": [], "member_count": 0, "per_person": 0,
+        "months": [], "son_aylar": [], "products": [], "product_count": 0,
+        "member_count": 0, "per_person": 0,
         "my_share": 0, "my_personal": 0,
         "prev_same_day": 0, "days": 0, "elapsed_days": 0,
     }
@@ -4200,6 +4218,10 @@ async def monthly_stats(
             })
         bills.sort(key=lambda b: -abs(b["change_pct"] or 0))
 
+    son_aylar = await _aylik_seri(
+        hh["household_id"], month, scope, user["user_id"], uyeler, 6)
+    urunler = _urunler(exps)
+
     # Ev harcamalarında bu kişinin payı
     my_share = 0.0
     if scope == "household":
@@ -4237,6 +4259,16 @@ async def monthly_stats(
         # eğri üretir, kısa ay kısa çizilsin.
         "prev_cumulative": prev_cum,
         "months": months,
+        # Son 6 ay — TEK okumadan. `_month_expenses`'i altı kez çağırmak
+        # koleksiyonu altı kez okumak demekti; `_aylik_seri` bunu bir okumaya
+        # indiriyor ve kapsam kuralını `_kapsa` ile paylaşıyor, yani
+        # çubuktaki ay ile o aya girildiğindeki toplam ayrışamaz.
+        "son_aylar": son_aylar,
+        # Ürün bazlı toplam. Tur 8'in genel ürün adı işi sayesinde üç
+        # marketin kendi markası ("MILSANI", "MILBONA", "JA!") tek satırda
+        # toplanıyor. Karşılaştırmaya ihtiyacı yok, ilk aydan itibaren dolu.
+        "products": urunler[:8],
+        "product_count": len(urunler),
         "categories": cat_rows,
         "merchants": sorted(
             [{"name": bd["merchant_names"].get(k, k), "total": round(v, 2)}
@@ -4248,6 +4280,120 @@ async def monthly_stats(
         "bills": bills,
         "my_share": round(my_share, 2),
         "my_personal": my_personal,
+    }
+
+
+@api.get("/stats/products")
+async def product_stats(
+    month: Optional[str] = None,
+    scope: str = "household",
+    user=Depends(get_current_user),
+):
+    """Bir ayın TÜM ürünleri — "En Çok Aldıklarımız"ın arkasındaki liste.
+
+    `/stats/monthly` ilk sekizi gönderiyor; bu uç tamamını veriyor. Ayrı
+    durmasının sebebi maliyet: her açılışta yüzlerce satır taşımanın anlamı
+    yok, ama "tüm ürünler" sayfasına giren de kesilmiş bir liste istemiyor.
+    """
+    hh = await get_user_household(user["user_id"])
+    if not hh:
+        return {"month": month, "products": []}
+    month = month if (month and len(month) == 7) else month_key(now_utc().date())
+    uyeler = await period_participants(
+        hh["household_id"],
+        (await get_active_period(hh["household_id"]) or {}).get("period_id", ""),
+        hh["member_ids"],
+    )
+    exps = await _month_expenses(hh["household_id"], month, scope, user["user_id"], uyeler)
+    return {"month": month, "scope": scope, "products": _urunler(exps)}
+
+
+@api.get("/stats/category")
+async def category_stats(
+    key: str,
+    month: Optional[str] = None,
+    scope: str = "household",
+    user=Depends(get_current_user),
+):
+    """Bir kategorinin içi: **6 aylık seyir · ne alındı · nereden.**
+
+    Halkanın dilimine dokununca açılıyor. Üç soruya birden cevap veriyor
+    çünkü üçü de aynı merakın parçası: "market kategorisine 312 € gitmiş" ->
+    *artıyor mu*, *ne aldık*, *nereden aldık*.
+
+    Kalemler fişin toplamına ölçekleniyor (`_breakdown` ile aynı kural):
+    indirim satırları ve yuvarlama yüzünden kalem toplamı fiş toplamını
+    tutmuyor ve ölçeklenmezse kategori sayfası halkadaki dilimle çelişir.
+    """
+    hh = await get_user_household(user["user_id"])
+    bos = {"key": key, "month": month, "total": 0, "series": [],
+           "products": [], "merchants": [], "expense_count": 0}
+    if not hh:
+        return bos
+    month = month if (month and len(month) == 7) else month_key(now_utc().date())
+    uyeler = await period_participants(
+        hh["household_id"],
+        (await get_active_period(hh["household_id"]) or {}).get("period_id", ""),
+        hh["member_ids"],
+    )
+
+    def kategoriye_indir(exps: List[dict]) -> List[dict]:
+        """Harcamaları bu kategoriye düşen KISMA indirger.
+
+        Bir fişin yalnızca bir bölümü bu kategoride olabilir (markette hem
+        süt hem deterjan). Fişi olduğu gibi saymak kategori toplamını şişirir;
+        `total` o fişin bu kategorideki payına ayarlanıyor ve `items` da
+        yalnızca o kategorinin kalemleriyle kalıyor.
+        """
+        out = []
+        for e in exps:
+            items = e.get("items") or []
+            tam = float(e["total"])
+            item_sum = sum(float(i.get("price", 0)) * float(i.get("quantity", 1) or 1)
+                           for i in items)
+            if items and item_sum:
+                benim = [i for i in items if (i.get("category") or "diger") == key]
+                if not benim:
+                    continue
+                pay = sum(float(i.get("price", 0)) * float(i.get("quantity", 1) or 1)
+                          for i in benim)
+                out.append({**e, "items": benim,
+                            "total": round(pay / item_sum * tam, 2)})
+            elif key == "diger":
+                # Kalemi olmayan harcama (elle giriş, düzenli ödeme) "diğer"e
+                # düşüyor — `_breakdown` ile aynı kural.
+                out.append(e)
+        return out
+
+    aylar = []
+    y, m = int(month[:4]), int(month[5:7])
+    for _ in range(6):
+        aylar.append(f"{y:04d}-{m:02d}")
+        m -= 1
+        if m == 0:
+            y, m = y - 1, 12
+    aylar.reverse()
+
+    seri = []
+    bu_ay: List[dict] = []
+    for a in aylar:
+        ham = await _month_expenses(hh["household_id"], a, scope, user["user_id"], uyeler)
+        kat = kategoriye_indir(ham)
+        seri.append({"month": a, "total": round(sum(float(e["total"]) for e in kat), 2)})
+        if a == month:
+            bu_ay = kat
+
+    dokum = _breakdown(bu_ay)
+    return {
+        "key": key, "month": month, "scope": scope,
+        "total": round(sum(float(e["total"]) for e in bu_ay), 2),
+        "expense_count": len(bu_ay),
+        "series": seri,
+        "products": _urunler(bu_ay),
+        "merchants": sorted(
+            [{"name": dokum["merchant_names"].get(k, k), "total": round(v, 2)}
+             for k, v in dokum["merchants"].items()],
+            key=lambda x: -x["total"]),
     }
 
 
