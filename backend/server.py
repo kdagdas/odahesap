@@ -1535,25 +1535,47 @@ def expense_shares(e: dict, participants: List[str]) -> Dict[str, float]:
 # kuralı sanır — oysa iki süzgeç aynı fikirde değildir.
 #
 # İşaret kuralı burada değil ekranda: artı borcu artırır, eksi azaltır.
-def akis_paylari(e: dict, shares: Dict[str, float], user_id: str) -> Dict[str, float]:
-    if not shares:
+def akis_paylari(e: dict, shares: Dict[str, float], user_id: str,
+                 member_ids: List[str]) -> Dict[str, float]:
+    """Satırlar `kime_kategori()` ile BİREBİR eşleşiyor.
+
+    Önce eşleşmiyordu ve etiket yalan söylüyordu: "Ev alışverişlerindeki
+    payın 107,32" satırı, ev harcaması OLMAYAN ikili bir alışverişteki payını
+    (2,99) da içine katıyordu. Ekrandaki sayıyı üçle çarpıp evin toplamını
+    bulmaya çalışan biri yanlış rakama varıyordu.
+
+    Artık her satırın tek bir karşılığı var ve dokunulduğunda Harcamalar'da
+    tam o küme açılıyor. Kategori başına en fazla iki satır: **payın**
+    (borcunu artıran) ve **ödediğin** (azaltan).
+
+      ev      → `ev_pay` + `ev_odedigin`
+      bana    → `bana_pay`            (tanım gereği alan sen değilsin)
+      baskasi → `baskasi_pay` + `baskasi_odedigin`   (alan hep sensin)
+      kendim  → hiçbiri; kişisel harcama bakiyeye girmiyor
+
+    Toplamlar korunuyor: artıran satırların toplamı `share`, azaltanların
+    toplamı `paid`, farkı da ayın deltası. `_ekstre` bunu test ediyor.
+    """
+    kategori = kime_kategori(e, shares, user_id, member_ids)
+    if not kategori or kategori == "kendim":
         return {}
-    # Kişisel harcama bakiyeye hiç girmiyor; `_compute_balances` ile aynı kural.
-    if set(shares) == {e["added_by"]} and e.get("target_type") == "self":
-        return {}
-    odeyen = e["added_by"]
     payim = float(shares.get(user_id, 0.0))
     tam = float(e.get("total") or 0)
-    if len(shares) == 1 and user_id not in shares and odeyen == user_id:
-        # Tek kişi için aldın: o kişi sana borçlandı, senin borcun düştü.
-        return {"baskasi_icin": tam}
-    if len(shares) == 1 and user_id in shares and odeyen != user_id:
-        return {"senin_icin": payim}
     out: Dict[str, float] = {}
-    if user_id in shares:
-        out["pay"] = payim
-    if odeyen == user_id:
-        out["ev_odedigin"] = tam
+    if kategori == "ev":
+        if payim:
+            out["ev_pay"] = payim
+        if e["added_by"] == user_id:
+            out["ev_odedigin"] = tam
+    elif kategori == "bana":
+        if payim:
+            out["bana_pay"] = payim
+    else:   # baskasi — alan sensin, listede senden başkası da var
+        # Kendi payın borcunu artırır, fişin tamamı azaltır; net fark tam
+        # olarak ötekilerin sana borçlandığı tutardır.
+        if payim:
+            out["baskasi_pay"] = payim
+        out["baskasi_odedigin"] = tam
     return out
 
 
@@ -1579,9 +1601,12 @@ def kime_kategori(e: dict, shares: Dict[str, float], user_id: str,
     if not shares:
         return None
     kisiler = set(shares)
-    # Tek kişilik evde "herkes" ile "sadece ben" aynı listedir ve orada doğru
-    # cevap ev harcamasıdır — `derive_target_type` ile aynı öncelik sırası.
-    if kisiler == set(member_ids):
+    # "Ev" DONMUŞ bilgidir: `target_type` kayıt anındaki kadroya göre yazıldı.
+    # Bugünkü üye listesiyle karşılaştırmak, biri evden ayrıldığında geçmişteki
+    # bütün ev harcamalarını "ev değil" yapardı. Alan yoksa küme kıyası yedek —
+    # tek kişilik evde "herkes" ile "sadece ben" aynı listedir ve orada doğru
+    # cevap ev harcamasıdır (`derive_target_type` ile aynı öncelik sırası).
+    if e.get("target_type") == "household" or kisiler == set(member_ids):
         return "ev"
     odeyen = e["added_by"]
     if user_id in kisiler:
@@ -2979,7 +3004,7 @@ async def _compute_balances(household_id: str, period_id: str) -> dict:
 
 
 async def _ekstre(household_id: str, period_id: str, user_id: str,
-                  members: List[str]) -> dict:
+                  members: List[str], member_ids: List[str]) -> dict:
     """Bir kişinin bakiyesinin AY AY dökümü.
 
     Kasa'nın ekstre bloğu ile borç dökümü sayfası **aynı hesaptan** besleniyor;
@@ -3011,7 +3036,8 @@ async def _ekstre(household_id: str, period_id: str, user_id: str,
     # sübvanse ettim" görünmez oluyordu.
     #
     # İşaret kuralı tek: **artı borcunu artırır, eksi azaltır.**
-    TURLER = ("pay", "ev_odedigin", "baskasi_icin", "senin_icin",
+    TURLER = ("ev_pay", "bana_pay", "baskasi_pay",
+              "ev_odedigin", "baskasi_odedigin",
               "odemelerin", "sana_odenen")
 
     def kutu(ay: str) -> dict:
@@ -3028,7 +3054,7 @@ async def _ekstre(household_id: str, period_id: str, user_id: str,
         # Hangi satıra ne yazılacağını `akis_paylari` söylüyor; `/expenses?akis=`
         # de aynı fonksiyonu okuyor, yani ekstredeki satır ile o satıra
         # dokununca açılan fiş listesi aynı tanımdan geliyor.
-        paylar = akis_paylari(e, shares, user_id)
+        paylar = akis_paylari(e, shares, user_id, member_ids)
         if not paylar:
             continue
         k = kutu(_expense_day(e)[:7])
@@ -3061,7 +3087,7 @@ async def _ekstre(household_id: str, period_id: str, user_id: str,
         k["lines"] = [
             {"tur": t, "tutar": round(k[t], 2),
              # Borcu ARTIRAN mı azaltan mı — ekranda işaret ve renk bundan.
-             "artiran": t in ("pay", "senin_icin", "sana_odenen")}
+             "artiran": t in ("ev_pay", "bana_pay", "baskasi_pay", "sana_odenen")}
             for t in TURLER if abs(k[t]) >= 0.005
         ]
         for t in TURLER:
@@ -3122,7 +3148,8 @@ async def balances(period_id: Optional[str] = None, user=Depends(get_current_use
     result["statement"] = (
         {"months": [], "carried": 0, "current_month": month_key(now_utc().date())}
         if snap else
-        await _ekstre(hh["household_id"], period["period_id"], user["user_id"], participants)
+        await _ekstre(hh["household_id"], period["period_id"], user["user_id"],
+                      participants, hh["member_ids"])
     )
     return result
 

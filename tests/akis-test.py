@@ -142,7 +142,7 @@ print("\n-- DEGISMEZLIK: ekstre satirlari ayin degisimini veriyor --")
 # bir GOZAT araci ("ne aldik"). Ikisi bilerek ayri eksenler, o yuzden
 # tutarlari birebir esitlenmiyor. Ama ekstrenin KENDI icinde tutmasi sart:
 # artiran satirlarin toplami eksi azaltanlarin toplami, o ayin deltasidir.
-ARTIRAN = ("pay", "senin_icin", "sana_odenen")
+ARTIRAN = ("ev_pay", "bana_pay", "baskasi_pay", "sana_odenen")
 for jeton, ad in ((alice, "alice"), (bob, "bob"), (carol, "carol")):
     st = c.get(f"{API}/balances", headers=hdr(jeton)).json()["statement"]
     check(f"{ad} · ekstrede ay var", len(st["months"]) > 0, str(st)[:200])

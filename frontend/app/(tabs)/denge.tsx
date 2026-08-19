@@ -53,17 +53,23 @@ type Ekstre = { months: EkstreAy[]; carried: number; current_month: string };
  * bağlantı "bunlar hangi fişlerdi" sorusunu açıyor.
  */
 const HAREKET_SUZGEC: Record<string, [string, string]> = {
-  pay: ["ev", ""],              // ev alışverişlerindeki payın · herkes
-  ev_odedigin: ["ev", "ben"],   // senin ödediğin ev alışverişleri
-  senin_icin: ["bana", ""],     // biri senin için aldı
-  baskasi_icin: ["baskasi", "ben"],
+  ev_pay: ["ev", ""],                    // eve alınanlar · herkes
+  ev_odedigin: ["ev", "ben"],            // eve alınanlar · sen
+  bana_pay: ["bana", ""],                // sana alınanlar
+  baskasi_pay: ["baskasi", "ben"],       // başkası için aldıkların
+  baskasi_odedigin: ["baskasi", "ben"],
 };
 
 const TUR_ADI: Record<string, { ad: string; fisli: boolean }> = {
-  pay: { ad: "Ev alışverişlerindeki payın", fisli: true },
-  ev_odedigin: { ad: "Senin ödediğin ev alışverişleri", fisli: true },
-  baskasi_icin: { ad: "Başkası için aldıkların", fisli: true },
-  senin_icin: { ad: "Senin için alınanlar", fisli: true },
+  /* "Ev alışverişlerindeki payın" artık YALNIZCA ev alışverişlerini sayıyor.
+     Önce ikili bir alışverişteki payın da buraya karışıyordu ve etiket yalan
+     söylüyordu: 107,32 yazıp üçle çarpan biri evin toplamını yanlış
+     buluyordu (doğrusu 104,33 × 3). */
+  ev_pay: { ad: "Eve alınanlardaki payın", fisli: true },
+  ev_odedigin: { ad: "Eve senin aldıkların", fisli: true },
+  bana_pay: { ad: "Sana alınanlar", fisli: true },
+  baskasi_pay: { ad: "Başkası için aldıklarındaki payın", fisli: true },
+  baskasi_odedigin: { ad: "Başkası için aldıkların", fisli: true },
   odemelerin: { ad: "Kaydettiğin ödemeler", fisli: false },
   sana_odenen: { ad: "Sana ödenenler", fisli: false },
 };

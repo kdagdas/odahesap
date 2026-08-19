@@ -100,10 +100,10 @@ check("Alice'e dusen 30", abs(float(ay["share"]) - 30.0) < 0.01, str(ay))
 tur = {l["tur"]: l for l in ay.get("lines", [])}
 check("kalemli dokum geliyor", len(tur) >= 2, str(ay.get("lines")))
 check("ev alisverisindeki payin ayri satir",
-      "pay" in tur and abs(tur["pay"]["tutar"] - 30.0) < 0.01, str(tur))
+      "ev_pay" in tur and abs(tur["ev_pay"]["tutar"] - 30.0) < 0.01, str(tur))
 check("senin odedigin ev alisverisi ayri satir",
       "ev_odedigin" in tur and abs(tur["ev_odedigin"]["tutar"] - 90.0) < 0.01, str(tur))
-check("pay borcu ARTIRAN taraf", tur["pay"]["artiran"] is True, str(tur["pay"]))
+check("pay borcu ARTIRAN taraf", tur["ev_pay"]["artiran"] is True, str(tur["ev_pay"]))
 check("odedigin borcu AZALTAN taraf", tur["ev_odedigin"]["artiran"] is False,
       str(tur["ev_odedigin"]))
 # Kimlik korunuyor: artiranlarin toplami - azaltanlarin toplami = delta.
@@ -218,15 +218,15 @@ ay2 = [m for m in b2["statement"]["months"]
        if m["month"] == b2["statement"]["current_month"]][0]
 tur2 = {l["tur"]: l for l in ay2["lines"]}
 check("baskasi icin alinan kendi satirinda",
-      "baskasi_icin" in tur2 and abs(tur2["baskasi_icin"]["tutar"] - 12.0) < 0.01, str(tur2))
-check("borcu AZALTAN taraf", tur2["baskasi_icin"]["artiran"] is False, str(tur2))
+      "baskasi_odedigin" in tur2 and abs(tur2["baskasi_odedigin"]["tutar"] - 12.0) < 0.01, str(tur2))
+check("borcu AZALTAN taraf", tur2["baskasi_odedigin"]["artiran"] is False, str(tur2))
 b3 = c.get(f"{API}/balances", headers=hdr(bob)).json()
 ay3 = [m for m in b3["statement"]["months"]
        if m["month"] == b3["statement"]["current_month"]][0]
 tur3 = {l["tur"]: l for l in ay3["lines"]}
 check("Bob'da 'senin icin alinan' olarak gorunuyor",
-      "senin_icin" in tur3 and abs(tur3["senin_icin"]["tutar"] - 12.0) < 0.01, str(tur3))
-check("Bob'da borcu ARTIRAN taraf", tur3["senin_icin"]["artiran"] is True, str(tur3))
+      "bana_pay" in tur3 and abs(tur3["bana_pay"]["tutar"] - 12.0) < 0.01, str(tur3))
+check("Bob'da borcu ARTIRAN taraf", tur3["bana_pay"]["artiran"] is True, str(tur3))
 
 print("\n-- temizlik --")
 for t in (alice, bob, carol):
