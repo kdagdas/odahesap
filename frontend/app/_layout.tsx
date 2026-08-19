@@ -1,14 +1,16 @@
 import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import {
   LogBox, View, ActivityIndicator, StyleSheet, Platform, UIManager,
 } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import * as Linking from "expo-linking";
+import * as Notifications from "expo-notifications";
 import { Alert } from "react-native";
 import { savePaymentFor, parseShareUrl } from "@/src/payment";
+import { bildirimYolu } from "@/src/bildirimYolu";
 
 import { useIconFonts } from "@/src/hooks/use-icon-fonts";
 import { AuthProvider, useAuth } from "@/src/auth";
@@ -24,11 +26,58 @@ if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental
 }
 SplashScreen.preventAutoHideAsync();
 
+/**
+ * Sistem bildirimine dokunmak → ilgili ekran.
+ *
+ * Bugüne kadar HİÇBİR dinleyici yoktu: bildirime dokunmak uygulamayı açıyor
+ * ve kullanıcıyı Anasayfa'ya bırakıyordu. Dört beş bildirim birden
+ * kaçırıldığında "Kadir ortak bir harcama yaptı" cümlesinin karşılığını
+ * bulmak elle arama işine dönüyordu.
+ *
+ * `useLastNotificationResponse` iki durumu birden veriyor: uygulama kapalıyken
+ * dokunulup açılan (soğuk başlangıç) ve açıkken dokunulan. İkisini ayrı ayrı
+ * ele almak gerekmiyor.
+ *
+ * **`hazir` neden şart:** soğuk başlangıçta `Gate` kendi yönlendirmesini
+ * yapıyor (`replace("/(tabs)/panel")`). Ondan önce gidilen yer bir sonraki
+ * karede silinirdi. `segments[0] === "(tabs)"` olması, Gate'in işini
+ * bitirdiğinin en güvenilir işareti.
+ *
+ * Aynı dokunuş iki kez işlenmesin diye işlenen bildirimin kimliği tutuluyor:
+ * kanca değeri elde tutuyor ve her yeniden çizimde aynı yanıtı döndürüyor.
+ */
+function useBildirimDokunmasi(hazir: boolean) {
+  const router = useRouter();
+  const yanit = Notifications.useLastNotificationResponse();
+  const islenen = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!hazir || !yanit) return;
+    const istek = yanit.notification.request;
+    if (islenen.current === istek.identifier) return;
+    islenen.current = istek.identifier;
+
+    // FCM verisi düz metin olarak geliyor; `kind` push tarafında `data`ya
+    // ekleniyor (bkz. sunucudaki `notify()`).
+    const veri = (istek.content.data || {}) as Record<string, unknown>;
+    const hedef = bildirimYolu(
+      typeof veri.kind === "string" ? veri.kind : undefined, veri);
+    // Eşleşme yoksa Aktivite: "bir şey oldu" demek, hiçbir şey yapmamaktan iyi.
+    router.push((hedef ?? { pathname: "/aktivite" }) as any);
+
+    // Temizlenmezse geliştirme sırasındaki her yeniden yükleme aynı yere
+    // atlıyor.
+    Notifications.clearLastNotificationResponseAsync?.().catch(() => {});
+  }, [hazir, yanit, router]);
+}
+
 function Gate() {
   const { user, loading: authLoading } = useAuth();
   const { household, pendingHousehold, loading: hhLoading } = useHousehold();
   const router = useRouter();
   const segments = useSegments();
+  useBildirimDokunmasi(
+    !authLoading && !hhLoading && !!user && !!household && segments[0] === "(tabs)");
 
   useEffect(() => {
     if (authLoading || (user && hhLoading)) return;
