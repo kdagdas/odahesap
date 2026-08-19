@@ -1803,12 +1803,23 @@ const styles = StyleSheet.create({
     marginHorizontal: spacing.sm,
   },
   pickGrab: {
-    width: 36, height: 4, borderRadius: 2, backgroundColor: colors.borderStrong,
-    alignSelf: "center", marginBottom: spacing.md,
+    width: 44, height: 5, borderRadius: 3, backgroundColor: colors.borderStrong,
+    alignSelf: "center",
   },
-  // Tutamagin kendisi 4 piksel; parmakla yakalanabilmesi icin cevresindeki
-  // bos alan da surukleme bolgesine dahil.
-  grabZone: { paddingTop: spacing.sm, paddingBottom: spacing.xs },
+  /* TUTAMAK ALANI — sayfanın sürüklenebildiğini söyleyen tek yer.
+     Önce 12 pikseldi (`paddingTop: 8` + `paddingBottom: 4`) ve jest kodda
+     çalıştığı hâlde ev sahibi "tutup çekemiyorum" dedi: yakalanacak yer
+     yoktu. Başparmağın isabet ettiği en küçük hedef ~44 piksel, o yüzden
+     tutamak 5 piksel çizilip çevresindeki boşlukla birlikte 44'e çıkarıldı.
+     Çubuk da 36→44 genişledi; ince bir çizgi "tutulacak şey" demiyor.
+
+     İçerikten sürüklemek bilerek YAPILMIYOR: sayfanın içindeki listelerin
+     kendi kaydırmasıyla kavga ediyor ve hangi jestin kazandığı öngörülemez
+     oluyor. Tutamak sözleşmedir — nereden tutulacağını söyler. */
+  grabZone: {
+    paddingTop: spacing.md, paddingBottom: spacing.md,
+    minHeight: 44, justifyContent: "center",
+  },
   tabs: {
     flexDirection: "row", backgroundColor: colors.surfaceSecondary,
     borderRadius: radius.pill, padding: 3,

@@ -474,9 +474,16 @@ Bir sonraki oturum bunları "eksik" sanıp geri getirmesin.
 | **Ekstre disiplini (vade, gecikme dili)** | Ev arkadaşları arasındaki borç bankayla olan borç değil; "45 gündür ödenmedi" gereksiz sürtüşme üretir |
 
 Önceki turlardan gelen elenmişler de geçerliliğini koruyor: sekme geçiş
-animasyonu, alt sayfa sürükleme jesti, EPC karekodu, bütçe ve hız göstergesi,
-sabit/değişken oranı kartı, marketler arası fiyat karşılaştırması, kişi başına
-tüketim karşılaştırması.
+animasyonu, EPC karekodu, bütçe ve hız göstergesi, sabit/değişken oranı kartı,
+marketler arası fiyat karşılaştırması, kişi başına tüketim karşılaştırması.
+
+> **DÜZELTME (19 Ağustos 2026):** bu listede "alt sayfa sürükleme jesti" de
+> yazıyordu ama **yanlıştı** — jest `ui.tsx` → `SheetBody` içinde
+> `PanResponder` olarak duruyor ve çalışıyor. Elenen şey jest değil, jesti
+> *sayfanın içeriğinden* başlatmaktı: içerikten sürüklemek sayfanın içindeki
+> listelerin kendi kaydırmasıyla kavga ediyor. Jest tutamağa bağlı kaldı.
+> Belgedeki bu satır bir sonraki oturumun çalışan bir kodu sökmesine yol
+> açabilirdi.
 
 ---
 
