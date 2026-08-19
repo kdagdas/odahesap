@@ -132,7 +132,10 @@ function EkstreSatir({
 export default function Denge() {
   const router = useRouter();
   const { user } = useAuth();
-  const { members, activePeriod, isAdmin, refresh: refreshHH } = useHousehold();
+  const { members, pendingMembers, activePeriod, isAdmin, refresh: refreshHH } = useHousehold();
+  /* Ev TEK KİŞİLİK mi. Bu ekranın tamamı "kim kime borçlu" sorusuna cevap
+     veriyor ve o soru tek kişilik bir evde yok. */
+  const yalnizim = members.length <= 1;
   const scrollRef = useRef<ScrollView>(null);
   // Sekme cubugunun ve telefonun gezinme cubugunun kapladigi yer.
   // Elle yazilan 120/130 sabitleri cubuk yuksekligiyle birlikte
@@ -763,7 +766,43 @@ export default function Denge() {
                     parçası olarak duruyor. Aynı sayıyı iki kez göstermek,
                     turun başındaki şikâyetin ta kendisiydi. */}
                 <Card title="Kim Kime Borçlu" style={styles.mx}>
-                  {ordered.length === 0 ? (
+                  {/* TEK KİŞİLİK EVDE bu kart anlamsız: "Herkes ödeşmiş"
+                      teknik olarak doğru ama kimseyle ödeşmedin, ortada kimse
+                      yok. Boş durumun işi eksikliği bildirmek değil, o
+                      eksikliği gidermenin KARŞILIĞINI göstermek — bu yüzden
+                      cümle "ev arkadaşın katılınca ne olacağını" söylüyor.
+
+                      Çağrı yalnızca burada koyu düğme: bu kart tek başına
+                      anlamsız, yani sayfanın birincil işi bu. Biri katıldığı
+                      an kart kendiliğinden kayboluyor.
+
+                      Davet gönderilmiş ve karşı taraf bekliyorsa "davet et"
+                      demek YALAN olurdu; metin duruma göre değişiyor. */}
+                  {yalnizim ? (
+                    <View style={styles.yalnizKap} testID="denge-yalniz">
+                      <View style={styles.yalnizUst}>
+                        <IconPill name={pendingMembers.length > 0 ? "hourglass-outline" : "people-outline"}
+                                  color={colors.onInfo} tint={colors.infoSoft} />
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.yalnizBaslik}>
+                            {pendingMembers.length > 0
+                              ? `${pendingMembers.length} kişi katılmayı bekliyor`
+                              : "Evde tek kişisin"}
+                          </Text>
+                          <Text style={styles.yalnizAlt}>
+                            {pendingMembers.length > 0
+                              ? "Onayladığın an harcamalar bölüşülmeye başlar"
+                              : "Ev arkadaşın katılınca harcamalar kendiliğinden bölüşülmeye başlar"}
+                          </Text>
+                        </View>
+                      </View>
+                      <PrimaryButton
+                        label={pendingMembers.length > 0 ? "İsteği görüntüle" : "Ev arkadaşını davet et"}
+                        onPress={() => router.push("/ev-ayarlari")}
+                        testID="denge-davet"
+                      />
+                    </View>
+                  ) : ordered.length === 0 ? (
                     <Row
                       leading={<IconPill name="checkmark-circle" color={colors.accent}
                                          tint={colors.accentSoft} />}
@@ -1286,6 +1325,10 @@ const styles = StyleSheet.create({
   quickChipOn: { backgroundColor: colors.accentSoft, borderColor: colors.accent },
   quickTxt: { ...T.captionSb, color: colors.inkSecondary },
   quickTxtOn: { color: colors.accentDark },
+  yalnizKap: { padding: spacing.lg, paddingTop: spacing.sm, gap: spacing.lg },
+  yalnizUst: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  yalnizBaslik: { ...T.bodySb, color: colors.ink },
+  yalnizAlt: { ...T.caption, color: colors.inkSecondary, marginTop: 2, lineHeight: 18 },
   hair: { height: StyleSheet.hairlineWidth, backgroundColor: colors.divider, marginTop: spacing.lg },
   recordRow: {
     flexDirection: "row", alignItems: "center", gap: spacing.md,

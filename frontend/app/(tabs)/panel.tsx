@@ -327,6 +327,35 @@ export default function Panel() {
                       {i < members.length - 1 && <Divider />}
                     </View>
                   ))}
+
+                  {/* HAYALET SATIR — yalnızca tek kişilik evde.
+                      Kesikli daire ve soluk yazı bilerek: bir ÖĞE gibi değil
+                      bir YER gibi okunsun. Koyu düğme değil, çünkü bu kart
+                      zaten çalışıyor (senin ödediğin duruyor) ve sayfanın
+                      birincil eylemi ortadaki fiş tarama.
+
+                      Ev iki kişi olunca satır kayboluyor: kalıcı bir "davet
+                      et" 364 gün yer kaplar, bir gün işe yarar. Dördüncü bir
+                      kişi geldiğinde kapı Profil → Ev ayarları ("Üyeler,
+                      davet kodu, ev adı"). */}
+                  {members.length <= 1 && (
+                    <>
+                      <Divider />
+                      <Row
+                        leading={<View style={styles.hayaletDaire}>
+                          <Ionicons name="add" size={17} color={colors.inkTertiary} />
+                        </View>}
+                        title={<Text style={styles.hayaletTxt}>
+                          {pendingMembers.length > 0
+                            ? `${pendingMembers.length} kişi katılmayı bekliyor`
+                            : "Ev arkadaşını davet et"}
+                        </Text>}
+                        chevron
+                        onPress={() => router.push("/ev-ayarlari")}
+                        testID="panel-davet"
+                      />
+                    </>
+                  )}
                 </Card>
               )}
 
@@ -404,6 +433,14 @@ export default function Panel() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.dark },
   scroll: { backgroundColor: colors.bg, flexGrow: 1 },
+  /* Kesikli çerçeve: dolu bir avatarla aynı yuvada durur ama "burası boş"
+     der. Ölçüsü avatarla aynı olmak zorunda, yoksa satır kayıyor. */
+  hayaletDaire: {
+    width: metrics.icon, height: metrics.icon, borderRadius: metrics.icon / 2,
+    borderWidth: 1, borderStyle: "dashed",
+    borderColor: colors.borderStrong, alignItems: "center", justifyContent: "center",
+  },
+  hayaletTxt: { ...T.body, color: colors.inkSecondary },
   serit: {
     flexDirection: "row", alignItems: "center", gap: spacing.sm,
     backgroundColor: colors.warningSoft, borderRadius: radius.md,
