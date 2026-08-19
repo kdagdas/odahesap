@@ -59,6 +59,11 @@ type Monthly = {
   product_count: number;
 };
 
+type FiyatHareket = {
+  key: string; name: string; merchant: string; pack_type: string;
+  unit: string; now: number; prev: number; change_pct: number;
+};
+
 /**
  * Biriken harcama eğrisi — bu ay dolu, geçen ay kesikli gölge.
  *
@@ -160,6 +165,10 @@ export default function Istatistik() {
   const [data, setData] = useState<Monthly | null>(null);
   const [loading, setLoading] = useState(true);
   const [aySecici, setAySecici] = useState(false);
+  /** Zamlananlar/ucuzlayanlar ayrı uçtan: `/stats/monthly` zaten büyük ve
+   *  bu hesap iki ayın bütün fişlerini tarıyor. Kişisel sekmede anlamı yok
+   *  (fiyat evin sepetine ait), o yüzden yalnızca ev kapsamında çekiliyor. */
+  const [fiyat, setFiyat] = useState<{ up: FiyatHareket[]; down: FiyatHareket[] } | null>(null);
   /* Geri, geldiği yere. Sekme gezgininde `back()` Anasayfa'ya düşüyor. */
   const geriDon = useGeriDon();
 
@@ -169,6 +178,12 @@ export default function Istatistik() {
       setData(await apiGet<Monthly>(`/stats/monthly?month=${month}&scope=${scope}`));
     } catch { setData(null); }
     finally { setLoading(false); }
+    // Fiyat hareketleri AYRI ve sessiz: gelmezse sayfa yine açılıyor,
+    // yalnızca o kart çizilmiyor. Ana istatistiği bekletmiyor.
+    if (scope === "household") {
+      try { setFiyat(await apiGet(`/stats/prices?month=${month}`)); }
+      catch { setFiyat(null); }
+    } else setFiyat(null);
   }, [month, scope]);
   useEffect(() => { load(); }, [load]);
 
@@ -482,6 +497,46 @@ export default function Istatistik() {
                   </Card>
                 )}
 
+                {/* ZAMLANANLAR / UCUZLAYANLAR — evin KENDİ sepetinin enflasyonu.
+                    Resmî enflasyon herkesin sepetidir; bu sizinki. Rakiplerin
+                    hiçbirinde yok çünkü hiçbiri fişi kalem kalem okumuyor.
+
+                    Ucuzlayanlar da listede: yalnızca zam göstermek insanı her
+                    ay kötü haberle karşılar ve bir süre sonra kimse bakmaz.
+
+                    Veri yoksa kart hiç çizilmiyor — bu ev üç farklı marketten
+                    çoğunlukla market markası alıyor, kart aylarca boş
+                    kalabilir ve bu sorun değil. */}
+                {(fiyat?.up.length || fiyat?.down.length) ? (
+                  <Card title="Fiyat Hareketleri" style={styles.mx}>
+                    {[...(fiyat.up || []), ...(fiyat.down || [])].map((f, i) => (
+                      <View key={`${f.merchant}-${f.key}-${f.pack_type}`}>
+                        {i > 0 && <Divider inset={spacing.lg} />}
+                        <View style={styles.fiyatRow}>
+                          <View style={{ flex: 1, minWidth: 0 }}>
+                            <Text style={styles.fiyatAd} numberOfLines={1}>{f.name}</Text>
+                            {/* Market YAZILI: karşılaştırma aynı market içinde
+                                yapıldığı için hangisi olduğu bilginin parçası. */}
+                            <Text style={styles.fiyatAlt} numberOfLines={1}>
+                              {f.merchant.toLocaleUpperCase("tr")} · {formatEUR(f.prev)} → {formatEUR(f.now)}
+                              {f.unit !== "adet" ? `/${f.unit}` : ""}
+                            </Text>
+                          </View>
+                          <View style={[styles.fiyatTag, {
+                            backgroundColor: f.change_pct > 0 ? colors.negativeSoft : colors.accentSoft,
+                          }]}>
+                            <Text style={[styles.fiyatTagTxt, {
+                              color: f.change_pct > 0 ? colors.negative : colors.accentDark,
+                            }]}>
+                              {f.change_pct > 0 ? "↑" : "↓"} %{Math.abs(f.change_pct)}
+                            </Text>
+                          </View>
+                        </View>
+                      </View>
+                    ))}
+                  </Card>
+                ) : null}
+
                 {scope === "household" && data.by_member.length > 0 && (
                   <Card title="Kim Ne Kadar Ödedi" style={styles.mx}>
                     {data.by_member.map((bm, i) => {
@@ -611,6 +666,14 @@ const styles = StyleSheet.create({
   catValue: { minWidth: 74, textAlign: "right" },
   deltaTag: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: radius.sm },
   deltaTxt: { fontSize: 11, lineHeight: 15, fontFamily: fontFamily.medium },
+  fiyatRow: {
+    flexDirection: "row", alignItems: "center", gap: spacing.md,
+    paddingHorizontal: spacing.lg, paddingVertical: spacing.md, minHeight: 48,
+  },
+  fiyatAd: { ...T.bodySb, color: colors.ink },
+  fiyatAlt: { ...T.caption, fontSize: 11, color: colors.inkTertiary, marginTop: 1 },
+  fiyatTag: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: radius.sm },
+  fiyatTagTxt: { ...T.caption, fontSize: 11, fontFamily: fontFamily.semibold },
   urunRow: {
     flexDirection: "row", alignItems: "center", gap: spacing.md,
     paddingHorizontal: spacing.lg, paddingVertical: spacing.md, minHeight: 46,

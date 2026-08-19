@@ -369,18 +369,37 @@ export function AylikCubuk({
   const enYuksek = Math.max(...aylar.map((a) => a.total), 0.01);
   const ortalama = aylar.reduce((s, a) => s + a.total, 0) / Math.max(aylar.length, 1);
   const TAVAN = 64;
+  const ARA = 5;
+  /** Kaç slotluk genişliğe göre ölçüleceği. ALTI sabit: iki aylık bir evin
+   *  çubuğu, altı aylık bir evinkiyle aynı kalınlıkta olsun. Ölçmeden
+   *  yapılamıyor, çünkü kartın genişliği ekrana göre değişiyor. */
+  const SLOT = 6;
+  const [genislik, setGenislik] = React.useState(0);
+  const slotGen = genislik > 0
+    ? Math.max((genislik - (SLOT - 1) * ARA) / SLOT, 8)
+    : 0;
+  // Ortalama çizgisi yalnızca ÇUBUKLARIN üstünde: boş alana kadar uzasaydı
+  // veri olmayan aylarda da bir ortalama varmış gibi görünürdü.
+  const cizgiGen = slotGen > 0
+    ? aylar.length * slotGen + (aylar.length - 1) * ARA
+    : 0;
+
   return (
     <>
-      <View style={styles.cubukSatir}>
-        {/* Ortalama çizgisi çubukların ARKASINDAN geçiyor: önlerinden geçse
-            kısa çubukları ikiye böler ve okunmaz olur. */}
-        <View pointerEvents="none"
-              style={[styles.ortCizgi, { bottom: (ortalama / enYuksek) * TAVAN }]} />
-        {aylar.map((a) => {
+      <View style={[styles.cubukSatir, { gap: ARA }]}
+            onLayout={(e) => setGenislik(e.nativeEvent.layout.width)}>
+        {/* Çizgi çubukların ARKASINDAN geçiyor: önlerinden geçse kısa
+            çubukları ikiye böler ve okunmaz olur. */}
+        {cizgiGen > 0 && (
+          <View pointerEvents="none"
+                style={[styles.ortCizgi,
+                        { width: cizgiGen, bottom: (ortalama / enYuksek) * TAVAN }]} />
+        )}
+        {slotGen > 0 && aylar.map((a) => {
           const bu = a.month === buAy;
           return (
-            <Pressable key={a.month} style={styles.cubukKap} onPress={() => onSec(a.month)}
-                       testID={`cubuk-${a.month}`}>
+            <Pressable key={a.month} style={[styles.cubukKap, { width: slotGen }]}
+                       onPress={() => onSec(a.month)} testID={`cubuk-${a.month}`}>
               <Text style={[styles.cubukTutar, bu && styles.cubukTutarBu]} numberOfLines={1}>
                 {formatEURShort(a.total)}
               </Text>
@@ -388,7 +407,7 @@ export function AylikCubuk({
                 height: Math.max((a.total / enYuksek) * TAVAN, 3),
                 backgroundColor: bu ? colors.ink : colors.borderStrong,
               }]} />
-              <Text style={[styles.cubukAy, bu && styles.cubukAyBu]}>
+              <Text style={[styles.cubukAy, bu && styles.cubukAyBu]} numberOfLines={1}>
                 {AYLAR[parseInt(a.month.slice(5, 7), 10)]?.slice(0, 3)}
               </Text>
             </Pressable>
@@ -1931,16 +1950,21 @@ const styles = StyleSheet.create({
   /* Çubuklar: sabit yükseklikli bir şerit, altında ay adı.
      `alignItems: flex-end` çubukları tabana oturtuyor; ortalama çizgisi de
      aynı tabandan ölçülüyor. */
+  /* Çubuklar SOLA DAYALI ve genişlikleri KAPAKLI.
+     `flex: 1` ile esnetildiğinde iki aylık bir evde çubuklar kütük gibi
+     oluyordu. Kapak, iki aylık evle altı aylık evin çubuklarını aynı
+     kalınlıkta tutuyor; sağda kalan boşluk zamanla doluyor ve grafiğin
+     kendisi "biriktikçe dolacak" diyor — dolgu metni gerekmiyor. */
   cubukSatir: {
-    flexDirection: "row", alignItems: "flex-end", gap: 5,
+    flexDirection: "row", alignItems: "flex-end", justifyContent: "flex-start",
     height: 100, position: "relative", marginBottom: spacing.md,
   },
   ortCizgi: {
-    position: "absolute", left: 0, right: 0, height: 1,
+    position: "absolute", left: 0, height: 1,
     borderTopWidth: 1, borderTopColor: colors.borderStrong,
     borderStyle: "dashed", opacity: 0.8,
   },
-  cubukKap: { flex: 1, alignItems: "center" },
+  cubukKap: { alignItems: "center" },
   cubuk: { width: "100%", borderRadius: 3 },
   cubukTutar: { ...T.caption, fontSize: 9, color: colors.inkTertiary, marginBottom: 3 },
   cubukTutarBu: { color: colors.ink, fontFamily: fontFamily.semibold },

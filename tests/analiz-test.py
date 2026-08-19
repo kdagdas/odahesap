@@ -193,6 +193,103 @@ check("o kategoride tek market", len(k2["merchants"]) == 1, str(k2["merchants"])
 bos = c.get(f"{API}/stats/category?key=uydurma&month={AY}", headers=hdr(tok)).json()
 check("bilinmeyen kategori bos donuyor", abs(bos["total"]) < 0.01, str(bos["total"]))
 
+print("\n-- 4. ZAMLANANLAR / UCUZLAYANLAR --")
+# Ayri bir ev: fiyat serileri temiz olsun.
+r = c.post(f"{API}/auth/register", json={
+    "email": f"zam_{TAG}@odahesap-e2e.com", "password": "sifre123", "name": "Zam Test"})
+ztok = r.json()["session_token"]
+c.post(f"{API}/households", headers=hdr(ztok), json={"name": f"Zam Ev {TAG}"})
+
+
+def zharcama(tarih, market, kalemler, toplam):
+    r = c.post(f"{API}/expenses", headers=hdr(ztok), json={
+        "target_type": "household", "source": "receipt", "merchant": market,
+        "expense_date": tarih, "total": toplam, "items": kalemler})
+    r.raise_for_status()
+
+
+gecen_ay = (date.today().replace(day=1) - __import__("datetime").timedelta(days=1))
+GA = gecen_ay.strftime("%Y-%m")
+g1 = f"{GA}-05"
+g2 = f"{GA}-20"
+b1 = date.today().replace(day=1).isoformat()
+
+# KAHVE: gecen ay 8,00 -> bu ay 10,00 (%25 zam), paketli (500 g)
+zharcama(g1, "LIDL", [kalem("KAFFEE 500G", 8.00, genel="kahve", kategori="temel_gida")], 8.00)
+zharcama(b1, "LIDL", [kalem("KAFFEE 500G", 10.00, genel="kahve", kategori="temel_gida")], 10.00)
+# TEREYAGI: 3,00 -> 2,40 (%20 ucuzlama)
+zharcama(g1, "LIDL", [kalem("BUTTER 250G", 3.00, genel="tereyağı")], 3.00)
+zharcama(b1, "LIDL", [kalem("BUTTER 250G", 2.40, genel="tereyağı")], 2.40)
+# MAKARNA: 1,00 -> 1,04 (%4, ESIGIN ALTINDA) -- gorunmemeli
+zharcama(g1, "LIDL", [kalem("PASTA 500G", 1.00, genel="makarna", kategori="temel_gida")], 1.00)
+zharcama(b1, "LIDL", [kalem("PASTA 500G", 1.04, genel="makarna", kategori="temel_gida")], 1.04)
+# SEKER: gecen ay IKI kez alindi, biri kampanyali (1,00 ve 2,00; medyan 1,50),
+# bu ay 1,50. ORTALAMA olsaydi degisim %0 cikardi ama medyan da %0 -- burada
+# asil test: tek kampanya listeyi kirletmiyor.
+zharcama(g1, "LIDL", [kalem("ZUCKER 1KG", 1.00, genel="şeker", kategori="temel_gida")], 1.00)
+zharcama(g2, "LIDL", [kalem("ZUCKER 1KG", 2.00, genel="şeker", kategori="temel_gida")], 2.00)
+zharcama(b1, "LIDL", [kalem("ZUCKER 1KG", 1.50, genel="şeker", kategori="temel_gida")], 1.50)
+# CAY: yalnizca BU ay alindi -- iki ayda da olmadigi icin listede olmamali.
+zharcama(b1, "LIDL", [kalem("TEE 250G", 4.00, genel="çay", kategori="icecek")], 4.00)
+# SUT: ayni urun BASKA markette. Marketler arasi karsilastirma YAPILMAMALI.
+zharcama(g1, "ALDI", [kalem("MILCH 1L", 1.00, genel="süt")], 1.00)
+zharcama(b1, "REWE", [kalem("MILCH 1L", 2.00, genel="süt")], 2.00)
+# KARPUZ: boyutu bilinmeyen ADET urunu. 6,00 -> 10,60 (%77) ama bu bir zam
+# DEGIL, iki farkli boy karpuz. Gercek evde tam bu satir cikti ve karti
+# gondermeden once yakalandi: `adet` sinifinda fiyat farki URUN farki
+# olabiliyor, o yuzden bu sinif karsilastirmaya HIC girmiyor.
+zharcama(g1, "LIDL", [kalem("Wassermelone", 6.00, genel="karpuz",
+                            kategori="meyve_sebze")], 6.00)
+zharcama(b1, "LIDL", [kalem("Wassermel. XXL", 10.60, genel="karpuz",
+                            kategori="meyve_sebze")], 10.60)
+# ZEYTINYAGI: ACIK (kasada tartilan, kg). Bu sinif karsilastirilabilir.
+zharcama(g1, "LIDL", [kalem("Oliven lose", 10.00, genel="zeytin",
+                            kategori="meyve_sebze", birim="kg")], 10.00)
+zharcama(b1, "LIDL", [kalem("Oliven lose", 13.00, genel="zeytin",
+                            kategori="meyve_sebze", birim="kg")], 13.00)
+
+AY_S = date.today().strftime("%Y-%m")
+z = c.get(f"{API}/stats/prices?month={AY_S}", headers=hdr(ztok)).json()
+up = {x["key"]: x for x in z["up"]}
+down = {x["key"]: x for x in z["down"]}
+
+check("kahve zamlandi (%25)", "kahve" in up and up["kahve"]["change_pct"] == 25, str(z["up"]))
+check("zamda onceki ve simdiki fiyat var",
+      "kahve" in up and up["kahve"]["prev"] == 16.0 and up["kahve"]["now"] == 20.0,
+      str(up.get("kahve")))
+# ANAHTARLAR KATLANMIS geliyor: `product_key` Turkce harfleri sadelestiriyor
+# ("tereyagi", "seker", "cay", "sut"). Olumsuz kontroller katlanmis anahtarla
+# yazilmali, yoksa yanlis anahtar yuzunden BOSUNA gecerler.
+check("tereyagi ucuzladi (-%20)",
+      "tereyagi" in down and down["tereyagi"]["change_pct"] == -20, str(z["down"]))
+check("esigin ALTINDAKI oynama listede yok (%4)",
+      "makarna" not in up and "makarna" not in down, str(z))
+check("tek kampanya listeyi kirletmedi (medyan)",
+      "seker" not in up and "seker" not in down, str(z))
+check("tek ayda gorulen urun listede yok",
+      "cay" not in up and "cay" not in down, str(z))
+check("MARKETLER ARASI karsilastirma yapilmiyor",
+      "sut" not in up and "sut" not in down, str(z))
+# Listede TOPLAM kac satir var: yukaridaki dortu elenince yalnizca kahve ve
+# tereyagi kalmali. Bu, olumsuz kontrollerin gercekten calistigini kanitliyor.
+check("BOYUTU BILINMEYEN adet urunu karsilastirilmiyor",
+      "karpuz" not in up and "karpuz" not in down, str(z))
+check("ACIK (tartilan) urun karsilastiriliyor",
+      "zeytin" in up and up["zeytin"]["change_pct"] == 30, str(z["up"]))
+# Yukaridakiler elenince geriye yalnizca kahve, zeytin (zam) ve tereyagi
+# (ucuzlama) kalmali. Bu, olumsuz kontrollerin gercekten calistigini
+# kanitliyor -- yanlis anahtar yuzunden bosuna gecmiyorlar.
+check("listede yalnizca uc hareket var",
+      len(z["up"]) == 2 and len(z["down"]) == 1, str(z))
+check("esik yaniti donuyor", z.get("threshold") == 8, str(z.get("threshold")))
+check("zamlar buyukten kucuge",
+      [x["change_pct"] for x in z["up"]] == sorted((x["change_pct"] for x in z["up"]), reverse=True),
+      str(z["up"]))
+
+c.post(f"{API}/households/leave", headers=hdr(ztok))
+c.post(f"{API}/auth/logout", headers=hdr(ztok))
+
+
 print("\n-- temizlik --")
 c.post(f"{API}/households/leave", headers=hdr(tok))
 c.post(f"{API}/auth/logout", headers=hdr(tok))

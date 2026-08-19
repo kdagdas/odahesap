@@ -4332,6 +4332,141 @@ async def product_stats(
     return {"month": month, "scope": scope, "products": _urunler(exps)}
 
 
+def _medyan(sayilar: List[float]) -> float:
+    """Ortanca. Ortalama DEĞİL, ve fark burada kritik.
+
+    Bir ürün ay içinde iki kez alınıp biri kampanyalıysa ortalama o kampanyayı
+    fiyata karıştırır: ay "ucuzladı" der, ertesi ay kampanya bitince
+    "zamlandı" der. İkisi de yalan. Medyan tek bir kampanyalı alışverişten
+    etkilenmiyor.
+    """
+    s = sorted(sayilar)
+    n = len(s)
+    if n == 0:
+        return 0.0
+    orta = n // 2
+    return s[orta] if n % 2 else (s[orta - 1] + s[orta]) / 2
+
+
+@api.get("/stats/prices")
+async def price_moves(
+    month: Optional[str] = None,
+    user=Depends(get_current_user),
+):
+    """Zamlananlar ve ucuzlayanlar — **evin kendi sepetinin enflasyonu.**
+
+    Resmî enflasyon herkesin sepetidir; bu, sizinki. Rakiplerin hiçbirinde
+    yok çünkü hiçbiri fişi kalem kalem okumuyor.
+
+    ### Karşılaştırma AYNI MARKET içinde
+
+    Marketler arası karşılaştırma yapısal olarak sağlam değil: barkod
+    olmadan fiyat farkını değil *ürün farkını* ölçersiniz (süt her markette
+    kendi markası altında, aynı gramajlı biber birinde tepside ötekinde
+    açık). Aynı marketin içinde ise fiş metnini o marketin kasası üretir,
+    yani dizgi haftadan haftaya sabittir ve karşılaştırma anlamlıdır.
+
+    ### Ayın son fiyatı değil MEDYANI
+
+    Kampanyalı bir hafta "ucuzladı" deyip ertesi ay "zamlandı" demesin diye.
+
+    ### Ambalaj sınıfı ayrı tutuluyor
+
+    `price_of_item` üç sınıf üretiyor — açık (tartılan), paketli, adet.
+    Açık ile paketliyi aynı seride toplamak "fiyat iki katına çıktı" gibi
+    yanlış uyarılar üretir: değişen fiyat değil ambalajdır.
+
+    ### Kaynak `price_points` DEĞİL
+
+    O koleksiyon bilerek kimlik alanı taşımıyor, yani "bu evin fiyat
+    geçmişi" oradan çıkarılamaz. Kaynak evin kendi `expenses` kayıtları.
+    """
+    hh = await get_user_household(user["user_id"])
+    bos = {"month": month, "up": [], "down": [], "threshold": 8}
+    if not hh:
+        return bos
+    month = month if (month and len(month) == 7) else month_key(now_utc().date())
+    onceki = _prev_month(month)
+
+    lo, _ = _month_bounds(onceki)
+    _, hi = _month_bounds(month)
+    rows = await db.expenses.find(
+        {"household_id": hh["household_id"], "source": "receipt"}, {"_id": 0}
+    ).to_list(5000)
+    rows = [e for e in rows if lo <= _expense_day(e) < hi]
+
+    # (market, ürün anahtarı, ambalaj sınıfı) -> ay -> [birim fiyatlar]
+    kova: Dict[tuple, Dict[str, List[float]]] = {}
+    adlar: Dict[tuple, str] = {}
+    for e in rows:
+        ham = (e.get("merchant") or "").strip()
+        if not ham:
+            continue
+        market = normalize_merchant(ham) or ham.casefold()
+        ay = _expense_day(e)[:7]
+        for it in e.get("items") or []:
+            p = price_of_item(it)
+            if not p:
+                continue
+            # `adet` SINIFI DIŞARIDA — gerçek veride ölçülüp öyle karar
+            # verildi. O sınıfta boyut bilinmiyor, yani fiyat farkı ÜRÜN
+            # farkı olabiliyor. Bu evin verisinde çıkan satırlar birebir
+            # şunlardı ve hiçbiri zam değildi:
+            #
+            #   Wassermel. XXL   6,00 -> 10,60  (+%77)  iki farklı boy karpuz
+            #   Tomaten Strauch  1,11 ->  1,85  (+%67)  tartılan, adet yazılmış
+            #   Banane lose      0,73 ->  0,59  (-%19)  tartılan, adet yazılmış
+            #
+            # Yanlış uyarı vermek, hiç uyarmamaktan pahalı: bir kez "zam"
+            # deyip yanılan kart bir daha okunmaz. `paketli` (boyut adın
+            # içinde) ve `acik` (kasada tartılan, fiyat zaten kilo fiyatı)
+            # sınıflarında böyle bir belirsizlik yok.
+            if p["pack_type"] == "adet":
+                continue
+            # Genel ad varsa onunla, yoksa ham addan üretilen anahtarla:
+            # marka değişse bile aynı seri.
+            urun = p.get("generic_key") or p["product_key"]
+            k = (market, urun, p["pack_type"], p["price_unit"])
+            kova.setdefault(k, {}).setdefault(ay, []).append(p["unit_price"])
+            # Ekranda gösterilecek ad: genel ad varsa o, yoksa en kısa ham ad.
+            gorunen = p.get("generic") or p["product"]
+            onceki_ad = adlar.get(k)
+            if onceki_ad is None or len(gorunen) < len(onceki_ad):
+                adlar[k] = gorunen
+
+    ESIK = 8  # yüzde. Altındaki oynamalar yuvarlama ve kampanya gürültüsü.
+    yukari, asagi = [], []
+    for k, aylar in kova.items():
+        simdi, gecen = aylar.get(month), aylar.get(onceki)
+        # İKİ AYDA DA alınmış olmalı: tek ayda görülen üründe değişim
+        # hesaplanamaz ve "yeni" demek de bir fiyat hareketi değildir.
+        if not simdi or not gecen:
+            continue
+        y = _medyan(simdi)
+        o = _medyan(gecen)
+        if o <= 0.0001:
+            continue
+        fark = round((y - o) / o * 100)
+        if abs(fark) < ESIK:
+            continue
+        market, urun, ambalaj, birim = k
+        satir = {
+            "key": urun, "name": adlar.get(k, urun),
+            "merchant": market, "pack_type": ambalaj,
+            "unit": birim, "now": round(y, 2), "prev": round(o, 2),
+            "change_pct": fark,
+            # Kaç ölçüme dayandığı ekranda gösterilmiyor ama az ölçüme
+            # dayanan satır listenin dibine düşsün diye sıralamada var.
+            "samples": len(simdi) + len(gecen),
+        }
+        (yukari if fark > 0 else asagi).append(satir)
+
+    yukari.sort(key=lambda x: -x["change_pct"])
+    asagi.sort(key=lambda x: x["change_pct"])
+    return {"month": month, "prev_month": onceki,
+            "up": yukari, "down": asagi, "threshold": ESIK}
+
+
 @api.get("/stats/category")
 async def category_stats(
     key: str,
