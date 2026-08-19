@@ -390,6 +390,7 @@ Anasayfa · Alınacaklar · [Fiş Tara] · Kasa · Profil
 | `app/manual.tsx` | Elle harcama girişi |
 | `app/expense-edit.tsx` | Harcama düzenleme, kalem bazlı |
 | `app/member-detail.tsx` | Bir üyenin dönem içindeki harcama dökümü |
+| `app/(tabs)/aktivite.tsx` | Bildirim kaydı: her satır ilgili ekrana kapı, sola kaydır sil |
 
 Paylaşılan modüller `frontend/src/`: `api.ts` (istemci + yeniden deneme +
 uyanma sinyali), `auth.tsx`, `household.tsx`, `notifications.ts`, `photo.ts`,
@@ -397,7 +398,7 @@ uyanma sinyali), `auth.tsx`, `household.tsx`, `notifications.ts`, `photo.ts`,
 
 ---
 
-## 7. API (42 uç)
+## 7. API (45 uç)
 
 Tümü `/api` önekiyle. Sağlık ucu dışında hepsi `Authorization: Bearer <jeton>` ister.
 
@@ -428,6 +429,12 @@ Tümü `/api` önekiyle. Sağlık ucu dışında hepsi `Authorization: Bearer <j
 **Alınacaklar**
 `GET /shopping` · `POST /shopping` · `PATCH /shopping/{id}` · `DELETE /shopping/{id}`
 `POST /shopping/clear-done`
+
+**Bildirim**
+`GET /notifications` — son 60 kayıt + okunmamış sayısı; okunmuş ve 30 günden
+eski olanları bu çağrı sırasında döker
+`POST /notifications/read` · `DELETE /notifications/{id}` ·
+`POST /notifications/clear-read` (yalnızca okunmuşlar)
 
 **Cihaz**
 `POST /devices/register` · `POST /devices/unregister`

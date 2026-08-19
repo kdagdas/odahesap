@@ -733,6 +733,77 @@ gösterilecekti. Ev sahibinin cümlesi kural olarak kalsın:
 
 ---
 
+## Tur 12 — BİLDİRİM BLOĞU (20 Ağustos 2026, kod girdi, APK yok)
+
+Planlanan listede yoktu; cihaz kullanımından geldi ve öne alındı çünkü her
+gün karşılaşılan bir şeydi. Yedi madde, madde başına commit; `main` çalışır
+durumda, `tsc --noEmit` temiz, Metro paketi derleniyor, `aktivite-test.py`
+32/32 (e2e · odestik · settle-edit · duzenli takımları da yeşil).
+
+### Ne geldi
+
+1. ✓ **Bildirimler silinebiliyor** — sola kaydır sil · "Temizle" (yalnızca
+   okunmuşlar) · okunmuşların 30 gün sonra kendiliğinden dökülmesi. Okunmamış
+   hiçbir kurala girmiyor.
+2. ✓ **Bildirime dokunmak ilgili ekranı açıyor** — hem sistem bildirimi hem
+   Aktivite satırı, tek harita (`src/bildirimYolu.ts`). Harcama bildirimleri
+   fişi açıp ekrana getiriyor; ödeme bildirimleri Kasa'nın Ödeme Geçmişi'ni.
+3. ✓ **Kaydırma ipucu her açılışta bir kez**, yarım açılımla, ve iki ekranda
+   ortak (`ui.tsx`).
+4. ✓ **Ortalama çizgisi hatası** — Analiz'deki çubuk grafiğinde çizgi
+   çubuklarla farklı tabandan ölçülüyordu, hep 21 piksel aşağıdaydı.
+5. ✓ **Profil satırlarına "içinde ne var"** — "Ev arkadaşımı nasıl davet
+   ederim" sorusu burada takılıyordu.
+6. ✓ Testler (18 yeni kontrol) + belgeler.
+7. ✓ `gelistir.ps1`: BOM'lu UTF-8 + 60 saniyelik sağlık yoklaması.
+
+### Kararlar ve gerekçeleri
+
+- **Sağa kaydırınca "alındı" YAPILMADI** (ev sahibi de istemedi): dokunmak
+  zaten "aldım" demek, ikinci bir yol aynı işi iki kez yazmak olurdu. Üstelik
+  satır iki yönlü jest taşıyınca yanlış kaydırmayla **silme** riski artıyor.
+- **Analiz sayfasına dekoratif renk YAPILMADI.** Renk bu uygulamada bir
+  sözlük: yeşil = alacak, kırmızı = borç, kategorinin kendi rengi = kimlik.
+  Anlamsız renk o sözlüğü seyreltir ve bir dahaki sefer anlamlı olan da
+  anlamsız sanılır. Bugünkü ayrım doğru kurulmuş: **halka renkli** (renk bilgi
+  taşıyor), **zaman serisi tek renk** (bir Ağustos'un bir Temmuz'dan farklı
+  renkte olması hiçbir şey söylemez), yalnızca bulunduğun ay koyu.
+- **Öğretici tur / coach mark YAPILMAYACAK.** İnsanlar geçiyor, geçmeyenler
+  unutuyor — sebebi bağlam yokluğu: henüz sorulmamış bir sorunun cevabı
+  dinleniyor. Kaydırma ipucu bunun doğru biçimi: anlatmıyor, gösteriyor, ve
+  tam o listenin üstünde.
+
+### Bulunabilirlik — kural olarak kalsın
+
+Ev sahibinin sorusu: *"Her ekranda kullanıcı ne yapması gerektiğini bulabilir
+mi? Eve birini davet etmek istediğinde bulabilir mi?"*
+
+- İnsan menüyü baştan sona okuyup en iyisini seçmiyor; **en güçlü kokuyu
+  veren satıra** giriyor ve ilk makul olanı seçiyor. Çözüm çoğu zaman yeni
+  ekran değil, **satırın içinde ne olduğunu yazmak.**
+- **Sık olan görünür olsun, önemli olan değil.** Davet yılda bir olur, fiş
+  taramak günde iki kez — daveti ana ekrana çıkarmak 364 gün yer israfı
+  olurdu. Nadir eylem **bulunabilir** olmalı, **öne çıkan** değil.
+- **Boş durumlar en iyi öğretmen:** özelliğin nerede olduğunu öğretmenin en
+  iyi anı, kullanıcının eksikliğini hissettiği andır. Tek kişilik bir evde
+  Kasa'nın boş hâlinde "ev arkadaşını davet et" demek, Profil'i yeniden
+  düzenlemekten etkili. **Henüz yapılmadı** — sıradaki adım.
+- **Test etme yöntemi:** ev arkadaşlarına telefonu ver, tek cümle söyle
+  ("eve birini davet etmek istiyorsun, ne yapardın?"), sus ve izle. Üç kişi,
+  iki dakika. Kendi uygulamanızda kaybolamazsınız — tek panzehir bu.
+
+### Bu bloktan KALAN
+
+- **APK derlenmedi.** Kod `main`'de, `.env` hâlâ yerelde. Turun geri kalanı
+  bitince tek APK (v45 / 1.3.0) — bkz. DEVAM.md "APK KONTROL LİSTESİ".
+- **Push dokunması canlıya karşı denenmedi.** Yerelde
+  `FIREBASE_SERVICE_ACCOUNT` yok, yani push gitmiyor; kayıt ve Aktivite
+  tarafı denendi. Gerçek push dokunması ancak sunucu deploy edilip APK
+  kurulduktan sonra doğrulanabilir.
+- **Boş durum davet çağrısı** (yukarıdaki üçüncü madde) yapılmadı.
+
+---
+
 ## Tur 12 planı — öncelik sırasıyla
 
 1. **Arama** (market · ürün · kişi). 49 ürün oldu, bir yıl sonra 400 olacak;

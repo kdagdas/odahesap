@@ -271,6 +271,7 @@ cd backend
 | `akis-test.py` | kimin için ekseni, ödeşme çizgisi, ekstre satırları | 38 |
 | `analiz-test.py` | Son 6 Ay, ürün/kategori/market uçları, fiyat hareketleri | 58 |
 | `kopru-test.py` | alınacaklar ↔ fiş köprüsü + **tarih süzgeci** | 22 |
+| `aktivite-test.py` | bildirim kaydı, **gideceği yer (`data`+`ay`), silme, topluca temizleme** | 32 |
 | `odestik-test.py` | ödeşme, üyelik günlüğü, **ayrılma bildirimi/rozeti** | 49 |
 | `akis-test.py` | **hareket akışları: ekstre satırı == süzülen liste** | 38 |
 | Tur 1-3'ten: `donem-dondurma` · `duzenleme-gecmisi` · `market-tekrar` · `para-birimi` · `aktivite` · `stats` · `etiket-bazli` · `categorize` | | ~180 |
@@ -479,6 +480,95 @@ Ekstre bu türlere ayırıyor, `/expenses?akis=` aynı türle süzüyor —
 **"ödediğin − payın = net"** ilişkisi `stats-test.py` ve
 `etiket-bazli-test.py` ile korunuyor. Tutmuyorsa bir yerde kapsam kaymıştır.
 
+## Bildirimler — kaydın hayatı ve gideceği yer
+
+Bir bildirim iki ayrı şeydir ve ikisi bilerek ayrı: **push** (telefonun
+gösterdiği, kaybolur) ve **kayıt** (`notifications` koleksiyonu, kalır).
+`notify()` önce kaydı yazar, push'u sonra dener ve hatasını yutar.
+
+**Kayıt artık silinebiliyor:**
+
+| Uç | Ne yapar |
+|---|---|
+| `DELETE /notifications/{id}` | Tek kayıt. Yalnızca sahibi; başkasınınki 404. |
+| `POST /notifications/clear-read` | Yalnızca **okunmuşlar.** |
+| `GET /notifications` | Okunmuş ve 30 günden eskileri **kendiliğinden döker** (`BILDIRIM_OMRU_GUN`). |
+
+Okunmamış olan hiçbir kurala girmiyor — kaçırılan bir olayın tek izi o kayıt.
+Eskime için ayrı bir zamanlayıcı YOK: liste ucu zaten günde birkaç kez
+çağrılıyor ve iş kişinin kendi kayıtlarıyla sınırlı. Aktivite ekranının
+dibinde bunu söyleyen tek satır var; sessiz silme, kullanıcıya "kayıtlarım
+nereye gitti" dedirtir.
+
+**Onay sorulmuyor** çünkü bildirim kişiye ait: aynı olay için her alıcı kendi
+satırını taşıyor, silmek paylaşılan hiçbir şeyi bozmuyor. Alınacaklar'da tersi
+geçerli — orada ev arkadaşının yazdığı madde siliniyor.
+
+### Bildirim nereye götürür — `src/bildirimYolu.ts`
+
+Harita **tek yerde** çünkü iki yerden çağrılıyor: sistem bildirimine dokunmak
+(`app/_layout.tsx` → `useBildirimDokunmasi`) ve Aktivite satırına dokunmak.
+Ayrışsalar aynı bildirim iki farklı yere giderdi.
+
+| `kind` | `data` | Gidilen yer |
+|---|---|---|
+| `new_expense` · `expense_edit` · `recurring` (onaylanmış) | `expense_id` + `ay` | Harcamalar, o ay, fiş açık |
+| `settlement` · `period_closed` | — | Kasa, Ödeme Geçmişi açık |
+| `join_request` · `member_left` | — | Ev ayarları |
+| `recurring` (yeni şablon) | `recurring_id` | Düzenli giderler |
+| eşleşmeyen | — | `null` — Aktivite'de satır dokunulamaz, push Aktivite'yi açar |
+
+- **`ay` şart:** Harcamalar ay bazlı çalışıyor; ay yazılmazsa geriye tarihli
+  bir fiş bugünün listesinde bulunamaz. Sunucu fişin `expense_date`'inden
+  yazıyor, bugünün tarihinden değil.
+- **Eski bildirimlerde `ay` yok** ve silinen harcamada fiş zaten yok. İkisinde
+  de ekran açılıyor ama hiçbir satır açılmıyor — yanlış bir fişi doğruymuş
+  gibi göstermektense sessiz kalmak.
+- **`null` bir hata değil.** Gidilecek yeri olmayan satır dokunulamaz kalıyor
+  ve **oku da yok**: hiçbir yere götürmeyen bir ok yalan söyler.
+
+**Soğuk başlangıç tuzağı:** `Gate` açılışta kendi yönlendirmesini yapıyor
+(`replace("/(tabs)/panel")`). Bildirimden gelen yönlendirme ondan önce
+çalışırsa bir sonraki karede siliniyor. `useBildirimDokunmasi` bu yüzden
+`segments[0] === "(tabs)"` olana kadar bekliyor — Gate'in işini bitirdiğinin
+en güvenilir işareti.
+
+## Kaydırma ipucu — neden her açılışta
+
+`useKaydirmaIpucu` + `KaydirmaIpucu` (`src/ui.tsx`), Alınacaklar ve Aktivite.
+
+Önce **bir kerelikti** ve cihazda saklanıyordu; gerekçesi "her açılışta oynayan
+bir animasyon üçüncü günden sonra gürültü olur"du. Cihazda asıl kusur çıktı:
+**ilk açılışta gözden kaçarsa bir daha hiç görünmüyor** ve kullanıcı silmeyi
+bulamıyor. Öğretmeyen bir öğretici gürültüden kötüdür.
+
+- **Açılış başına bir kez**, odaklanma başına değil. Bayrak modül düzeyinde
+  (`oynatilanIpuclari`), yani soğuk başlangıçta sıfırlanıyor. Odaklanmaya
+  bağlansaydı Kasa↔Alınacaklar arasında gidip gelen biri onu dakikada dört kez
+  görürdü.
+- **Yarım açılıyor ve açılan kırmızı alan DEKOR** (`pointerEvents` kapalı).
+  Swipeable'ın kendi `openRight()`'ı satırı tam açıyor, yani gerçek "Sil"
+  düğmesini tam boyutta parmağın altına getiriyor; bir kerelik ipucunda kabul
+  edilebilirdi, **her açılışta** oynayan bir animasyonda yanlış dokunuşla
+  silme riski gerçek.
+
+## TUZAK: `...T.caption` yayılırken `lineHeight` de geliyor
+
+`{ ...T.caption, fontSize: 9 }` yazmak **satır yüksekliğini ezmiyor** — 12
+punto için hesaplanmış `lineHeight: 17` olduğu gibi kalıyor ve yazının
+etrafında sekiz piksel görünmez boşluk oluşuyor.
+
+Bu, Analiz'deki çubuk grafiğinde **ölçülebilir bir hataya** dönüştü: ay
+ortalaması çizgisi kabın en altından, çubuklar ise ay adının üstünden
+ölçülüyordu; aradaki 21 piksel, 64 piksellik ölçeğin üçte biri. Çizgi her
+zaman olması gerekenden aşağıda duruyordu ve "bu ortalama olamaz"
+dedirtiyordu. Testlerin göremeyeceği bir hata; cihazda göze çarptı.
+
+Punto düşürürken `lineHeight`'ı **açıkça** verin. Ve bir grafikte iki öğe
+birbirine göre konumlanıyorsa **aynı tabandan** ölçüldüklerini doğrulayın;
+etiket yüksekliği sabit yazılmaz, `onLayout` ile ölçülür (telefonun yazı
+boyutu ayarı sabit sayıyı yine kaydırır).
+
 ## Kolay gözden kaçan tasarım kararları
 
 **Bildirim hataları yutulur.** `notify()` hiçbir zaman istisna fırlatmaz —
@@ -520,6 +610,40 @@ inecekti. `photo_version` sadece önbellek kırıcıdır.
 **Liste eklemesi iyimserdir.** Alınacaklar listesine madde eklerken ağ cevabı
 beklenmez; art arda madde girerken her birinde beklemek uygulamayı bozuk
 hissettiriyordu.
+
+---
+
+## Geliştirme ortamı — `D:\SettleUp\gelistir.ps1`
+
+```
+iex (gc D:\SettleUp\gelistir.ps1 -Raw)
+```
+
+Tek komut: `.env`'i kontrol eder, arka ucu başlatır (8098, **üretim
+veritabanı**), `adb reverse` tünellerini kurar, Metro'yu yeniden başlatır.
+
+İki tuzak bu turda düzeltildi:
+
+- **Dosya BOM'lu UTF-8 olarak saklanıyor.** Windows PowerShell 5.1'in
+  `Get-Content`'i BOM yoksa dosyayı ANSI okuyor; Türkçe karakterler bozuluyor
+  ve betik *"The string is missing the terminator"* diyerek **hiç
+  çalışmıyor**. Düzenlerken kodlamayı bozmayın.
+- **Sağlık yoklaması 60 saniye bekliyor** (eskiden 20). Atlas bağlantısı bu
+  makinede ~25 saniye sürebiliyor ve betik "BASLATILAMADI" deyip çıkıyordu —
+  oysa sunucu saniyeler sonra ayaktaydı. Yanlış alarm gerçek arızadan pahalı:
+  insan olmayan bir hatayı aramaya başlıyor.
+
+Kontrol: `curl http://localhost:8098/api/` ve `curl http://localhost:8081/status`.
+
+**Metro paketini kullanıcıdan önce siz derletin.** Telefonu yeniden yüklemeden
+söz dizimi ve import hatalarını yakalar:
+
+```
+curl -o /dev/null -w "%{http_code}\n" "http://localhost:8081/.expo/.virtual-metro-entry.bundle?platform=android&dev=true"
+```
+
+200 dönmüyorsa gövde JSON bir hata nesnesi; `tsc --noEmit` bunu yakalamaz
+(çözümlenemeyen modül, Metro'ya özgü yollar).
 
 ---
 
