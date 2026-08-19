@@ -770,6 +770,126 @@ export function HintCard({
   );
 }
 
+/* -------------------------------------------------- kaydırarak silme */
+
+/** Sil alanının genişliği — ipucu animasyonu da bu sayıdan besleniyor. */
+export const SIL_GENIS = 84;
+
+/**
+ * Kaydırınca açılan sil alanı — **parmağı takip ediyor.**
+ *
+ * Önce `renderRightActions={() => (...)}` yazılıydı ve Swipeable'ın verdiği
+ * animasyon değerleri hiç kullanılmıyordu: satır parmakla kayıyor ama düğme
+ * tam boyutta bir anda basılıyordu ("hop beliriyor"). Şimdi `progress` ile
+ * kayıyor, yani alan **kaydırıldığı kadar** açılıyor.
+ *
+ * `progress` 0→1 arası ve satır tam açıldığında 1 oluyor; düğmeyi kendi
+ * genişliği kadar sağdan içeri kaydırmak, "arkadan çıkıyor" hissini veren
+ * en ucuz yol. Yazı ayrıca soluyor: yarı yolda okunamayan bir kelime
+ * titreşim gibi görünüyor.
+ *
+ * Alınacaklar'da doğdu, Aktivite de aynısını istedi. **İki ekran ayrışmasın
+ * diye buraya taşındı** — kopyalansaydı biri düzeltilip diğeri unutulurdu.
+ */
+export const silAlani = (onSil: () => void, testID?: string) =>
+  (progress: Animated.AnimatedInterpolation<number>) => (
+    <View style={styles.silKap}>
+      <Animated.View
+        style={{
+          transform: [{
+            translateX: progress.interpolate({
+              inputRange: [0, 1], outputRange: [SIL_GENIS, 0], extrapolate: "clamp",
+            }),
+          }],
+        }}
+      >
+        <Pressable style={styles.silAlan} onPress={onSil} testID={testID}>
+          <Ionicons name="trash-outline" size={19} color={colors.onBrand} />
+          <Animated.Text
+            style={[styles.silTxt, {
+              opacity: progress.interpolate({
+                inputRange: [0.45, 1], outputRange: [0, 1], extrapolate: "clamp",
+              }),
+            }]}
+          >
+            Sil
+          </Animated.Text>
+        </Pressable>
+      </Animated.View>
+    </View>
+  );
+
+/* Bu açılışta hangi ipuçları oynadı. **Modül düzeyinde, cihazda DEĞİL:**
+   uygulama kapanıp açılınca sıfırlanması tam olarak istenen şey. */
+const oynatilanIpuclari = new Set<string>();
+
+/**
+ * Kaydırma ipucu — **her uygulama açılışında bir kez.**
+ *
+ * Önce cihazda saklanan BİR KERELİK bir ipucuydu ve gerekçesi şuydu: her
+ * açılışta oynayan bir animasyon üçüncü günden sonra gürültü olur. Cihazda
+ * denenince asıl kusur çıktı: **ilk açılışta gözden kaçarsa bir daha hiç
+ * görünmüyor** ve kullanıcı silmeyi bulamıyor. Öğretmeyen bir öğretici,
+ * gürültüden kötüdür.
+ *
+ * Uzlaşma **açılış başına bir kez**: sekme değiştirdikçe değil. Aksi hâlde
+ * Kasa↔Alınacaklar arasında gidip gelen biri onu dakikada dört kez görür ve
+ * animasyon bir tike döner.
+ *
+ * `hazir` listenin dolduğunu söyler — boş listede oynatacak satır yok.
+ */
+export function useKaydirmaIpucu(anahtar: string, hazir: boolean): boolean {
+  const [oyna, setOyna] = React.useState(false);
+  useFocusEffect(React.useCallback(() => {
+    if (!hazir || oynatilanIpuclari.has(anahtar)) return;
+    oynatilanIpuclari.add(anahtar);
+    // Liste yerleşsin diye kısa bir bekleme; hemen oynatılınca satır henüz
+    // ölçülmemiş oluyor ve animasyon yutuluyor.
+    const t = setTimeout(() => setOyna(true), 550);
+    return () => clearTimeout(t);
+  }, [anahtar, hazir]));
+  return oyna;
+}
+
+/**
+ * İpucunun kendisi: satır **yarıya kadar** kayıp geri geliyor.
+ *
+ * Neden Swipeable'ın kendi `openRight()`'ı DEĞİL: o satırı tam açıyor, yani
+ * gerçek "Sil" düğmesi tam boyutta parmağın altına geliyor. Bir kerelik
+ * ipucunda bu kabul edilebilirdi; **her açılışta** oynayan bir animasyonda
+ * yanlış dokunuşla silme riski gerçek.
+ *
+ * Bu yüzden buradaki kırmızı alan **dekor** — dokunulamaz (`pointerEvents`
+ * kapalı), yalnızca "altta bir şey var" der. Gerçek silme yine parmakla
+ * kaydırınca geliyor. Yarım açılım jesti aynı netlikte anlatıyor.
+ */
+export function KaydirmaIpucu({
+  oyna, children,
+}: { oyna: boolean; children: React.ReactNode }) {
+  const x = React.useRef(new Animated.Value(0)).current;
+  React.useEffect(() => {
+    if (!oyna) return;
+    const anim = Animated.sequence([
+      Animated.timing(x, { toValue: -SIL_GENIS / 2, duration: 260, useNativeDriver: true }),
+      Animated.delay(700),
+      Animated.timing(x, { toValue: 0, duration: 220, useNativeDriver: true }),
+    ]);
+    anim.start();
+    return () => anim.stop();
+  }, [oyna, x]);
+
+  return (
+    <View style={styles.ipucuKap}>
+      <View style={styles.ipucuArka} pointerEvents="none">
+        <Ionicons name="trash-outline" size={19} color={colors.onBrand} />
+      </View>
+      <Animated.View style={[styles.ipucuOn, { transform: [{ translateX: x }] }]}>
+        {children}
+      </Animated.View>
+    </View>
+  );
+}
+
 /**
  * Seçim satırı + alttan açılan liste.
  *
@@ -1998,6 +2118,24 @@ const styles = StyleSheet.create({
     fontSize: 10, lineHeight: 13, fontFamily: fontFamily.semibold,
     letterSpacing: 0.5, color: colors.accentDark,
   },
+  /* Kap sabit genişlikte ve TAŞANI KIRPIYOR: içteki düğme sağdan içeri
+     kayarken kabın dışına sızmasın. */
+  silKap: { width: SIL_GENIS, overflow: "hidden" },
+  silAlan: {
+    backgroundColor: colors.negative, justifyContent: "center", alignItems: "center",
+    width: SIL_GENIS, height: "100%", gap: 3,
+  },
+  silTxt: { ...T.caption, color: colors.onBrand },
+  ipucuKap: { overflow: "hidden" },
+  /* Yarım genişlik: ipucu satırı bu kadar kaydırıyor, yani kırmızı alan tam
+     doluyor — açıkta kalan bir şerit "yarım boyanmış" görünürdü. */
+  ipucuArka: {
+    position: "absolute", right: 0, top: 0, bottom: 0, width: SIL_GENIS / 2,
+    backgroundColor: colors.negative, alignItems: "center", justifyContent: "center",
+  },
+  /* Satırın altındaki dekoru örtmesi için ZEMİNİ olmak zorunda; `Card` ile
+     aynı renk, yani ekranda hiçbir fark yok. */
+  ipucuOn: { backgroundColor: colors.surface },
   hint: {
     flexDirection: "row", alignItems: "center", gap: spacing.md,
     backgroundColor: colors.infoSoft, borderRadius: radius.md, padding: spacing.md,

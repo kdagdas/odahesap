@@ -2,70 +2,24 @@
 import { useCallback, useRef, useState } from "react";
 import {
   View, Text, StyleSheet, ScrollView, TextInput, Pressable,
-  ActivityIndicator, KeyboardAvoidingView, Platform, RefreshControl, Animated,
+  ActivityIndicator, KeyboardAvoidingView, Platform, RefreshControl,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useLocalSearchParams } from "expo-router";
 
 import { apiGet, apiPost, apiDelete, api } from "@/src/api";
 import { Swipeable } from "react-native-gesture-handler";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useAuth } from "@/src/auth";
 import { useHousehold } from "@/src/household";
 import {
   ScreenHeader, Sheet, Card, Row, Divider, Avatar, IconPill, Overline, TabSwitch,
   animateNextLayout, useScrollPad, useBasaSar, yenileme,
+  silAlani, KaydirmaIpucu, useKaydirmaIpucu,
 } from "@/src/ui";
 import { colors, spacing, radius, type as T, metrics } from "@/src/theme";
 
 type Scope = "household" | "self";
 
-/** Sil alanının genişliği — ipucu animasyonu da bu sayıdan besleniyor. */
-const SIL_GENIS = 84;
-
-/** İpucu bir kez gösterildi mi? Cihazda saklanıyor. */
-const IPUCU_ANAHTAR = "kasa.liste.kaydirma-ipucu";
-
-/**
- * Kaydırınca açılan sil alanı — **parmağı takip ediyor.**
- *
- * Önce `renderRightActions={() => (...)}` yazılıydı ve Swipeable'ın verdiği
- * animasyon değerleri hiç kullanılmıyordu: satır parmakla kayıyor ama düğme
- * tam boyutta bir anda basılıyordu ("hop beliriyor"). Şimdi `progress` ile
- * kayıyor, yani alan **kaydırıldığı kadar** açılıyor.
- *
- * `progress` 0→1 arası ve satır tam açıldığında 1 oluyor; düğmeyi kendi
- * genişliği kadar sağdan içeri kaydırmak, "arkadan çıkıyor" hissini veren
- * en ucuz yol. Yazı ayrıca soluyor: yarı yolda okunamayan bir kelime
- * titreşim gibi görünüyor.
- */
-const silAlani = (onSil: () => void, id: string) =>
-  (progress: Animated.AnimatedInterpolation<number>) => (
-    <View style={styles.silKap}>
-      <Animated.View
-        style={{
-          transform: [{
-            translateX: progress.interpolate({
-              inputRange: [0, 1], outputRange: [SIL_GENIS, 0], extrapolate: "clamp",
-            }),
-          }],
-        }}
-      >
-        <Pressable style={styles.silAlan} onPress={onSil} testID={`liste-del-${id}`}>
-          <Ionicons name="trash-outline" size={19} color={colors.onBrand} />
-          <Animated.Text
-            style={[styles.silTxt, {
-              opacity: progress.interpolate({
-                inputRange: [0.45, 1], outputRange: [0, 1], extrapolate: "clamp",
-              }),
-            }]}
-          >
-            Sil
-          </Animated.Text>
-        </Pressable>
-      </Animated.View>
-    </View>
-  );
 type Item = {
   item_id: string; text: string; scope: Scope; added_by: string;
   done: boolean; done_by?: string | null;
@@ -158,42 +112,10 @@ export default function Liste() {
   const pending = items.filter((i) => !i.done);
   const done = items.filter((i) => i.done);
 
-  /**
-   * BİR KERELİK kaydırma ipucu.
-   *
-   * Sayfaya girince satırın kaydırılabilir olduğunu hiçbir şey söylemiyordu.
-   * En üst satır kendiliğinden bir dilim açılıp kapanıyor: jesti *göstermek*,
-   * anlatmaktan iyi.
-   *
-   * Neden **yazı yok:** kullanıcının bir kez öğrendikten sonra bildiği hiçbir
-   * şey ekranda tekrar yazılmaz. Neden **kalıcı bir ok/tutamak yok:** 20
-   * satırın 20'sinde tekrar eder ve listeyi kalabalıklaştırır. Neden **bir
-   * kerelik:** her açılışta oynayan bir animasyon üçüncü günden sonra
-   * gürültü olur.
-   */
-  const ilkSatir = useRef<Swipeable | null>(null);
-  const ipucuDenendi = useRef(false);
-
-  useFocusEffect(useCallback(() => {
-    if (ipucuDenendi.current || pending.length === 0) return;
-    ipucuDenendi.current = true;
-    let iptal = false;
-    (async () => {
-      try {
-        if (await AsyncStorage.getItem(IPUCU_ANAHTAR)) return;
-        // Liste yerleşsin diye kısa bir bekleme; hemen oynatılınca satır
-        // henüz ölçülmemiş oluyor ve animasyon yutuluyor.
-        await new Promise((r) => setTimeout(r, 550));
-        if (iptal) return;
-        ilkSatir.current?.openRight();
-        await new Promise((r) => setTimeout(r, 750));
-        if (iptal) return;
-        ilkSatir.current?.close();
-        await AsyncStorage.setItem(IPUCU_ANAHTAR, "1");
-      } catch { /* ipucu gösterilemediyse sorun değil */ }
-    })();
-    return () => { iptal = true; };
-  }, [pending.length]));
+  /* Kaydırma ipucu artık HER AÇILIŞTA bir kez — gerekçesi `useKaydirmaIpucu`
+     içinde. Eskiden burada cihazda saklanan bir kerelik bir kurulum vardı;
+     ipucunun kendisi Aktivite'ye de gerekince ikisi `ui.tsx`'te birleşti. */
+  const ipucuOyna = useKaydirmaIpucu("liste", pending.length > 0);
 
   return (
     <View style={styles.root} testID="liste-screen">
@@ -269,11 +191,11 @@ export default function Liste() {
                         ediyor, yani en sik eylem hala tek dokunus. */}
                     {pending.map((it, i) => (
                       <View key={it.item_id}>
+                        <KaydirmaIpucu oyna={i === 0 && ipucuOyna}>
                         <Swipeable
-                          ref={(r) => { if (i === 0) ilkSatir.current = r; }}
                           overshootRight={false}
                           rightThreshold={44}
-                          renderRightActions={silAlani(() => remove(it), it.item_id)}
+                          renderRightActions={silAlani(() => remove(it), `liste-del-${it.item_id}`)}
                         >
                           <Row
                             minHeight={52}
@@ -291,6 +213,7 @@ export default function Liste() {
                             }
                           />
                         </Swipeable>
+                        </KaydirmaIpucu>
                         {i < pending.length - 1 && <Divider inset={58} />}
                       </View>
                     ))}
@@ -351,14 +274,6 @@ const styles = StyleSheet.create({
   check: { width: 21, height: 21, borderRadius: 11, borderWidth: 1.5, borderColor: colors.borderStrong },
   itemTxt: { ...T.body, color: colors.ink },
   itemDone: { ...T.body, color: colors.inkTertiary, textDecorationLine: "line-through" },
-  /* Kap sabit genişlikte ve TAŞANI KIRPIYOR: içteki düğme sağdan içeri
-     kayarken kabın dışına sızmasın. */
-  silKap: { width: SIL_GENIS, overflow: "hidden" },
-  silAlan: {
-    backgroundColor: colors.negative, justifyContent: "center", alignItems: "center",
-    width: SIL_GENIS, height: "100%", gap: 3,
-  },
-  silTxt: { ...T.caption, color: colors.onBrand },
   itemRight: { flexDirection: "row", alignItems: "center", gap: spacing.md },
   itemWho: { ...T.caption, color: colors.inkTertiary },
   doneHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
