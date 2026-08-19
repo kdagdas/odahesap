@@ -161,11 +161,37 @@ Select-String -Path "android\app\build.gradle" -Pattern "versionCode|ODAHESAP_ST
 
 Kaybolmuşsa [IMZALAMA.md](IMZALAMA.md) içindeki adımları tekrar uygulayın.
 
+### APK KONTROL LİSTESİ — sırayla, atlamadan
+
+Bu liste bir kez kaçırıldığı için yazıldı (v43'te dosya adı ve yedek
+atlanmıştı). Sıra önemli: 1 ve 2 atlanırsa APK **çalışmaz**.
+
+1. **`.env` üretime dön.** `frontend/.env` geliştirme sırasında
+   `localhost:8098` gösteriyor; adres APK'ya derleme anında GÖMÜLÜYOR.
+   Yedeği `.env.yedek-tur10` içinde. Derledikten sonra doğrula:
+   paketin içinde `onrender.com` **1**, `localhost` **0** kez geçmeli.
+2. **Sunucuyu deploy et.** APK canlıya bakıyor; yeni uçlar `main`'e push
+   edilmeden APK yarım çalışır. `git push origin main` → Render otomatik
+   deploy (~3-5 dk) → `curl .../api/` ile doğrula.
+3. **Veritabanı yedeği al** — `.venv/Scripts/python.exe ../tests/yedekle.py`.
+   Atlas M0'da otomatik yedek YOK.
+4. **`app.json` → `versionCode` artır.** Android'in tek baktığı sayı;
+   artmazsa APK eskinin üzerine kurulmaz. `version` (1.1.0) ise insanın
+   gördüğü ad, semver.
+5. Derle (aşağıdaki adımlar), sonra **izin listesini kontrol et** — beklenen
+   **11 izin**.
+6. **APK'yı doğru adla kopyala:**
+   `D:\SettleUp\APK\KaSa-<version>-v<versionCode>.apk`
+   Örnek: `KaSa-1.1.0-v43.apk`. Gradle'ın verdiği
+   `app-arm64-v8a-release.apk` adı WhatsApp'ta hangi sürüm olduğunu
+   söylemiyor; klasördeki bütün geçmiş sürümler bu kalıpta.
+
 ### Üretilen APK'lar
 
 `frontend/android/app/build/outputs/apk/release/` altında tek dosya çıkar:
 `app-arm64-v8a-release.apk` (~40 MB). Tek dosyada birleşik APK ~98 MB olur ve
-WhatsApp'ın sınırını aşar, o yüzden mimari başına ayrılıyor.
+WhatsApp'ın sınırını aşar, o yüzden mimari başına ayrılıyor. Dağıtılan kopya
+`D:\SettleUp\APK\` altında sürüm adıyla durur (yukarıdaki 6. madde).
 
 Yalnızca **arm64-v8a** derleniyor: evdeki üç telefon da 64 bit ve 32 bitlik
 sürüm hiç kurulmadı. 32 bit bir telefon katılırsa `android/app/build.gradle`
