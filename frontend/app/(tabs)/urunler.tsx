@@ -58,7 +58,7 @@ export default function Urunler() {
   useBasaSar(scrollRef);
   const geriDon = useGeriDon("/(tabs)/istatistik");
   const { household } = useHousehold();
-  const params = useLocalSearchParams<{ ay?: string; scope?: string }>();
+  const params = useLocalSearchParams<{ ay?: string; scope?: string; sira?: string }>();
   const kapsam = params.scope === "self" ? "self" : "household";
 
   const [ay, setAy] = useState<string>(
@@ -75,7 +75,10 @@ export default function Urunler() {
    * Miktara göre sıralama YOK: kilo ile adet toplanamaz, sıralanamaz da.
    * "Kaç kez alındı" birim tanımaz ve her satırda karşılaştırılabilir.
    */
-  const [sira, setSira] = useState<"tutar" | "siklik">("tutar");
+  /* Karttan hangi kiple girildiyse sayfa o kiple açılıyor: karttaki
+     anahtarı çevirip "Tüm ürünler"e basan kişi aynı sıralamayı bekliyor. */
+  const [sira, setSira] = useState<"tutar" | "siklik">(
+    params.sira === "siklik" ? "siklik" : "tutar");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 

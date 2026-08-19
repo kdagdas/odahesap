@@ -33,7 +33,7 @@ import { useHousehold } from "@/src/household";
 import {
   ScreenHeader, Sheet, Card, Row, Divider, Avatar, Money, CategoryIcon,
   categoryLabel, MerchantBadge, Donut, TabSwitch, BottomSheet,
-  formatEUR, formatEURShort, formatQty, AylikCubuk,
+  formatEUR, formatEURShort, formatQty, AylikCubuk, IconSwitch,
   useScrollPad, useGeriDon, useBasaSar,
 } from "@/src/ui";
 import {
@@ -62,6 +62,7 @@ type Monthly = {
     key: string; name: string; total: number; count: number;
     market_count: number; qty: number | null; unit: string | null;
   }[];
+  products_frequent: Monthly["products"];
   product_count: number;
 };
 
@@ -175,6 +176,11 @@ export default function Istatistik() {
    *  bu hesap iki ayın bütün fişlerini tarıyor. Kişisel sekmede anlamı yok
    *  (fiyat evin sepetine ait), o yüzden yalnızca ev kapsamında çekiliyor. */
   const [fiyat, setFiyat] = useState<{ up: FiyatHareket[]; down: FiyatHareket[] } | null>(null);
+  /** Ürün kartının ekseni. İki AYRI soru: "paramız neye gidiyor" ile
+   *  "en çok neyi alıyoruz". Kilosu 20 € olan etten 2 kilo ile kilosu 1 €
+   *  olan undan 40 kilo aynı tutarı verir ama biri ayda bir, öteki her
+   *  hafta alınır. */
+  const [urunSira, setUrunSira] = useState<"tutar" | "siklik">("tutar");
   /* Geri, geldiği yere. Sekme gezgininde `back()` Anasayfa'ya düşüyor. */
   const geriDon = useGeriDon();
 
@@ -444,30 +450,37 @@ export default function Istatistik() {
                   </Card>
                 )}
 
-                {/* EN ÇOK HARCADIKLARIMIZ — ürün bazlı, genel ada göre.
+                {/* ÜRÜN KARTI — iki eksenli, anahtar BAŞLIKTA.
                     `MILSANI`, `MILBONA` ve `JA! MILCH` tek satırda "Süt"
                     olarak toplanıyor; bunu rakiplerin hiçbiri üretemez çünkü
                     hiçbiri fişi kalem kalem okumuyor.
 
-                    **Adı "aldıklarımız" değil "HARCADIKLARIMIZ".** Liste
-                    tutara göre sıralı ve ikisi farklı sorular: kilosu 20 €
-                    olan etten 2 kilo ile kilosu 1 € olan undan 40 kilo aynı
-                    tutarı verir. "Aldıklarımız" miktar ima ediyordu ve sıralama
-                    onu tutmuyordu. Sıklığa göre sıralama "Tüm Ürünler"
-                    sayfasında, kendi anahtarıyla.
+                    Anahtar önce "Tüm Ürünler" sayfasının içindeydi ve kimse
+                    orada bir seçici olduğunu bilmiyordu — keşfedilemeyen bir
+                    özellik yok sayılır. Şimdi kartın başlığında ve iki ikon:
+                    seçeneğin adı zaten başlıkta yazılı olduğu için ikon tek
+                    başına yeterli.
 
-                    Karşılaştırmaya ihtiyacı yok: ilk aydan itibaren dolu
-                    geliyor. Yalnızca EV kapsamında — kişisel sekmede "ne
-                    aldık" sorusunun öznesi kayboluyor. */}
+                    BEŞER satır: kart bir özet, tam liste bir dokunuş ötede.
+                    Sekiz satır kartı sayfanın yarısı yapardı. */}
                 {(data.products || []).length > 0 && (
-                  <Card title="En Çok Harcadıklarımız" style={styles.mx}
-                        action={data.product_count > data.products.length
-                          ? `Tümü · ${data.product_count}` : undefined}
-                        onAction={() => router.push({
-                          pathname: "/(tabs)/urunler",
-                          params: { ay: data.month, scope, geri: "/(tabs)/istatistik" },
-                        })}>
-                    {data.products.map((u, i) => (
+                  <Card
+                    title={urunSira === "tutar" ? "En Çok Harcadıklarımız" : "En Sık Aldıklarımız"}
+                    style={styles.mx}
+                    headRight={
+                      <IconSwitch
+                        value={urunSira}
+                        onChange={setUrunSira}
+                        options={[
+                          { value: "tutar" as const, icon: "cash-outline", label: "Tutara göre" },
+                          { value: "siklik" as const, icon: "repeat-outline", label: "Sıklığa göre" },
+                        ]}
+                        testID="urun-eksen"
+                      />
+                    }
+                  >
+                    {(urunSira === "tutar" ? data.products : (data.products_frequent || []))
+                      .map((u, i) => (
                       <View key={u.key}>
                         {i > 0 && <Divider inset={spacing.lg} />}
                         <View style={styles.urunRow}>
@@ -477,10 +490,30 @@ export default function Istatistik() {
                               {urunAlt(u)}
                             </Text>
                           </View>
-                          <Money value={u.total} />
+                          {/* Sağdaki sayı SIRALANAN şey: sıklık kipinde tutar
+                              göstermek "neye göre sıralı" sorusunu bırakırdı. */}
+                          {urunSira === "tutar"
+                            ? <Money value={u.total} />
+                            : <Text style={styles.urunKez}>{u.count} kez</Text>}
                         </View>
                       </View>
                     ))}
+                    {/* Kapı DİBE indi: başlıktaki yeri anahtar aldı. Anasayfa'daki
+                        "Tüm istatistikler" satırının aynı kalıbı. */}
+                    <Divider inset={0} />
+                    <Pressable style={styles.urunKapi} testID="tum-urunler"
+                               onPress={() => router.push({
+                                 pathname: "/(tabs)/urunler",
+                                 params: { ay: data.month, scope, sira: urunSira,
+                                           geri: "/(tabs)/istatistik" },
+                               })}>
+                      <Ionicons name="list" size={15} color={colors.accentDark} />
+                      <Text style={styles.urunKapiTxt}>
+                        Tüm ürünler · {data.product_count}
+                      </Text>
+                      <Ionicons name="chevron-forward" size={15}
+                                color={colors.onSurfaceTertiary} />
+                    </Pressable>
                   </Card>
                 )}
 
@@ -719,6 +752,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg, paddingVertical: spacing.md, minHeight: 46,
   },
   urunAd: { ...T.bodySb, color: colors.ink },
+  urunKez: { ...T.bodySb, color: colors.ink, fontVariant: ["tabular-nums"] },
+  urunKapi: {
+    flexDirection: "row", alignItems: "center", gap: spacing.sm,
+    paddingHorizontal: spacing.lg, paddingVertical: spacing.md, minHeight: 44,
+  },
+  urunKapiTxt: { ...T.bodySb, color: colors.accentDark, flex: 1 },
   urunAlt: { ...T.caption, fontSize: 11, color: colors.inkTertiary, marginTop: 1 },
   curveLegend: { flexDirection: "row", gap: spacing.lg, marginTop: spacing.sm },
   legendItem: { flexDirection: "row", alignItems: "center", gap: 6 },

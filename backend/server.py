@@ -4113,7 +4113,8 @@ async def monthly_stats(
         "prev_total": 0, "change_pct": None, "fixed": 0, "variable": 0,
         "categories": [], "merchants": [], "by_member": [],
         "cumulative": [], "prev_cumulative": [], "bills": [],
-        "months": [], "son_aylar": [], "products": [], "product_count": 0,
+        "months": [], "son_aylar": [], "products": [], "products_frequent": [],
+        "product_count": 0,
         "member_count": 0, "per_person": 0,
         "my_share": 0, "my_personal": 0,
         "prev_same_day": 0, "days": 0, "elapsed_days": 0,
@@ -4291,7 +4292,13 @@ async def monthly_stats(
         # Ürün bazlı toplam. Tur 8'in genel ürün adı işi sayesinde üç
         # marketin kendi markası ("MILSANI", "MILBONA", "JA!") tek satırda
         # toplanıyor. Karşılaştırmaya ihtiyacı yok, ilk aydan itibaren dolu.
-        "products": urunler[:8],
+        # İKİ SIRALAMA da gönderiliyor, biri kesilip istemcide yeniden
+        # sıralanmıyor: ucuz ama sık alınan bir ürün (ekmek) tutar
+        # sıralamasının ilk sekizinde hiç olmayabilir. Tek liste gönderip
+        # istemcide sıklığa göre dizmek o ürünü kaybederdi.
+        "products": urunler[:5],
+        "products_frequent": sorted(
+            urunler, key=lambda x: (-x["count"], -x["total"]))[:5],
         "product_count": len(urunler),
         "categories": cat_rows,
         # `key` NORMALİZE anahtar, `name` ekranda görünen ad. Market sayfası

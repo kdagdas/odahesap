@@ -142,6 +142,17 @@ r = c.get(f"{API}/stats/products?month={AY}", headers=hdr(tok)).json()
 check("tum urunler ucu ayni sayiyi veriyor",
       len(r["products"]) == s.get("product_count"), str(len(r["products"])))
 
+# IKI SIRALAMA da sunucudan geliyor, biri kesilip istemcide yeniden
+# siralanmiyor: ucuz ama sik alinan bir urun tutar siralamasinin ilk
+# besinde hic olmayabilir ve istemcide siralamak onu KAYBEDERDI.
+sik = s.get("products_frequent") or []
+check("siklik listesi ayrica donuyor", len(sik) > 0, str(sik))
+check("siklik listesi sayiya gore sirali",
+      [u["count"] for u in sik] == sorted((u["count"] for u in sik), reverse=True),
+      str([(u["key"], u["count"]) for u in sik]))
+check("kart listeleri BESER satir", len(s["products"]) <= 5 and len(sik) <= 5,
+      f"{len(s['products'])} / {len(sik)}")
+
 print("\n-- 2b. GENEL AD kayda ULASIYOR mu --")
 # Bu kontrol somut bir hatadan dogdu: OCR `generic` alanini uretiyordu ve
 # sunucu istemciye gonderiyordu, ama fis inceleme ekrani onu kayda TASIMIYORDU

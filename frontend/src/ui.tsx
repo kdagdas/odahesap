@@ -444,6 +444,47 @@ export function AylikCubuk({
   );
 }
 
+/**
+ * İKİ İKONLU küçük anahtar — kart başlığına sığan en dar seçici.
+ *
+ * `TabSwitch` yazı taşıyor ve kart başlığında başlığın kendisiyle yarışıyor.
+ * Burada seçenek adı zaten BAŞLIKTA yazılı ("En Çok Harcadıklarımız" ↔
+ * "En Sık Aldıklarımız"), yani ikon tek başına yeterli: dokunulunca başlık
+ * değişiyor ve ne olduğu okunuyor.
+ *
+ * Var olma sebebi keşfedilebilirlik: sıklık sıralaması "Tüm Ürünler"
+ * sayfasının içinde saklıydı ve kimse orada bir anahtar olduğunu bilmiyordu.
+ */
+export function IconSwitch<T extends string>({
+  value, options, onChange, testID,
+}: {
+  value: T;
+  options: { value: T; icon: string; label: string }[];
+  onChange: (v: T) => void;
+  testID?: string;
+}) {
+  return (
+    <View style={styles.ikonAnahtar} testID={testID}>
+      {options.map((o) => {
+        const secili = o.value === value;
+        return (
+          <Pressable
+            key={o.value}
+            onPress={() => onChange(o.value)}
+            style={[styles.ikonBtn, secili && styles.ikonBtnSecili]}
+            hitSlop={6}
+            accessibilityLabel={o.label}
+            testID={testID ? `${testID}-${o.value}` : undefined}
+          >
+            <Ionicons name={o.icon as any} size={15}
+                      color={secili ? colors.ink : colors.inkTertiary} />
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
 export function useScrollPad(opts?: { tabs?: boolean; extra?: number }) {
   const insets = useSafeAreaInsets();
   /* Sekme cubugu `position: absolute` DEGIL: React Navigation ekrani zaten
@@ -514,8 +555,12 @@ export function Sheet({ children, style }: { children: React.ReactNode; style?: 
 
 export function Card({
   children, title, action, onAction, style, testID, padded = false, onLayout, lead,
+  headRight,
 }: {
   children?: React.ReactNode; title?: string; action?: string; onAction?: () => void;
+  /** Başlığın sağına bir düğüm — küçük bir anahtar gibi. `action` yazıdır,
+   *  bu ise bileşen; ikisi aynı anda verilmez. */
+  headRight?: React.ReactNode;
   style?: StyleProp<ViewStyle>; testID?: string; padded?: boolean;
   /** Başlığın soluna küçük bir işaret (ör. `PulseDot`). */
   lead?: React.ReactNode;
@@ -534,11 +579,11 @@ export function Card({
             {lead ? <View style={{ marginRight: spacing.sm }}>{lead}</View> : null}
             <Text style={styles.cardTitle}>{title}</Text>
           </View>
-          {action ? (
+          {headRight ?? (action ? (
             <Pressable onPress={onAction} hitSlop={10}>
               <Text style={styles.cardAction}>{action}</Text>
             </Pressable>
-          ) : null}
+          ) : null)}
         </View>
       ) : null}
       <View style={padded ? [styles.cardBody, !title && styles.cardBodyTopless] : undefined}>
@@ -1996,6 +2041,14 @@ const styles = StyleSheet.create({
     paddingTop: spacing.md, paddingHorizontal: 0,
   },
   ortLabel: { ...T.caption, color: colors.inkTertiary, flex: 1 },
+  ikonAnahtar: {
+    flexDirection: "row", backgroundColor: colors.surfaceSecondary,
+    borderRadius: radius.pill, padding: 2, gap: 2,
+  },
+  ikonBtn: {
+    paddingHorizontal: 9, paddingVertical: 5, borderRadius: radius.pill,
+  },
+  ikonBtnSecili: { backgroundColor: colors.surface },
   pillRow: { flexDirection: "row", gap: spacing.sm, marginTop: spacing.lg, flexWrap: "wrap" },
   pill: {
     flexDirection: "row", alignItems: "center", gap: 5, flexShrink: 1,
