@@ -17,7 +17,7 @@ import {
   ScreenHeader, Sheet, Card, Row, Divider, Avatar, Money,
   IconPill, PrimaryButton, BottomSheet, PulseDot,
   useCountUp, formatEUR, currencySign, ayAdi,
-  useScrollPad, useBasaSar,
+  useScrollPad, useBasaSar, yenileme,
 } from "@/src/ui";
 import {
   getPaymentFor, getMyPayment, hasSharedPayment, markPaymentShared,
@@ -559,8 +559,7 @@ export default function Denge() {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
           refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }}
-                            tintColor={colors.ink} progressBackgroundColor={colors.surface} />
+            <RefreshControl {...yenileme(refreshing, () => { setRefreshing(true); load(); })} />
           }
         >
           <ScreenHeader size="l" overline="KASA" title="Senin Hesabın">

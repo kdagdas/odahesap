@@ -13,7 +13,7 @@
 import React from "react";
 import {
   View, Text, Pressable, StyleSheet, ViewStyle, StyleProp, Image, TextStyle,
-  Keyboard, Platform, Modal, Alert, TextInput, Animated, PanResponder,
+  Keyboard, Platform, Modal, Alert, TextInput, Animated,
   LayoutAnimation, UIManager,
   useWindowDimensions,
 } from "react-native";
@@ -22,6 +22,9 @@ import Svg, { Circle } from "react-native-svg";
 import { useSafeAreaInsets, type EdgeInsets } from "react-native-safe-area-context";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import {
+  Gesture, GestureDetector, GestureHandlerRootView,
+} from "react-native-gesture-handler";
 
 import {
   colors, spacing, radius, type as T, overline, fontFamily, metrics, merchantTint,
@@ -293,6 +296,30 @@ export function useBasaSar(ref: React.RefObject<{ scrollTo: (o: any) => void } |
       ref.current?.scrollTo({ y: 0, animated: false });
     }, [ref]),
   );
+}
+
+/**
+ * `RefreshControl` özellikleri — tek yerden, çünkü bir tanesi PLATFORMA GÖRE
+ * çalışıyor ve bu sessizce kırılıyordu.
+ *
+ * **`tintColor` yalnızca iOS'ta geçerli.** Android dönen oku `colors`
+ * dizisinden alıyor ve verilmezse sistemin VARSAYILAN koyu mavisini
+ * kullanıyor. Karanlık temada o ok, `progressBackgroundColor` olarak verilen
+ * koyu yüzeyin (#161B22) üstüne düşünce neredeyse görünmez oluyordu —
+ * kullanıcı "yenilerken yukarıdan dönen işaret" diye tam bunu bildirdi.
+ *
+ * `ink` seçildi çünkü iki temada da zeminden en uzak renk: aydınlıkta koyu
+ * mürekkep, karanlıkta açık. Yeşil denendi ama beyaz üstünde 3:1'in altında
+ * kalıyor.
+ */
+export function yenileme(refreshing: boolean, onRefresh: () => void) {
+  return {
+    refreshing,
+    onRefresh,
+    tintColor: colors.ink,          // iOS
+    colors: [colors.ink],           // Android
+    progressBackgroundColor: colors.surface,
+  };
 }
 
 export function useScrollPad(opts?: { tabs?: boolean; extra?: number }) {
@@ -956,9 +983,17 @@ export function BottomSheet({
       visible={visible} transparent animationType="none" onRequestClose={onClose}
       statusBarTranslucent navigationBarTranslucent
     >
-      <SheetBody onClose={onClose} maxHeight={maxHeight} insets={insets} testID={testID}>
-        {children}
-      </SheetBody>
+      {/* Modal'in ICERIGI kendi `GestureHandlerRootView`'una sariliyor.
+          Zorunlu: RN `Modal` AYRI bir native agacta cizilir, yani uygulamanin
+          kokundeki `GestureHandlerRootView`'un altinda DEGILDIR. Yeni mimaride
+          (Fabric) modal icindeki dokunuslari RNGH yonetiyor ve bu sarmalayici
+          olmadan icerideki hicbir jest calismiyor -- alt sayfa "tutuluyor ama
+          hic tepki vermiyor" halindeydi, tam sebebi buydu. */}
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <SheetBody onClose={onClose} maxHeight={maxHeight} insets={insets} testID={testID}>
+          {children}
+        </SheetBody>
+      </GestureHandlerRootView>
     </Modal>
   );
 }
@@ -994,15 +1029,39 @@ function SheetBody({
     }).start(() => { giris.setValue(0); y.setValue(0); onClose(); });
   }, [onClose, giris, y]);
 
-  const pan = React.useRef(
-    PanResponder.create({
-      // Dikey ve asagi yonlu hareketi biz aliyoruz; yatay kaydirma ve
-      // icerideki listelerin kendi kaydirmasi dokunulmadan geciyor.
-      onMoveShouldSetPanResponder: (_, g) =>
-        g.dy > 6 && Math.abs(g.dy) > Math.abs(g.dx) * 1.5,
-      onPanResponderMove: (_, g) => { if (g.dy > 0) y.setValue(g.dy); },
-      onPanResponderRelease: (_, g) => {
-        const yeter = g.dy > Math.max(height.current * 0.35, 90) || g.vy > 0.8;
+  /**
+   * Sürükleme jesti — **RNGH**, `PanResponder` DEĞİL.
+   *
+   * Önce `PanResponder` kullanılıyordu ve hiç çalışmıyordu: kullanıcı
+   * tutamağı tutup çekiyor, sayfa kılını kıpırdatmıyordu. Sebebi ölçümle
+   * bulundu — `onMoveShouldSetPanResponder` hiç ÇAĞRILMIYOR:
+   *
+   *   * uygulama yeni mimaride (`newArchEnabled: true`, Fabric),
+   *   * RN `Modal` AYRI bir native ağaçta çiziliyor,
+   *   * ve orada dokunuşları RNGH yönetiyor; içerideki düz `PanResponder`
+   *     hiçbir zaman responder olamıyor.
+   *
+   * Aynı sebeple listedeki `Swipeable` sorunsuz çalışıyordu: o, kökteki
+   * `GestureHandlerRootView`'un altında.
+   *
+   * `runOnJS(true)` şart: geri kalan animasyon RN `Animated` ile kurulu ve
+   * `Animated.Value.setValue()` UI ipliğindeki bir worklet'ten çağrılamaz.
+   * `activeOffsetY` / `failOffsetX` ise jestin sınırını çiziyor — yatay
+   * hareket ve içerideki listelerin kendi kaydırması bize ait değil.
+   */
+  const surukle = React.useMemo(
+    () => Gesture.Pan()
+      .runOnJS(true)
+      // Görünen tutamak ince; dokunma alanı buradan büyüyor.
+      .hitSlop({ top: 12, bottom: 12 })
+      .activeOffsetY(8)
+      .failOffsetX([-24, 24])
+      .onUpdate((e) => { if (e.translationY > 0) y.setValue(e.translationY); })
+      .onEnd((e) => {
+        // Yeterince çekildiyse kapan; yoksa yerine otur. Hız da sayılıyor:
+        // kısa ama hızlı bir fiske de "kapat" demektir.
+        const yeter = e.translationY > Math.max(height.current * 0.35, 90)
+          || e.velocityY > 800;
         if (yeter) {
           Animated.timing(giris, {
             toValue: 0, duration: 160, useNativeDriver: true,
@@ -1012,9 +1071,9 @@ function SheetBody({
             toValue: 0, useNativeDriver: true, bounciness: 0, speed: 18,
           }).start();
         }
-      },
-    })
-  ).current;
+      }),
+    [y, giris, onClose],
+  );
 
   // Klavye acikken sayfa yuzuyor: dort kosesi de yuvarlak ve kenarlardan
   // biraz iceride dursun ki "ekrana yapisik" degil "kart" okunsun.
@@ -1047,9 +1106,11 @@ function SheetBody({
       >
         {/* Surukleme yalnizca tutamak bolgesinden. Icerikten de surukleseydik
             sayfanin icindeki listelerin kendi kaydirmasiyla kavga ederdi. */}
-        <View {...pan.panHandlers} style={styles.grabZone}>
-          <View style={styles.pickGrab} />
-        </View>
+        <GestureDetector gesture={surukle}>
+          <View style={styles.grabZone}>
+            <View style={styles.pickGrab} />
+          </View>
+        </GestureDetector>
         {/* Gezinme cubugu payi. Klavye acikken alt kenar zaten klavyenin
             uzerinde duruyor, orada pay eklemek bosluk birakirdi. */}
         <View style={{ paddingBottom: (yuzuyor ? 0 : insets.bottom) + spacing.lg }}>
@@ -1171,7 +1232,11 @@ export function splitBadge(
     return { txt: `→ ${who}`, color: colors.onInfo, bg: colors.infoSoft };
   }
   if (ids.length === members.length && members.length > 0)
-    return { txt: "Ev", color: colors.dark, bg: colors.surfaceSecondary };
+    // `colors.dark` DEĞİL: o bir ZEMİN rengi ve karanlık temada #0A1120'ye
+    // düşüyor, yani `surfaceSecondary` (#1D232C) üstünde koyu-üstüne-koyu
+    // oluyordu ve etiket okunmuyordu. `inkSecondary` iki temada da zeminden
+    // uzak duruyor.
+    return { txt: "Ev", color: colors.inkSecondary, bg: colors.surfaceSecondary };
   return { txt: splitSummary(split, members, meId), color: colors.accentDark, bg: colors.accentSoft };
 }
 
@@ -1816,10 +1881,12 @@ const styles = StyleSheet.create({
      İçerikten sürüklemek bilerek YAPILMIYOR: sayfanın içindeki listelerin
      kendi kaydırmasıyla kavga ediyor ve hangi jestin kazandığı öngörülemez
      oluyor. Tutamak sözleşmedir — nereden tutulacağını söyler. */
-  grabZone: {
-    paddingTop: spacing.md, paddingBottom: spacing.md,
-    minHeight: 44, justifyContent: "center",
-  },
+  /* GÖRÜNEN alan ince, DOKUNULAN alan büyük.
+     Önce ikisi aynıydı: hedefi 44 piksele çıkarmak için dolgu büyütülünce
+     çubuğun üstünde kaba bir boşluk kaldı. Artık dolgu 10+10 (çubukla
+     birlikte ~25 piksel) ve hedef `hitSlop` ile yukarı-aşağı 12'şer piksel
+     genişliyor — parmak için ~49, göz için 25. */
+  grabZone: { paddingTop: 10, paddingBottom: 10 },
   tabs: {
     flexDirection: "row", backgroundColor: colors.surfaceSecondary,
     borderRadius: radius.pill, padding: 3,

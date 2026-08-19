@@ -10,7 +10,7 @@ import { useHousehold } from "@/src/household";
 import {
   ScreenHeader, HeaderSplit, Sheet, Card, Divider, Avatar, CategoryIcon,
   MerchantBadge, Money, splitBadge, formatEUR, formatQty,
-  HeaderPills, HeaderPill, useScrollPad, useGeriDon,
+  HeaderPills, HeaderPill, useScrollPad, useGeriDon, yenileme,
   ayAdi, buAy, sonAylar,
 } from "@/src/ui";
 import { colors, spacing, radius, type as T, overline, metrics } from "@/src/theme";
@@ -164,7 +164,7 @@ export default function Harcamalar() {
         contentContainerStyle={[styles.page, altPay]}
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={colors.ink} />
+          <RefreshControl {...yenileme(refreshing, () => { setRefreshing(true); load(); })} />
         }
       >
         <ScreenHeader
@@ -344,8 +344,14 @@ export default function Harcamalar() {
                         {/* Büyük olan FİŞİN TAMAMI — "ne aldık" sorusunun
                             cevabı o. Payın farklıysa altında küçük duruyor;
                             60 €'luk ev alışverişinde 20 € senin payındır ve
-                            ekranda tek sayı varsa hangisi olduğu bilinemez. */}
-                        {Math.abs((e.my_share ?? e.total) - e.total) > 0.005 ? (
+                            ekranda tek sayı varsa hangisi olduğu bilinemez.
+
+                            PAYIN SIFIRSA hiç yazılmıyor. Yalnızca Salih için
+                            aldığın bir şeyde sana pay düşmüyor ve "payın 0,00"
+                            bilgi değil gürültü — üstelik "bir şey mi kaçırdım"
+                            diye baktırıyor. */}
+                        {(e.my_share ?? 0) > 0.005
+                          && Math.abs((e.my_share ?? e.total) - e.total) > 0.005 ? (
                           <View style={{ alignItems: "flex-end" }}>
                             <Money value={e.total} />
                             <Text style={styles.icinde}>payın {formatEUR(e.my_share ?? 0)}</Text>

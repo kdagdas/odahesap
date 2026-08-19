@@ -37,7 +37,6 @@ export default function MemberDetail() {
     typeof params.ay === "string" && params.ay.length === 7 ? params.ay : buAy());
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [evToplam, setEvToplam] = useState(0);
-  const [kisiselToplam, setKisiselToplam] = useState(0);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
@@ -45,9 +44,6 @@ export default function MemberDetail() {
       const res = await apiGet<any>(`/members/${memberId}/expenses?month=${ay}`);
       setExpenses(res.expenses || []);
       setEvToplam(res.household_total || 0);
-      // `personal_total` GERÇEKTEN kişisel. Önce `roommate_total` okunuyordu
-      // ve "Kişisel" diye yazılıyordu, oysa o başkası İÇİN alınandı.
-      setKisiselToplam(res.personal_total || 0);
     } catch (e) { console.log(e); }
     finally { setLoading(false); }
   }, [memberId, ay]);
@@ -78,10 +74,19 @@ export default function MemberDetail() {
           />
           <Text style={styles.heroCaption}>{ayAdi(ay)} harcamaları</Text>
         </View>
+        {/* "Kişisel" sütunu YOK.
+            Başkasının kişisel harcaması sana zaten görünmüyor (gizlilik
+            kuralı), yani o sütun her zaman 0,00 yazıyordu — bilgi değil
+            gürültü. Kendine bakarken de burası doğru yer değil: kendi
+            kişiselin İstatistik'te, kendi ekseninde duruyor.
+
+            Yerine KAYIT SAYISI geldi: "8 harcama" bir bağlam veriyor,
+            560 €'nun tek bir alışverişten mi yoksa sekiz fişten mi geldiğini
+            söylüyor. */}
         <HeaderSplit
           items={[
             { label: "Ev için", value: formatEUR(evToplam), accent: true },
-            { label: "Kişisel", value: formatEUR(kisiselToplam) },
+            { label: "Kayıt", value: `${expenses.length} harcama` },
           ]}
         />
         <HeaderPills>

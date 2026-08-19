@@ -55,7 +55,7 @@ function Gate() {
   if (authLoading || (user && hhLoading)) {
     return (
       <View style={styles.splash} testID="app-loading">
-        <ActivityIndicator size="large" color={colors.brand} />
+        <ActivityIndicator size="large" color={colors.ink} />
       </View>
     );
   }

@@ -250,7 +250,10 @@ const styles = StyleSheet.create({
   countryHint: { ...T.caption, color: colors.inkTertiary },
   codeInput: {
     fontSize: 30, letterSpacing: 12, textAlign: "center",
-    fontFamily: fontFamily.bold, color: colors.dark, minHeight: 66,
+    // `ink` DEĞİL `dark` yazılıydı: `dark` bir ZEMİN rengi ve karanlık temada
+    // #0A1120'ye düşüyor, yani girdi alanının koyu yüzeyinde davet kodu
+    // neredeyse görünmez oluyordu. Eve katılırken yazılan tek şey bu.
+    fontFamily: fontFamily.bold, color: colors.ink, minHeight: 66,
   },
   info: {
     flexDirection: "row", alignItems: "center", gap: 8,

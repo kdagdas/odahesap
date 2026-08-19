@@ -326,7 +326,7 @@ export default function Review() {
           <View style={styles.metaCard}>
             <View style={styles.metaField}>
               <View style={styles.metaLabelRow}>
-                <Ionicons name="storefront-outline" size={14} color={colors.brand} />
+                <Ionicons name="storefront-outline" size={14} color={colors.inkSecondary} />
                 <Text style={styles.metaLabel}>Market</Text>
               </View>
               <View style={styles.metaInputRow}>
@@ -343,7 +343,7 @@ export default function Review() {
             </View>
             <View style={styles.metaField}>
               <View style={styles.metaLabelRow}>
-                <Ionicons name="calendar-outline" size={14} color={colors.brand} />
+                <Ionicons name="calendar-outline" size={14} color={colors.inkSecondary} />
                 <Text style={styles.metaLabel}>Tarih</Text>
               </View>
               <TextInput
@@ -472,7 +472,7 @@ export default function Review() {
           })}
           </View>
           <Pressable style={styles.addBtn} onPress={addRow} testID="review-add-item">
-            <Ionicons name="add-circle-outline" size={20} color={colors.brand} />
+            <Ionicons name="add-circle-outline" size={20} color={colors.inkSecondary} />
             <Text style={styles.addTxt}>Kalem ekle</Text>
           </Pressable>
         </View>

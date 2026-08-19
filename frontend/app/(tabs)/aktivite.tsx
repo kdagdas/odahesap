@@ -11,7 +11,9 @@ import {
 import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { apiGet, apiPost } from "@/src/api";
-import { Card, Divider, ScreenHeader, Sheet, IconPill, useScrollPad } from "@/src/ui";
+import {
+  Card, Divider, ScreenHeader, Sheet, IconPill, useScrollPad, yenileme,
+} from "@/src/ui";
 import { colors, spacing, type as T, metrics } from "@/src/theme";
 
 type Notification = {
@@ -25,7 +27,7 @@ type Notification = {
 
 // Bildirim türüne göre simge — hangi tür olduğunu okumadan anlamak için.
 const KIND_ICON: Record<string, { icon: string; color: string; tint: string }> = {
-  new_expense:   { icon: "receipt-outline",   color: colors.dark,       tint: colors.surfaceSecondary },
+  new_expense:   { icon: "receipt-outline",   color: colors.inkSecondary, tint: colors.surfaceSecondary },
   join_request:  { icon: "person-add-outline", color: colors.onInfo,    tint: colors.infoSoft },
   period_closed: { icon: "checkmark-done",     color: colors.accentDark, tint: colors.accentSoft },
 };
@@ -68,9 +70,7 @@ export default function Aktivite() {
         contentContainerStyle={[styles.page, altPay]}
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl refreshing={refreshing}
-                          onRefresh={() => { setRefreshing(true); load(); }}
-                          tintColor={colors.ink} />
+          <RefreshControl {...yenileme(refreshing, () => { setRefreshing(true); load(); })} />
         }
       >
         <ScreenHeader

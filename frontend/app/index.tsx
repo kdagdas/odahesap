@@ -5,7 +5,7 @@ import { colors } from "@/src/theme";
 export default function Index() {
   return (
     <View style={styles.container} testID="index-loading">
-      <ActivityIndicator size="large" color={colors.brand} />
+      <ActivityIndicator size="large" color={colors.ink} />
     </View>
   );
 }

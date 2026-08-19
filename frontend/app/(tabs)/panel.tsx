@@ -11,7 +11,8 @@ import { useHousehold } from "@/src/household";
 import {
   ScreenHeader, Sheet, Card, Row, Divider, Avatar,
   Money, IconPill, CategoryIcon, categoryLabel, splitBadge, splitSummary, PulseDot,
-  Donut, formatEUR, formatEURShort, useScrollPad, useBasaSar, ayDe, buAy, degisimTxt,
+  Donut, formatEUR, formatEURShort, useScrollPad, useBasaSar, yenileme,
+  ayDe, buAy, degisimTxt,
 } from "@/src/ui";
 import { ConfirmSheet } from "@/app/duzenli";
 import {
@@ -106,8 +107,7 @@ export default function Panel() {
         contentContainerStyle={[styles.scroll, altPay]}
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }}
-                          tintColor={colors.ink} progressBackgroundColor={colors.surface} />
+          <RefreshControl {...yenileme(refreshing, () => { setRefreshing(true); load(); })} />
         }
       >
         <ScreenHeader

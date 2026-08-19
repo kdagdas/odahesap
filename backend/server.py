@@ -3875,7 +3875,13 @@ async def _month_expenses(
     lo, hi = _month_bounds(month)
     rows = await db.expenses.find({"household_id": household_id}, {"_id": 0}).to_list(5000)
     rows = [e for e in rows if lo <= _expense_day(e) < hi]
+    return _kapsa(rows, scope, user_id, members)
 
+
+def _kapsa(rows: List[dict], scope: str, user_id: str, members: List[str]) -> List[dict]:
+    """Kapsam süzgeci — `_month_expenses`'ten ayrıldı ki seri hesabı da
+    aynı kuralı kullansın. İki kopya olsaydı "Son 6 Ay" çubuğu ile o ayın
+    kendi toplamı ayrışırdı."""
     out: List[dict] = []
     uyeler = set(members)
     for e in rows:
@@ -3893,6 +3899,42 @@ async def _month_expenses(
         elif not kisisel:
             out.append(e)
     return out
+
+
+async def _aylik_seri(household_id: str, son_ay: str, scope: str, user_id: str,
+                      members: List[str], adet: int = 6) -> List[dict]:
+    """Son `adet` ayın toplamı — **tek veritabanı okumasıyla.**
+
+    `_month_expenses`'i altı kez çağırmak koleksiyonu altı kez okumak
+    demekti. Seri tek okumadan kovalanıyor; kapsam kuralı `_kapsa` ile
+    ortak, yani çubuktaki ay ile o aya girildiğindeki toplam ayrışamaz.
+
+    Boş aylar da dönüyor: "Temmuz'da hiç harcama yok" bir bilgidir, çubuğun
+    orada delik bırakması ise okunmaz bir grafik yapar.
+    """
+    aylar = []
+    y, m = int(son_ay[:4]), int(son_ay[5:7])
+    for _ in range(adet):
+        aylar.append(f"{y:04d}-{m:02d}")
+        m -= 1
+        if m == 0:
+            y, m = y - 1, 12
+    aylar.reverse()
+
+    lo, _ = _month_bounds(aylar[0])
+    _, hi = _month_bounds(aylar[-1])
+    rows = await db.expenses.find({"household_id": household_id}, {"_id": 0}).to_list(5000)
+    rows = [e for e in rows if lo <= _expense_day(e) < hi]
+
+    kovalar: Dict[str, List[dict]] = {a: [] for a in aylar}
+    for e in _kapsa(rows, scope, user_id, members):
+        kova = kovalar.get(_expense_day(e)[:7])
+        if kova is not None:
+            kova.append(e)
+    return [{"month": a,
+             "total": round(sum(float(e["total"]) for e in kovalar[a]), 2),
+             "expense_count": len(kovalar[a])}
+            for a in aylar]
 
 
 def _breakdown(exps: List[dict]) -> dict:
@@ -3926,6 +3968,74 @@ def _breakdown(exps: List[dict]) -> dict:
             merchant_names[anahtar] = ham
         merchants[anahtar] = merchants.get(anahtar, 0) + total
     return {"cats": cats, "merchants": merchants, "merchant_names": merchant_names}
+
+
+def _urunler(exps: List[dict]) -> List[dict]:
+    """Ürün bazlı aylık toplam — "Süt · 14 lt · 3 markette · 17,20 €".
+
+    Tur 8'in **genel ürün adı** işinin üstüne kuruluyor: `product_key`
+    `MILSANI`, `MILBONA` ve `JA! MILCH`'i aynı anahtara indiriyor, yani üç
+    marketin kendi markası tek satırda toplanıyor. **Rakiplerin hiçbiri bunu
+    üretemez, çünkü hiçbiri fişi kalem kalem okumuyor.**
+
+    Karşılaştırmaya ihtiyacı yok: ilk aydan itibaren dolu geliyor.
+
+    Gösterilecek ad, o anahtara düşen adların **en kısası** — market markası
+    değil insanın kullandığı kelime ("Süt", "MILBONA VOLLMILCH 3,5%" değil).
+    Aynı kural `_breakdown`'daki market adında da var.
+
+    Adet birimiyle birlikte toplanıyor ama **birimler karıştırılmıyor**: 2 kg
+    un ile 3 paket un aynı sayıya eklenirse çıkan şey hiçbir şey demek olmaz.
+    Baskın birim (en çok tekrar eden) yazılıyor, karışıksa birim hiç
+    gösterilmiyor.
+    """
+    kova: Dict[str, dict] = {}
+    for e in exps:
+        items = e.get("items") or []
+        if not items:
+            continue
+        ham_market = (e.get("merchant") or "").strip()
+        market = normalize_merchant(ham_market) or ham_market.casefold() or "?"
+        item_sum = sum(float(i.get("price", 0)) * float(i.get("quantity", 1) or 1) for i in items)
+        toplam = float(e["total"])
+        for i in items:
+            ad = (i.get("name") or "").strip()
+            anahtar = product_key(ad)
+            if not anahtar:
+                continue
+            satir = float(i.get("price", 0)) * float(i.get("quantity", 1) or 1)
+            # Fişin toplamına ölçekle: indirim satırları ve yuvarlama yüzünden
+            # kalem toplamı fiş toplamını tutmuyor.
+            tutar = satir / item_sum * toplam if item_sum else satir
+            k = kova.setdefault(anahtar, {
+                "key": anahtar, "name": ad, "total": 0.0, "count": 0,
+                "markets": set(), "units": {}, "qty": 0.0,
+            })
+            if len(ad) < len(k["name"]):
+                k["name"] = ad
+            k["total"] += tutar
+            k["count"] += 1
+            k["markets"].add(market)
+            birim = (i.get("unit") or "adet").strip() or "adet"
+            k["units"][birim] = k["units"].get(birim, 0) + 1
+            k["qty"] += float(i.get("quantity", 1) or 1)
+
+    out = []
+    for k in kova.values():
+        birimler = k["units"]
+        baskin = max(birimler, key=birimler.get) if birimler else None
+        # Birim karışıksa (kg + paket) miktar toplamı anlamsız; gizleniyor.
+        karisik = len(birimler) > 1
+        out.append({
+            "key": k["key"], "name": k["name"],
+            "total": round(k["total"], 2),
+            "count": k["count"],
+            "market_count": len(k["markets"]),
+            "qty": None if karisik else round(k["qty"], 2),
+            "unit": None if karisik else baskin,
+        })
+    out.sort(key=lambda x: -x["total"])
+    return out
 
 
 def _cumulative(exps: List[dict], lo: str, days: int) -> List[dict]:

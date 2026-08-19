@@ -14,7 +14,7 @@ import { useAuth } from "@/src/auth";
 import { useHousehold } from "@/src/household";
 import {
   ScreenHeader, Sheet, Card, Row, Divider, Avatar, IconPill, Overline, TabSwitch,
-  animateNextLayout, useScrollPad, useBasaSar,
+  animateNextLayout, useScrollPad, useBasaSar, yenileme,
 } from "@/src/ui";
 import { colors, spacing, radius, type as T, metrics } from "@/src/theme";
 
@@ -204,8 +204,7 @@ export default function Liste() {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
           refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }}
-                            tintColor={colors.ink} progressBackgroundColor={colors.surface} />
+            <RefreshControl {...yenileme(refreshing, () => { setRefreshing(true); load(); })} />
           }
         >
           <ScreenHeader
