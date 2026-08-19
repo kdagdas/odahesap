@@ -319,6 +319,14 @@ export default function Profil() {
                 <IconPill name="home" color={colors.accentDark} tint={colors.accentSoft} size={38} />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.navTitle}>Ev ayarları</Text>
+                  {/* İÇİNDE NE VAR — durum değil, içerik.
+                      "Ev arkadaşımı nasıl davet ederim" sorusu bu satırda
+                      takılıyordu: sağdaki "3 üye" bir DURUM ve üye kokusu
+                      veriyor, davet kokusu vermiyordu. İnsan menüyü baştan
+                      sona okuyup en iyisini seçmiyor; en güçlü kokuyu veren
+                      satıra giriyor, koku yoksa tereddüt ediyor.
+                      Yeni bir ekran değil, eksik olan kelimeydi. */}
+                  <Text style={styles.navDesc}>Üyeler, davet kodu, ev adı</Text>
                 </View>
                 <Text style={styles.navState}>
                   {household ? `${members.length} üye` : "yok"}
@@ -341,6 +349,7 @@ export default function Profil() {
                 <IconPill name="repeat" color={colors.onWarning} tint={colors.warningSoft} size={38} />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.navTitle}>Düzenli giderler</Text>
+                  <Text style={styles.navDesc}>Kira, internet, her ay tekrarlayanlar</Text>
                 </View>
                 {vadesiGelen > 0 && (
                   <Text style={[styles.navState, { color: colors.onWarning }]}>
@@ -360,6 +369,10 @@ export default function Profil() {
                 <IconPill name="notifications-outline" color={colors.onInfo} tint={colors.infoSoft} size={38} />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.navTitle}>Bildirimler</Text>
+                  {/* "Bildirimler" iki ayrı şeyin adıydı: gelen kayıtların
+                      listesi (Aktivite) ve hangi olayların geleceği (burası).
+                      Alt satır hangisi olduğunu söylüyor. */}
+                  <Text style={styles.navDesc}>Hangi olaylar telefonuna düşsün</Text>
                 </View>
                 <Text style={styles.navState}>{acikBildirim} açık</Text>
                 <Ionicons name="chevron-forward" size={20} color={colors.inkTertiary} />
