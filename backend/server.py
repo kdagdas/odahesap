@@ -1557,6 +1557,41 @@ def akis_paylari(e: dict, shares: Dict[str, float], user_id: str) -> Dict[str, f
     return out
 
 
+def kime_kategori(e: dict, shares: Dict[str, float], user_id: str,
+                  member_ids: List[str]) -> Optional[str]:
+    """Bir harcama **kimin için** alınmış — Harcamalar süzgecinin ekseni.
+
+    `akis_paylari()`'ndan AYRI ve bilerek: o bakiyeyi açıklıyor ("borcun nasıl
+    oluştu"), bu ise "ne aldık" sorusuna cevap veriyor. İkisini tek fonksiyona
+    sıkıştırmak, para matematiğini gözatma aracına bağımlı hale getirirdi.
+
+    Kural **alıcıdan bağımsız**: kategoriyi bölüşme listesi belirliyor, kimin
+    ödediği değil. "Kim aldı" ayrı bir eksen (kişi süzgeci) ve ikisi
+    çarpılabiliyor — "Kemal'in eve aldıkları" = `ev` + kişi:Kemal.
+
+      * `ev`      — liste evin TAMAMI. Kim almış olursa olsun ev harcaması.
+      * `bana`    — seni İÇEREN alt küme, alan başkası. Yalnız sana da
+                    olabilir, sen+Kemal de: ikisinde de sana alınmıştır.
+      * `baskasi` — alan sensin ve listede senden başkası da var. Kendi payın
+                    içinde olsa bile birini sübvanse etmişsindir.
+      * `kendim`  — yalnızca sen, alan da sen. Kişisel harcama.
+    """
+    if not shares:
+        return None
+    kisiler = set(shares)
+    # Tek kişilik evde "herkes" ile "sadece ben" aynı listedir ve orada doğru
+    # cevap ev harcamasıdır — `derive_target_type` ile aynı öncelik sırası.
+    if kisiler == set(member_ids):
+        return "ev"
+    odeyen = e["added_by"]
+    if user_id in kisiler:
+        if odeyen != user_id:
+            return "bana"
+        return "baskasi" if len(kisiler) > 1 else "kendim"
+    # Seni içermeyen alt küme: yalnızca sen aldıysan görebiliyorsun zaten.
+    return "baskasi" if odeyen == user_id else None
+
+
 def derive_target_type(payer: str, split_with: Dict[str, float], member_ids: List[str]) -> str:
     """Listeden okunan etiket. Süzgeçler ve ekrandaki rozet bunu kullanıyor.
 
@@ -1733,14 +1768,16 @@ async def list_expenses(
     """Görünür harcamalar.
 
     `month=YYYY-MM` verilirse dönem yerine **takvim ayı** süzülür ve her
-    kayda `my_share` eklenir — Kasa'daki ekstrede "bu ayın hangi fişlerinden
-    geldi" katı bunu okuyor. Sağda iki sayı görünüyor: senin payın büyük,
-    fişin tamamı küçük. Karıştırılan tam olarak bu ikisiydi.
+    kayda `my_share` (senin payın) ile `kime` (kimin için) eklenir.
 
-    `akis=` ekstredeki HAREKET satırının kendisi: `pay` · `ev_odedigin` ·
-    `baskasi_icin` · `senin_icin`. Tanım `akis_paylari()` içinde ve ekstre de
-    oradan besleniyor, yani satırdaki tutar ile açılan listenin toplamı
-    ayrışamaz.
+    `akis=` **kimin için** ekseni — `kime_kategori()` tanımlıyor:
+    `ev` · `bana` · `baskasi` · `kendim`. Kişi süzgeci (`member_id`) "kim
+    aldı" eksenidir ve ikisi ÇARPILABİLİR: `akis=ev&member_id=kemal` =
+    "Kemal'in eve aldıkları".
+
+    Bu eksen bilerek `akis_paylari()`'ndan ayrı. O bakiyeyi açıklıyor
+    ("borcun nasıl oluştu"), bu "ne aldık" sorusuna cevap veriyor; tek
+    fonksiyona sıkıştırmak para matematiğini gözatma aracına bağlardı.
 
     **Bu süzgeç neden istemcide değil.** Önce `split_with` alanına bakarak
     telefonda süzülüyordu ve Tur 4 öncesi kayıtları kaçırıyordu: o kayıtlarda
@@ -1782,15 +1819,14 @@ async def list_expenses(
         suzulmus = []
         for e in exps:
             shares = expense_shares(e, uyeler)
-            paylar = akis_paylari(e, shares, user["user_id"])
-            if akis and akis not in paylar:
+            # "Kimin için" ekseni. Kişi süzgeci (`member_id`) ayrı çalışıyor ve
+            # ikisi çarpılabiliyor: `akis=ev` + `member_id=kemal` = "Kemal'in
+            # eve aldıkları".
+            kategori = kime_kategori(e, shares, user["user_id"], hh["member_ids"])
+            if akis and kategori != akis:
                 continue
+            e["kime"] = kategori
             e["my_share"] = round(float(shares.get(user["user_id"], 0.0)), 2)
-            # Süzgeç bir akış satırındansa listedeki tutar da o satırın
-            # tutarı olmalı: "başkası için aldıkların"da senin payın sıfır,
-            # ilgilenilen sayı fişin tamamı.
-            if akis:
-                e["akis_tutar"] = round(float(paylar[akis]), 2)
             suzulmus.append(e)
         exps = suzulmus
 

@@ -40,6 +40,25 @@ type Ekstre = { months: EkstreAy[]; carried: number; current_month: string };
  * `fisli` olanlar Harcamalar'a açılıyor; ödeme kayıtlarının altında fiş yok,
  * onlar Ödeme Geçmişi'nde yaşıyor.
  */
+/**
+ * Ekstre satırı → Harcamalar süzgeci (`[kimin için, kim aldı]`).
+ *
+ * İki eksen çarpılıyor: "senin ödediğin ev alışverişleri" = *eve alınanlar*
+ * ile *kişi: sen*. Harcamalar'da ayrı bir "senin ödediğin" seçeneği yok,
+ * çünkü kişi süzgecinde kendini seçmek zaten onu veriyor.
+ *
+ * **Tutarlar birebir eşleşmeyebilir ve bu doğru.** Ekstre bir BAKİYE aracı
+ * (payın borcu artırır, ödediğin azaltır); Harcamalar bir GÖZAT aracı (ne
+ * aldık). Kasa satırı kesin rakamı zaten kendi içinde gösteriyor; buradaki
+ * bağlantı "bunlar hangi fişlerdi" sorusunu açıyor.
+ */
+const HAREKET_SUZGEC: Record<string, [string, string]> = {
+  pay: ["ev", ""],              // ev alışverişlerindeki payın · herkes
+  ev_odedigin: ["ev", "ben"],   // senin ödediğin ev alışverişleri
+  senin_icin: ["bana", ""],     // biri senin için aldı
+  baskasi_icin: ["baskasi", "ben"],
+};
+
 const TUR_ADI: Record<string, { ad: string; fisli: boolean }> = {
   pay: { ad: "Ev alışverişlerindeki payın", fisli: true },
   ev_odedigin: { ad: "Senin ödediğin ev alışverişleri", fisli: true },
@@ -249,8 +268,11 @@ export default function Denge() {
    *  var ve orada tarih, market, kalemler, düzenleme — hepsi hazır. Süzgeç
    *  başlıkta ve kaldırılabilir; görünmezse insan "Sana düşen 62,60"yı ayın
    *  tamamı sanır. */
-  const fisleriAc = (tur: string, ay: string) =>
-    router.push(`/harcamalar?akis=${tur}&ay=${ay}&geri=/(tabs)/denge`);
+  const fisleriAc = (tur: string, ay: string) => {
+    const [akis, kisi] = HAREKET_SUZGEC[tur] || ["", ""];
+    const kim = kisi === "ben" ? `&kisi=${me}` : "";
+    router.push(`/harcamalar?akis=${akis}${kim}&ay=${ay}&geri=/(tabs)/denge`);
+  };
 
   const activeId = activePeriod?.period_id;
   const currentId = selected || activeId;

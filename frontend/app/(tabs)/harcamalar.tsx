@@ -24,34 +24,45 @@ type Expense = {
   items?: Item[]; notes?: string;
   /** Bu fişten sana düşen. `month` süzgeciyle geliyor. */
   my_share?: number;
-  /** Süzülen akış satırının bu fişteki tutarı — `akis` verildiğinde. */
-  akis_tutar?: number;
+  /** Bu harcama kimin için: `ev` · `bana` · `baskasi` · `kendim`. */
+  kime?: string | null;
   /** Ödeşme günü (`YYYY-MM-DD`) — kayıt ödeşilmiş bir döneme aitse.
    *  Dönem yalnızca ödeşilince kapandığı için kapalı dönem = ödeşilmiş. */
   odesme?: string | null;
 };
 
 /**
- * Akış süzgeci — "kimin için / kim ödedi" ekseni.
+ * "Kimin için" ekseni — sunucudaki `kime_kategori()` ile birebir.
  *
- * Anahtarlar sunucudaki `akis_paylari()` ile birebir aynı; Kasa'daki ekstre
- * satırı da onları kullanıyor. Bu, kişi (kim ekledi) ve ay süzgeçlerinden
- * bağımsız ÜÇÜNCÜ bir eksen: "bu harcama kimi ilgilendiriyor".
+ * Kural ALICIDAN BAĞIMSIZ: kategoriyi bölüşme listesi belirliyor, kimin
+ * ödediği değil. "Kim aldı" ayrı bir eksen (kişi süzgeci) ve ikisi
+ * çarpılabiliyor — "Kemal'in eve aldıkları" = Eve alınanlar + Kişi:Kemal,
+ * "başkalarının eve aldığından senin payın" = Eve alınanlar + Kişi:Herkes.
  *
- * `senin_icin` gizliliğe takılmıyor: karşı taraf zaten senin için almış,
- * "bana ne alındı" senin görebileceğin bir şey.
+ * Bu yüzden "Senin ödediklerin" diye ayrı bir seçenek YOK: kişi süzgecinde
+ * kendini seçmek zaten onu veriyor, ikinci bir yol aynı işi iki kez yazmak
+ * olurdu.
+ *
+ * `bana` gizliliğe takılmıyor: karşı taraf zaten senin için almış, "bana ne
+ * alındı" senin görebileceğin bir şey.
  */
 const AKIS_ADI: Record<string, string> = {
-  pay: "Sana düşen",
-  ev_odedigin: "Senin ödediklerin",
-  baskasi_icin: "Başkası için aldıkların",
-  senin_icin: "Senin için alınanlar",
+  ev: "Eve alınanlar",
+  bana: "Sana alınanlar",
+  baskasi: "Başkası için aldıkların",
+  kendim: "Kendine aldıkların",
+};
+const AKIS_ALT: Record<string, string> = {
+  ev: "evin tamamına bölünen",
+  bana: "seni içeren, başkasının aldığı",
+  baskasi: "senin aldığın, başkasını içeren",
+  kendim: "yalnızca senin",
 };
 const AKIS_ICON: Record<string, string> = {
-  pay: "pie-chart-outline",
-  ev_odedigin: "card-outline",
-  baskasi_icin: "arrow-up-circle-outline",
-  senin_icin: "gift-outline",
+  ev: "home-outline",
+  bana: "gift-outline",
+  baskasi: "arrow-up-circle-outline",
+  kendim: "person-outline",
 };
 
 const AY_UZUN = ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran",
@@ -87,7 +98,7 @@ export default function Harcamalar() {
   const geriDon = useGeriDon();
   const { members, household } = useHousehold();
   /* Kasa'daki bir ekstre satırından gelinmişse süzgeç hazır geliyor. */
-  const params = useLocalSearchParams<{ akis?: string; ay?: string }>();
+  const params = useLocalSearchParams<{ akis?: string; ay?: string; kisi?: string }>();
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [akis, setAkis] = useState<string | undefined>(
     params.akis && AKIS_ADI[params.akis] ? params.akis : undefined);
@@ -110,6 +121,11 @@ export default function Harcamalar() {
   useEffect(() => {
     if (typeof params.ay === "string" && params.ay.length === 7) setAy(params.ay);
   }, [params.ay]);
+  /* Kasa iki ekseni birden verebiliyor: "senin ödediğin ev alışverişleri" =
+     akış:ev + kişi:sen. Boş `kisi` "Herkes" demek, yani süzgeci temizler. */
+  useEffect(() => {
+    setMemberFilter(typeof params.kisi === "string" && params.kisi ? params.kisi : undefined);
+  }, [params.kisi]);
 
   const load = useCallback(async () => {
     try {
@@ -131,13 +147,14 @@ export default function Harcamalar() {
     try { await apiDelete(`/expenses/${id}`); load(); } catch (e) { console.log(e); }
   };
 
-  /* Süzülen toplam AKIŞIN toplamı, fiş toplamlarının değil.
-     Kasa'da "Ağustos'ta sana düşen 62,60" yazıp buraya gelen biri başlıkta
-     62,60 görmeli; fişlerin tamamını toplarsak 186,00 çıkar ve iki ekran
-     birbirini yalanlar. */
-  const listedTotal = akis
-    ? expenses.reduce((s, e) => s + (e.akis_tutar || 0), 0)
-    : expenses.reduce((s, e) => s + (e.total || 0), 0);
+  /* Toplam YALNIZCA bir süzgeç seçiliyken gösteriliyor.
+     Filtresizken "Süzülen toplam 417,18" yazıyordu ve o sayı ev harcamasını,
+     kişiseli, başkası için alınanı bir torbaya atıyordu — kimsenin sorduğu
+     bir soruya cevap vermiyor, yalnızca "bu ne?" dedirtiyordu. Bir süzgeç
+     seçilince toplam bir ANLAM kazanıyor ("Eve alınanlar 128,40") ve o zaman
+     çiziliyor. */
+  const listedTotal = expenses.reduce((s, e) => s + (e.total || 0), 0);
+  const listedShare = expenses.reduce((s, e) => s + (e.my_share || 0), 0);
 
   return (
     <View style={styles.root} testID="harcamalar-screen">
@@ -159,12 +176,25 @@ export default function Harcamalar() {
             </Pressable>
           }
         >
+          {/* Süzgeç yokken TEK sayı: kaç kayıt. Toplam ancak bir süzgeçle
+              anlam kazanıyor; "Eve alınanlar 128,40" bir cevap, süzgeçsiz
+              "417,18" ise ev + kişisel + başkası karışımı ve kimsenin
+              sorduğu bir şey değil.
+
+              Süzgeçliyken ikinci sütun SENİN PAYIN — ev harcamasının tamamı
+              ile senin payın farklı sayılar ve ikincisi Kasa'daki borcunu
+              açıklayan taraf. */}
           <HeaderSplit
-            items={[
-              { label: akis ? AKIS_ADI[akis] : "Süzülen toplam",
-                value: formatEUR(listedTotal), accent: !!akis },
-              { label: "Kayıt", value: `${expenses.length} harcama` },
-            ]}
+            items={akis
+              ? [
+                  { label: AKIS_ADI[akis], value: formatEUR(listedTotal), accent: true },
+                  ...(Math.abs(listedShare - listedTotal) > 0.005
+                    ? [{ label: "Senin payın", value: formatEUR(listedShare) }]
+                    : [{ label: "Kayıt", value: `${expenses.length}` }]),
+                ]
+              : [
+                  { label: ayAdi(ay), value: `${expenses.length} harcama` },
+                ]}
           />
           {/* Üç bağımsız eksen, üç hap: KİMİN İÇİN (akış) · NE ZAMAN (ay) ·
               KİM EKLEDİ (kişi). Kasa'dan gelen birinin süzgeci akış hapında
@@ -177,8 +207,8 @@ export default function Harcamalar() {
               value={akis ?? ""}
               options={[
                 { value: "", label: "Tüm hareketler", icon: "swap-vertical-outline" },
-                ...(["pay", "ev_odedigin", "senin_icin", "baskasi_icin"] as const).map((k) => ({
-                  value: k, label: AKIS_ADI[k], icon: AKIS_ICON[k],
+                ...(["ev", "bana", "baskasi", "kendim"] as const).map((k) => ({
+                  value: k, label: AKIS_ADI[k], hint: AKIS_ALT[k], icon: AKIS_ICON[k],
                 })),
               ]}
               onSelect={(v) => setAkis(v || undefined)}
@@ -311,18 +341,17 @@ export default function Harcamalar() {
                             )}
                           </View>
                         </View>
-                        {/* Akış süzgeci açıkken sağda İKİ sayı var: büyük
-                            olan o satıra düşen tutar, küçük olan fişin
-                            tamamı. Karıştırılan tam olarak bu ikisiydi —
-                            60 €'luk fişte payın 20 € ve ekranda tek sayı
-                            varsa hangisi olduğu bilinemiyor. */}
-                        {akis && Math.abs((e.akis_tutar ?? e.total) - e.total) > 0.005 ? (
+                        {/* Büyük olan FİŞİN TAMAMI — "ne aldık" sorusunun
+                            cevabı o. Payın farklıysa altında küçük duruyor;
+                            60 €'luk ev alışverişinde 20 € senin payındır ve
+                            ekranda tek sayı varsa hangisi olduğu bilinemez. */}
+                        {Math.abs((e.my_share ?? e.total) - e.total) > 0.005 ? (
                           <View style={{ alignItems: "flex-end" }}>
-                            <Money value={e.akis_tutar ?? 0} />
-                            <Text style={styles.icinde}>{formatEUR(e.total)} içinde</Text>
+                            <Money value={e.total} />
+                            <Text style={styles.icinde}>payın {formatEUR(e.my_share ?? 0)}</Text>
                           </View>
                         ) : (
-                          <Money value={akis ? (e.akis_tutar ?? e.total) : e.total} />
+                          <Money value={e.total} />
                         )}
                       </View>
                     </Pressable>

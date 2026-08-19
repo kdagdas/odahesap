@@ -90,63 +90,70 @@ def suz(jeton, akis):
     return r.json()["expenses"]
 
 
-print("\n-- akis suzgeci: kim neyi goruyor --")
-a_pay = suz(alice, "pay")
-check("alice · pay: yalniz ev harcamasi", [e["expense_id"] for e in a_pay] == [ev],
-      str([e["merchant"] for e in a_pay]))
-check("alice · pay tutari 20", a_pay and abs(a_pay[0]["akis_tutar"] - 20.0) < 0.01,
-      str(a_pay[:1]))
+print("\n-- KIMIN ICIN suzgeci: kategori ALICIDAN BAGIMSIZ --")
+# `ev` kategorisi kimin aldigina bakmiyor: listeyi bolusme belirliyor. Ucu de
+# ayni ev harcamasini "eve alinanlar"da goruyor -- alan Alice olsa bile.
+for jeton, ad in ((alice, "alice"), (bob, "bob"), (carol, "carol")):
+    check(f"{ad} · ev: ayni ev harcamasi", [e["expense_id"] for e in suz(jeton, "ev")] == [ev],
+          str([e["merchant"] for e in suz(jeton, "ev")]))
+check("ev tutari FISIN TAMAMI (60)",
+      abs(suz(bob, "ev")[0]["total"] - 60.0) < 0.01, str(suz(bob, "ev")[:1]))
+check("ama pay ayrica geliyor (20)",
+      abs(suz(bob, "ev")[0]["my_share"] - 20.0) < 0.01, str(suz(bob, "ev")[:1]))
 
-a_odedi = suz(alice, "ev_odedigin")
-check("alice · ev_odedigin: ev harcamasi", [e["expense_id"] for e in a_odedi] == [ev])
-check("alice · ev_odedigin tutari FISIN TAMAMI (60)",
-      a_odedi and abs(a_odedi[0]["akis_tutar"] - 60.0) < 0.01, str(a_odedi[:1]))
+# Alan sen, listede baskasi da var -> "baskasi icin aldiklarin"
+b_baskasi = suz(bob, "baskasi")
+check("bob · baskasi: carol icin aldigi", [e["expense_id"] for e in b_baskasi] == [ikili])
+check("bob · bana bos", suz(bob, "bana") == [])
 
-check("alice · baskasi_icin bos", suz(alice, "baskasi_icin") == [])
-check("alice · senin_icin bos", suz(alice, "senin_icin") == [])
+# Seni iceren alt kume, alan baskasi -> "sana alinanlar"
+c_bana = suz(carol, "bana")
+check("carol · bana: bob'un onun icin aldigi", [e["expense_id"] for e in c_bana] == [ikili])
+check("carol · baskasi bos", suz(carol, "baskasi") == [])
 
-b_baskasi = suz(bob, "baskasi_icin")
-check("bob · baskasi_icin: ikili harcama", [e["expense_id"] for e in b_baskasi] == [ikili])
-check("bob · baskasi_icin tutari 30", b_baskasi and abs(b_baskasi[0]["akis_tutar"] - 30.0) < 0.01)
-check("bob · pay: ev harcamasi", [e["expense_id"] for e in suz(bob, "pay")] == [ev])
-check("bob · senin_icin bos", suz(bob, "senin_icin") == [])
-check("bob · ev_odedigin bos (odeyen alice)", suz(bob, "ev_odedigin") == [])
+# Alice o ikili harcamada hic yok: gormuyor bile.
+check("alice · bana bos", suz(alice, "bana") == [])
+check("alice · baskasi bos", suz(alice, "baskasi") == [])
 
-c_senin = suz(carol, "senin_icin")
-check("carol · senin_icin: ikili harcama", [e["expense_id"] for e in c_senin] == [ikili])
-check("carol · senin_icin tutari 30", c_senin and abs(c_senin[0]["akis_tutar"] - 30.0) < 0.01)
-check("carol · baskasi_icin bos", suz(carol, "baskasi_icin") == [])
+print("\n-- KISI ekseni ile CARPILABILIYOR --")
+# "Kemal'in eve aldiklari" = ev + kisi:Kemal. Iki eksen bagimsiz.
+r = c.get(f"{API}/expenses?month={AY}&akis=ev&member_id={alice_id}", headers=hdr(bob))
+check("ev + kisi:alice -> alice'in eve aldigi",
+      [e["expense_id"] for e in r.json()["expenses"]] == [ev], r.text[:200])
+r = c.get(f"{API}/expenses?month={AY}&akis=ev&member_id={bob_id}", headers=hdr(bob))
+check("ev + kisi:bob -> bos (bob eve bir sey almadi)",
+      r.json()["expenses"] == [], r.text[:200])
 
-print("\n-- kisisel harcama hicbir akista yok --")
+print("\n-- kisisel harcama kendi kategorisinde --")
+a_kendim = suz(alice, "kendim")
+check("alice · kendim: kisisel harcama", [e["expense_id"] for e in a_kendim] == [kisisel],
+      str([e["merchant"] for e in a_kendim]))
+# Baskasinin kisiseli hic gorunmuyor -- gizlilik kurali degismedi.
+check("bob · kendim bos", suz(bob, "kendim") == [])
+# Ve ev/bana/baskasi kategorilerine SIZMIYOR.
 for jeton, ad in ((alice, "alice"), (bob, "bob"), (carol, "carol")):
     hepsi = set()
-    for t in ("pay", "ev_odedigin", "baskasi_icin", "senin_icin"):
+    for t in ("ev", "bana", "baskasi"):
         hepsi |= {e["expense_id"] for e in suz(jeton, t)}
-    check(f"{ad} · kisisel harcama akislarda yok", kisisel not in hepsi)
-# Ama sahibi onu normal listede goruyor: gizlenmiyor, yalnizca bakiyeye girmiyor.
-r = c.get(f"{API}/expenses?month={AY}", headers=hdr(alice))
-check("kisisel harcama sahibinin listesinde duruyor",
-      kisisel in {e["expense_id"] for e in r.json()["expenses"]})
+    check(f"{ad} · kisisel harcama ev/bana/baskasi'nda yok", kisisel not in hepsi)
 
-print("\n-- DEGISMEZLIK: ekstre satiri == suzulen listenin toplami --")
-# Bu takimin varlik sebebi. Iki taraf ayrisirsa kullanici ekranda bir tutar
-# gorup dokundugunda baska bir toplam buluyor ve sayilara guveni bitiyor.
-FISLI = ("pay", "ev_odedigin", "baskasi_icin", "senin_icin")
+print("\n-- DEGISMEZLIK: ekstre satirlari ayin degisimini veriyor --")
+# Kasa ekstresi bir BAKIYE araci ("borcun nasil olustu"), Harcamalar suzgeci
+# bir GOZAT araci ("ne aldik"). Ikisi bilerek ayri eksenler, o yuzden
+# tutarlari birebir esitlenmiyor. Ama ekstrenin KENDI icinde tutmasi sart:
+# artiran satirlarin toplami eksi azaltanlarin toplami, o ayin deltasidir.
+ARTIRAN = ("pay", "senin_icin", "sana_odenen")
 for jeton, ad in ((alice, "alice"), (bob, "bob"), (carol, "carol")):
     st = c.get(f"{API}/balances", headers=hdr(jeton)).json()["statement"]
-    satir_sayisi = 0
+    check(f"{ad} · ekstrede ay var", len(st["months"]) > 0, str(st)[:200])
     for kutu in st["months"]:
-        for satir in kutu.get("lines", []):
-            if satir["tur"] not in FISLI:
-                continue
-            satir_sayisi += 1
-            r = c.get(f"{API}/expenses?month={kutu['month']}&akis={satir['tur']}",
-                      headers=hdr(jeton))
-            toplam = sum(e["akis_tutar"] for e in r.json()["expenses"])
-            check(f"{ad} · {kutu['month']} · {satir['tur']} = {satir['tutar']}",
-                  abs(toplam - satir["tutar"]) < 0.02,
-                  f"liste {toplam}")
-    check(f"{ad} · ekstrede fisli satir var", satir_sayisi > 0, str(satir_sayisi))
+        artir = sum(l["tutar"] for l in kutu.get("lines", []) if l["tur"] in ARTIRAN)
+        azalt = sum(l["tutar"] for l in kutu.get("lines", []) if l["tur"] not in ARTIRAN)
+        check(f"{ad} · {kutu['month']} · satirlarin farki = delta {kutu['delta']}",
+              abs((artir - azalt) - kutu["delta"]) < 0.02,
+              f"artiran {artir} azaltan {azalt}")
+        check(f"{ad} · {kutu['month']} · share - paid = delta",
+              abs((kutu["share"] - kutu["paid"]) - kutu["delta"]) < 0.02, str(kutu))
 
 print("\n-- ODESME CIZGISI: kapali donem = odesilmis --")
 # Aylik pencereye gecince bir ayin icinde odesilmis ve odesilmemis harcamalar
