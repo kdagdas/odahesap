@@ -384,6 +384,11 @@ DEFAULT_PREFS = {
 # gormezse ev arkadasi kapida bekler; "Istegin onaylandi" da hayatta bir kez
 # olur ve kacirilirsa kisi eve girdigini bilmez. Ikisi de bir TERCIH degil,
 # akisin calismasi icin sart -- o yuzden anahtari hic yok.
+# Okunmus bildirimin raf omru. Otuz gun, "gecen ay ne olmustu" sorusunun
+# hala sorulabildigi ama listenin yigina donmedigi aralik. Okunmamislar bu
+# kurala girmiyor -- kacirilan olayin tek izi onlar.
+BILDIRIM_OMRU_GUN = 30
+
 _ALWAYS = ("join_request",)
 
 # Once dordu birden `new_expense` anahtarini paylasiyordu: "duzenleme
@@ -476,6 +481,19 @@ async def list_notifications(user=Depends(get_current_user)):
     kapalı olan ya da bildirimleri kapatmış biri olan bitenden habersiz
     kalıyordu.
     """
+    # OKUNMUS ve 30 gunden eski olanlar burada dokuluyor. Ayri bir zamanlayici
+    # YOK: bu uc zaten gunde birkac kez cagriliyor ve is kisinin kendi
+    # kayitlariyla sinirli. Okunmamis olan yaslansa da SILINMEZ -- kacirilmis
+    # bir olayin tek izi o kayit.
+    try:
+        await db.notifications.delete_many({
+            "user_id": user["user_id"],
+            "read": True,
+            "created_at": {"$lt": now_utc() - timedelta(days=BILDIRIM_OMRU_GUN)},
+        })
+    except Exception:  # noqa: BLE001
+        logger.exception("Eski bildirimler temizlenemedi (liste etkilenmedi)")
+
     rows = await db.notifications.find(
         {"user_id": user["user_id"]}, {"_id": 0}
     ).sort("created_at", -1).to_list(60)
@@ -489,6 +507,37 @@ async def mark_notifications_read(user=Depends(get_current_user)):
         {"user_id": user["user_id"], "read": False}, {"$set": {"read": True}}
     )
     return {"ok": True}
+
+
+@api.delete("/notifications/{notification_id}")
+async def delete_notification(notification_id: str, user=Depends(get_current_user)):
+    """Tek bir bildirimi sil.
+
+    Bildirim KISIYE ait bir kayit: ayni olay icin her alici kendi satirini
+    tasiyor. Bu yuzden silmek paylasilan hicbir seyi bozmuyor ve onay
+    sorulmuyor -- alinacaklar listesindeki maddeyi silmekten farki bu.
+    """
+    res = await db.notifications.delete_one(
+        {"notification_id": notification_id, "user_id": user["user_id"]}
+    )
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Bildirim bulunamadı")
+    return {"ok": True}
+
+
+@api.post("/notifications/clear-read")
+async def clear_read_notifications(user=Depends(get_current_user)):
+    """Okunmuslari topluca sil.
+
+    Yalnizca OKUNMUS olanlar: ekrani acmadan biriken bir yigini temizlemek
+    isteyen biri, henuz gormedigi bir olayi da silmis olmamali. Aktivite
+    ekrani acilista hepsini okundu isaretledigi icin, kullanicinin gordugu
+    liste ile bu dugmenin sildigi kume birebir ayni.
+    """
+    res = await db.notifications.delete_many(
+        {"user_id": user["user_id"], "read": True}
+    )
+    return {"ok": True, "deleted": res.deleted_count}
 
 
 async def require_admin(user_id: str) -> dict:
@@ -1759,7 +1808,12 @@ async def create_expense(body: ExpenseCreate, user=Depends(get_current_user)):
         else:
             title = "Ortak bir harcama"
             msg = f"{user['name']} · {label} · {amount} · {len(split_with)} kişi bölüşüyor"
-        await notify(audience, title, msg, "new_expense", {"expense_id": expense_id})
+        # `ay` neden var: bildirime dokununca Harcamalar ekrani aciliyor ve o
+        # ekran AY bazli calisiyor. Ay yazilmazsa geriye tarihli bir fis
+        # bugunun listesinde bulunamaz. Eski bildirimlerde bu alan yok; istemci
+        # o zaman hicbir seyi acmiyor -- yanlis fis acmaktansa hicbiri.
+        await notify(audience, title, msg, "new_expense",
+                     {"expense_id": expense_id, "ay": doc["expense_date"][:7]})
     return {"expense": doc}
 
 
@@ -2317,7 +2371,8 @@ async def _notify_expense_change(before: dict, patch: dict, user: dict, action: 
     label = before.get("merchant") or before.get("category") or "Harcama"
     total = patch.get("total", before.get("total", 0))
     tutar_txt = money_str(total, hh)
-    data = {"expense_id": before["expense_id"]}
+    data = {"expense_id": before["expense_id"],
+            "ay": (patch.get("expense_date") or before.get("expense_date") or "")[:7] or None}
 
     if action == "delete":
         await notify(
@@ -3513,7 +3568,7 @@ async def confirm_recurring(recurring_id: str, body: RecurringConfirm,
             who = (payer_doc or {}).get("name", "biri")
             body_txt = f"{who} ödedi · {doc['name']} · {got} €{extra} · {user['name']} kaydetti"
         await notify(audience, "Düzenli gider eklendi", body_txt,
-                     "recurring", {"expense_id": expense_id})
+                     "recurring", {"expense_id": expense_id, "ay": exp["expense_date"][:7]})
     return {"expense": exp}
 
 
@@ -5036,6 +5091,9 @@ async def on_startup():
         [("product_key", 1), ("country", 1), ("pack_type", 1), ("week", -1)]
     )
     await db.price_points.create_index([("merchant_key", 1), ("week", -1)])
+    # Bildirimler: liste sorgusu (kisi + tarih) ve tekil silme.
+    await db.notifications.create_index([("user_id", 1), ("created_at", -1)])
+    await db.notifications.create_index("notification_id", unique=True)
     await db.recurring.create_index("recurring_id", unique=True)
     await db.recurring.create_index([("household_id", 1), ("active", 1)])
     check = await asyncio.to_thread(push.self_check)
