@@ -954,6 +954,34 @@ function SilPaneli({
 }
 
 /**
+ * Arama çubuğunun yer tutucusu — **evin kendi verisinden.**
+ *
+ * Önce sabit yazılıydı: `"Süt, REWE, Kemal…"`. İkisi de bu evin kalıntısı.
+ * Türkiye'deki bir evde REWE diye bir market yok ve Kemal diye bir üye yok;
+ * yani örnekler öğretmek yerine yabancılık üretiyordu. Yer tutucunun işi
+ * "neler aranabilir" sorusunu cevaplamak, ve bu cevap her evde farklı.
+ *
+ * Ürün adı ("Süt") sabit kalıyor: iki ülkede de aynı kelime ve öğretici
+ * olan da o — aranabilecek şeyin bir ÜRÜN olduğunu söylüyor. Değişen kısım
+ * markete ve kişiye ait olan, çünkü yanlış olan onlardı.
+ *
+ * Veri yoksa örnekler düşüyor, uydurma yapılmıyor: yeni bir evde yer tutucu
+ * kısalıyor, yanlış bir market adı göstermiyor.
+ */
+export function useAramaIpucu(uyeAdi?: string | null): string {
+  const [market, setMarket] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    let canli = true;
+    require("./api").apiGet("/merchants/frequent?limit=1")
+      .then((r: any) => { if (canli) setMarket(r?.merchants?.[0]?.name ?? null); })
+      .catch(() => {});
+    return () => { canli = false; };
+  }, []);
+  const parcalar = ["Süt", market, uyeAdi].filter(Boolean);
+  return `${parcalar.join(", ")}…`;
+}
+
+/**
  * Geri alma şeridi — silinen şeyin son sözü.
  *
  * Diyalog DEĞİL: diyalog kullanıcıyı durdurur ve jestin kazandırdığı hızı
@@ -2370,6 +2398,17 @@ export const setCurrency = (code?: string | null) => {
 /** Yalnizca simge \u2014 tutar alanini elle dizen yerler icin (\u00F6r. \u00F6deme sayfas\u0131). */
 export const currencySign = () => currencySymbol;
 
+/**
+ * Tutar metni — **adı yanıltıcı, işi doğru.**
+ *
+ * `formatEUR` adında ama euro'ya bağlı değil: simge `setCurrency()` ile evin
+ * para biriminden geliyor (TRY → ₺). Ad, uygulama tek ülkedeyken konmuş ve
+ * öyle kalmış. Değiştirmek 60+ çağrı yerine dokunmak demek; şimdilik uyarı
+ * burada duruyor ki kimse "bu euro basıyor" varsayımıyla kod yazmasın.
+ *
+ * Sayı biçimi (1.234,56) iki ülkede de doğru: hem Almanya hem Türkiye ondalık
+ * için virgül, binlik için nokta kullanıyor.
+ */
 export function formatEUR(n: number | null | undefined, sign = false) {
   if (n === null || n === undefined || isNaN(n as number)) return `0,00${NBSP}${currencySymbol}`;
   const v = Number(n);

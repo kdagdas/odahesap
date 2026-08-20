@@ -1495,7 +1495,12 @@ async def ocr_receipt(body: OCRRequest, user=Depends(get_current_user)):
     try:
         text = await gemini_vision(
             OCR_SYSTEM_PROMPT,
-            "Parse this German receipt and return the strict JSON as specified.",
+            # "German receipt" yazıyordu ve sistem istemiyle ÇELİŞİYORDU: istem
+            # iki ülkeyi de tanıyor (BİM, A101, ŞOK, TOPLAM, KDV, PARA ÜSTÜ),
+            # ama kullanıcı mesajı modele "bu Alman fişi" diyordu. Türk fişinde
+            # yanlış bir yönlendirme — dili fişin kendisi söylesin.
+            "Parse this grocery receipt (Germany or Türkiye) and return the "
+            "strict JSON as specified.",
             b64,
             mime,
         )

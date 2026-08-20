@@ -11,6 +11,7 @@ import { useHousehold } from "@/src/household";
 import {
   ScreenHeader, Sheet, Card, Row, Divider, Avatar,
   Money, IconPill, CategoryIcon, categoryLabel, splitBadge, splitSummary, PulseDot,
+  useAramaIpucu,
   Donut, formatEUR, formatEURShort, useScrollPad, useBasaSar, yenileme,
   ayDe, buAy, degisimTxt,
 } from "@/src/ui";
@@ -223,6 +224,11 @@ export default function Panel() {
   useFocusEffect(useCallback(() => { load(); setFocusTick((t) => t + 1); }, [load]));
 
   const member = (id?: string | null) => members.find((m) => m.user_id === id);
+  /* Yer tutucu evin kendi verisinden — gerekçesi `useAramaIpucu` içinde.
+     Örnek kişi BEN değil, bir EV ARKADAŞI: kendi adını aramak kimsenin
+     aklına gelmez, aranan hep öteki taraftır. */
+  const aramaIpucu = useAramaIpucu(
+    members.find((m) => m.user_id !== user?.user_id)?.name);
   const firstName = (id?: string | null) => member(id)?.name?.split(" ")[0] || "?";
 
   const cats = (stats?.categories || []).slice(0, 4).map((c) => ({
@@ -359,7 +365,7 @@ export default function Panel() {
           <Pressable style={styles.araKutu} onPress={() => router.push("/arama")}
                      testID="open-search">
             <Ionicons name="search" size={16} color={colors.onDarkMuted} />
-            <Text style={styles.araTxt}>Süt, REWE, Kemal…</Text>
+            <Text style={styles.araTxt}>{aramaIpucu}</Text>
           </Pressable>
         </ScreenHeader>
 

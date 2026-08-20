@@ -24,6 +24,7 @@ import { useHousehold } from "@/src/household";
 import {
   ScreenHeader, Sheet, Card, Row, Divider, Overline, Avatar, IconPill,
   MerchantBadge, Money, useScrollPad, useGeriDon, ayAdi,
+  useAramaIpucu,
 } from "@/src/ui";
 import { uygulamaAra, type UygulamaKaydi } from "@/src/uygulamaHaritasi";
 import { colors, spacing, radius, type as T, metrics } from "@/src/theme";
@@ -61,6 +62,9 @@ export default function Arama() {
   const router = useRouter();
   const geriDon = useGeriDon();
   const { members } = useHousehold();
+  /* Yer tutucu evin kendi verisinden; sabit "REWE, Kemal" bu evin
+     kalıntısıydı ve başka bir evde yabancılık üretiyordu. */
+  const aramaIpucu = useAramaIpucu(members[0]?.name);
   const [q, setQ] = useState("");
   const [sonuc, setSonuc] = useState<Sonuc | null>(null);
   const [yukleniyor, setYukleniyor] = useState(false);
@@ -146,7 +150,7 @@ export default function Arama() {
               style={styles.girdi}
               value={q}
               onChangeText={setQ}
-              placeholder="Süt, REWE, Kemal, IBAN…"
+              placeholder={aramaIpucu}
               placeholderTextColor={colors.onDarkMuted}
               autoCorrect={false}
               autoCapitalize="none"
