@@ -11,7 +11,7 @@ import {
   ScreenHeader, HeaderSplit, Sheet, Card, Divider, Avatar, CategoryIcon,
   MerchantBadge, Money, splitBadge, formatEUR, formatQty,
   HeaderPills, HeaderPill, useScrollPad, useGeriDon, yenileme,
-  ayAdi, buAy, sonAylar,
+  ayAdi, buAy, sonAylar, AySecici,
 } from "@/src/ui";
 import { colors, spacing, radius, type as T, overline, metrics } from "@/src/theme";
 
@@ -127,6 +127,7 @@ export default function Harcamalar() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [aySecici, setAySecici] = useState(false);
 
   /* Kasa'dan gelen süzgeci UYGULA — asıl hata buradaydı.
      Harcamalar bir sekme ekranı; Kasa'dan buraya "atlamak" onu yeniden
@@ -218,9 +219,23 @@ export default function Harcamalar() {
           <RefreshControl {...yenileme(refreshing, () => { setRefreshing(true); load(); })} />
         }
       >
+        {/* BAŞLIK AY OLDU.
+            Ay bir hap olarak duruyordu ve üç hap dar telefonda alt satıra
+            kayıyordu; Almancaya çevrilince her ekranda kayacaktı. Çözüm
+            sıkıştırmak değil ÇIKARMAK: pencere bilgisi başlığa taşındı, geriye
+            iki hap kaldı ve satır her dilde sığıyor.
+
+            Yeni bir kalıp değil — Analiz zaten böyle çalışıyor ve gerekçesi
+            orada yazılı: "başlıkta zaten Ağustos 2026 yazıyor ve tarihe bakan
+            tarihe dokunuyor." İki ekran aynı işi aynı şekilde yapıyor.
+
+            Yan kazanç: Harcamalar da ızgara seçiciyi aldı. Eskisi düz listeydi
+            ve `sonAylar()` 60 aya kadar çıkıyor — bugün üç satır, beş yıl
+            sonra altmış. */}
         <ScreenHeader
-          overline="GEÇMİŞ"
-          title="Harcamalar"
+          overline="HARCAMALAR"
+          title={ayAdi(ay)}
+          onTitlePress={() => setAySecici(true)}
           right={
             <Pressable onPress={geriDon} hitSlop={12} testID="harcamalar-back" style={styles.headBtn}>
               <Ionicons name="close" size={20} color={colors.onDark} />
@@ -244,7 +259,9 @@ export default function Harcamalar() {
                     : [{ label: "Kayıt", value: `${expenses.length}` }]),
                 ]
               : [
-                  { label: ayAdi(ay), value: `${expenses.length} harcama` },
+                  /* Ay artık BAŞLIKTA yazıyor; burada tekrar etmesi aynı
+                     bilgiyi iki kez göstermek olurdu. */
+                  { label: "Kayıt", value: `${expenses.length} harcama` },
                 ]}
           />
           {/* Üç bağımsız eksen, üç hap: KİMİN İÇİN (akış) · NE ZAMAN (ay) ·
@@ -265,17 +282,6 @@ export default function Harcamalar() {
               onSelect={(v) => setAkis(v || undefined)}
               menu
               testID="filter-akis"
-            />
-            <HeaderPill
-              value={ay}
-              options={sonAylar(household?.created_at, household?.first_expense_month)
-                .map((m) => ({
-                  value: m, label: ayAdi(m).split(" ")[0],
-                  hint: ayAdi(m), icon: "calendar-outline",
-                  iconAccent: m === buAy(),
-                }))}
-              onSelect={setAy}
-              testID="filter-ay"
             />
             {/* Kişi süzgeci. Alt satır (hint) YOK: "Kemal" başlığının altına
                 yine "Kemal" yazmak boş bir tekrardı. Her kişi kendi avatarını
@@ -457,6 +463,15 @@ export default function Harcamalar() {
           </View>
         </Sheet>
       </ScrollView>
+
+      <AySecici
+        visible={aySecici}
+        onClose={() => setAySecici(false)}
+        month={ay}
+        onSelect={setAy}
+        doluAylar={sonAylar(household?.created_at, household?.first_expense_month)}
+        testID="harcamalar-ay-secici"
+      />
     </View>
   );
 }

@@ -32,12 +32,12 @@ import { useAuth } from "@/src/auth";
 import { useHousehold } from "@/src/household";
 import {
   ScreenHeader, Sheet, Card, Row, Divider, Avatar, Money, CategoryIcon,
-  categoryLabel, MerchantBadge, Donut, TabSwitch, BottomSheet,
+  categoryLabel, MerchantBadge, Donut, TabSwitch,
   formatEUR, formatEURShort, formatQty, AylikCubuk, IconSwitch,
-  useScrollPad, useGeriDon, useBasaSar,
+  useScrollPad, useGeriDon, useBasaSar, AySecici,
 } from "@/src/ui";
 import {
-  colors, spacing, radius, type as T, overline, fontFamily, metrics, CATEGORY_ICONS,
+  colors, spacing, radius, type as T, fontFamily, metrics, CATEGORY_ICONS,
 } from "@/src/theme";
 
 type Monthly = {
@@ -205,11 +205,6 @@ export default function Istatistik() {
   }));
   // İleri gitmek bugünün ayını aşmamalı: boş bir geleceğe dolaşmanın anlamı yok.
   const canForward = month < thisMonth();
-  const yillar = Array.from(new Set([
-    ...(data?.months || []).map((m) => m.slice(0, 4)),
-    thisMonth().slice(0, 4),
-    month.slice(0, 4),
-  ])).sort().reverse();
 
   return (
     <View style={styles.root} testID="istatistik-screen">
@@ -650,35 +645,17 @@ export default function Istatistik() {
       {/* Veri OLAN aylar belirgin, olmayanlar soluk ama yine secilebilir:
           "o ay hic harcama yok" da bir cevaptir, tiklanamaz bir hucre ise
           kullaniciya neden secemedigini soylemez. */}
-      <BottomSheet visible={aySecici} onClose={() => setAySecici(false)} testID="stat-month-sheet">
-        {yillar.map((yil) => (
-          <View key={yil}>
-            <Text style={styles.yilBaslik}>{yil}</Text>
-            <View style={styles.ayIzgara}>
-              {AYLAR.slice(1).map((ad, i) => {
-                const anahtar = `${yil}-${String(i + 1).padStart(2, "0")}`;
-                const secili = anahtar === month;
-                const ileride = anahtar > thisMonth();
-                const veriVar = (data?.months || []).includes(anahtar);
-                if (ileride) return <View key={ad} style={styles.ayHucre} />;
-                return (
-                  <Pressable
-                    key={ad}
-                    style={[styles.ayHucre, secili && styles.ayHucreOn,
-                            !veriVar && !secili && styles.ayHucreBos]}
-                    onPress={() => { setMonth(anahtar); setAySecici(false); }}
-                    testID={`stat-month-${anahtar}`}
-                  >
-                    <Text style={[styles.ayTxt, secili && styles.ayTxtOn]}>
-                      {ad.slice(0, 3)}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </View>
-        ))}
-      </BottomSheet>
+      {/* Ay seçici `ui.tsx`e taşındı: Harcamalar da aynısını istedi ve
+          kopyalamak yerine ortaklaştı. İki ekranın ay penceresi ayrışırsa
+          aynı olay iki yerde iki farklı aya düşer. */}
+      <AySecici
+        visible={aySecici}
+        onClose={() => setAySecici(false)}
+        month={month}
+        onSelect={setMonth}
+        doluAylar={data?.months || []}
+        testID="stat-month-sheet"
+      />
     </View>
   );
 }
@@ -701,23 +678,7 @@ const styles = StyleSheet.create({
   heroLabel: { ...T.caption, color: colors.onDarkMuted, letterSpacing: 0.6 },
   // Ay secici: yil basligi + 12 hucrelik izgara. Liste yerine izgara, cunku
   // "gecen subat" aranirken goz aylari konumundan buluyor, sirasindan degil.
-  yilBaslik: {
-    ...overline, paddingHorizontal: spacing.lg,
-    marginTop: spacing.md, marginBottom: spacing.xs,
-  },
-  ayIzgara: {
-    flexDirection: "row", flexWrap: "wrap", gap: spacing.sm,
-    paddingHorizontal: spacing.lg,
-  },
-  ayHucre: {
-    width: "22%", minHeight: 40, alignItems: "center", justifyContent: "center",
-    borderRadius: radius.md, borderWidth: 1, borderColor: colors.border,
-    backgroundColor: colors.surface,
-  },
-  ayHucreOn: { backgroundColor: colors.brand, borderColor: colors.brand },
-  ayHucreBos: { opacity: 0.35 },
-  ayTxt: { ...T.captionSb, color: colors.inkSecondary },
-  ayTxtOn: { color: colors.onDark },
+  /* Ay ızgarasının stilleri `ui.tsx`e taşındı (bkz. `AySecici`). */
   heroValue: {
     fontSize: 34, lineHeight: 42, fontFamily: fontFamily.bold,
     color: colors.onDark, letterSpacing: -1,

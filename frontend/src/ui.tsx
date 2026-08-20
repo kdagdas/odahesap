@@ -2295,6 +2295,80 @@ export function ayDe(m: string) {
   return (AYLAR_DE[ayNo(m)] || "").toLocaleUpperCase("tr-TR");
 }
 
+/**
+ * Ay seçici — yıl başlığı + 12 hücrelik ızgara.
+ *
+ * Analiz'de doğdu, Harcamalar da aynısını istedi ve **kopyalanmadı**: iki
+ * ekranın ay penceresi ayrışırsa aynı olay iki yerde iki farklı aya düşer.
+ *
+ * ### Neden liste değil ızgara
+ *
+ * Harcamalar bu işi düz bir listeyle yapıyordu ve bugün üç satırdı — çünkü ev
+ * üç aylık. `sonAylar()` en fazla 60 ay döndürüyor: iki yıl sonra 24, beş yıl
+ * sonra 60 satır. Büyüyebilen hiçbir liste seçici olarak kullanılmaz; bu
+ * kural DEVAM.md'de yazılı ve orada ihlal ediliyordu.
+ *
+ * ### Yıllar YIĞILI, oklu değil
+ *
+ * Yıllar arasında ok tuşlarıyla gezinmek bir adım daha ekliyor. Alt alta
+ * yığılınca kaydırmak yetiyor ve "geçen şubat" bir dokunuş uzakta kalıyor.
+ *
+ * Verisi olmayan aylar SOLUK ama seçilebilir: boş bir aya bakmak da bir
+ * cevaptır ("o ay hiç harcama yokmuş").
+ */
+export function AySecici({
+  visible, onClose, month, onSelect, doluAylar = [], testID,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  month: string;
+  onSelect: (m: string) => void;
+  /** Verisi olan aylar; diğerleri soluk çiziliyor. */
+  doluAylar?: string[];
+  testID?: string;
+}) {
+  const bu = buAy();
+  const yillar = Array.from(new Set([
+    ...doluAylar.map((m) => m.slice(0, 4)),
+    bu.slice(0, 4),
+    month.slice(0, 4),
+  ])).sort().reverse();
+
+  return (
+    <BottomSheet visible={visible} onClose={onClose} testID={testID}>
+      {yillar.map((yil) => (
+        <View key={yil}>
+          <Text style={styles.yilBaslik}>{yil}</Text>
+          <View style={styles.ayIzgara}>
+            {AYLAR.slice(1).map((ad, i) => {
+              const anahtar = `${yil}-${String(i + 1).padStart(2, "0")}`;
+              const secili = anahtar === month;
+              const ileride = anahtar > bu;
+              const veriVar = doluAylar.includes(anahtar);
+              // Gelecek aylar BOŞ HÜCRE: gizlenirse ızgara kayar ve
+              // "Ağustos" ile "Aralık" farklı sütunlara düşer.
+              if (ileride) return <View key={ad} style={styles.ayHucre} />;
+              return (
+                <Pressable
+                  key={ad}
+                  style={[styles.ayHucre, secili && styles.ayHucreOn,
+                          !veriVar && !secili && styles.ayHucreBos]}
+                  onPress={() => { onSelect(anahtar); onClose(); }}
+                  testID={`ay-${anahtar}`}
+                >
+                  <Text style={[styles.ayTxt, secili && styles.ayTxtOn]}>
+                    {ad.slice(0, 3)}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+      ))}
+    </BottomSheet>
+  );
+}
+
 /** `2026-08` — içinde bulunulan ay. */
 export function buAy(): string {
   const d = new Date();
@@ -2442,6 +2516,23 @@ const styles = StyleSheet.create({
   /* Satırın altındaki dekoru örtmesi için ZEMİNİ olmak zorunda; `Card` ile
      aynı renk, yani ekranda hiçbir fark yok. */
   ipucuOn: { backgroundColor: colors.surface },
+  yilBaslik: {
+    ...overline, paddingHorizontal: spacing.lg,
+    marginTop: spacing.md, marginBottom: spacing.xs,
+  },
+  ayIzgara: {
+    flexDirection: "row", flexWrap: "wrap", gap: spacing.sm,
+    paddingHorizontal: spacing.lg,
+  },
+  ayHucre: {
+    width: "22%", minHeight: 40, alignItems: "center", justifyContent: "center",
+    borderRadius: radius.md, borderWidth: 1, borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  ayHucreOn: { backgroundColor: colors.brand, borderColor: colors.brand },
+  ayHucreBos: { opacity: 0.35 },
+  ayTxt: { ...T.captionSb, color: colors.inkSecondary },
+  ayTxtOn: { color: colors.onDark },
   menuScrim: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(12,22,38,0.35)" },
   menuPanel: {
     position: "absolute", backgroundColor: colors.surface,
