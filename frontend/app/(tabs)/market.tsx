@@ -26,7 +26,7 @@ import { apiGet } from "@/src/api";
 import { useAuth } from "@/src/auth";
 import { useHousehold } from "@/src/household";
 import {
-  ScreenHeader, HeaderSplit, HeaderPills, HeaderPill, Sheet, Card, Divider, Money,
+  ScreenHeader, HeaderSplit, HeaderPills, AyPill, Sheet, Card, Divider, Money,
   Avatar, CategoryIcon, AylikCubuk,
   formatEUR, formatQty, formatDateTR, ayAdi, buAy, sonAylar,
   useScrollPad, useGeriDon, useBasaSar, yenileme,
@@ -120,15 +120,13 @@ export default function MarketDetay() {
             ]}
           />
           <HeaderPills>
-            <HeaderPill
-              value={ay}
-              options={sonAylar(household?.created_at, household?.first_expense_month)
-                .map((m) => ({
-                  value: m, label: ayAdi(m).split(" ")[0],
-                  hint: ayAdi(m), icon: "calendar-outline",
-                  iconAccent: m === buAy(),
-                }))}
+            {/* Ay seçici IZGARA: düz liste `sonAylar()` ile 60 aya kadar
+                büyüyordu. Kompakt menüye de geçmedi — ay seçmek yıl
+                gezinmesi olan bir görev, kısa bir seçim değil. */}
+            <AyPill
+              ay={ay}
               onSelect={setAy}
+              doluAylar={sonAylar(household?.created_at, household?.first_expense_month)}
               testID="market-ay"
             />
           </HeaderPills>

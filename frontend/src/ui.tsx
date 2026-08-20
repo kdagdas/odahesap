@@ -2323,6 +2323,42 @@ export function ayDe(m: string) {
  * Verisi olmayan aylar SOLUK ama seçilebilir: boş bir aya bakmak da bir
  * cevaptır ("o ay hiç harcama yokmuş").
  */
+/**
+ * Başlıktaki AY HAPI — dokununca yıl + 12'lik ızgarayı açıyor.
+ *
+ * Kalan ay süzgeçleri düz liste açıyordu: `sonAylar()` en fazla 60 ay
+ * döndürüyor, yani bugün üç satır olan seçici beş yıl sonra altmış satır.
+ * Büyüyebilen liste seçici olarak kullanılmaz.
+ *
+ * Kompakt menüye DE geçmedi ve bu bilerek: kural "kısa liste ve iş bir
+ * seçimse menü" diyor; ay seçmek yıl gezinmesi olan bir GÖREV ve altı satırı
+ * çoktan aşıyor. Aynı görünen üç kontrol üç farklı iş yapabilir; biçim işi
+ * izler.
+ */
+export function AyPill({
+  ay, onSelect, doluAylar, testID,
+}: {
+  ay: string;
+  onSelect: (m: string) => void;
+  doluAylar?: string[];
+  testID?: string;
+}) {
+  const [acik, setAcik] = React.useState(false);
+  return (
+    <>
+      <Pressable style={styles.pill} onPress={() => setAcik(true)} testID={testID}>
+        <Ionicons name="calendar-outline" size={13}
+                  color={ay === buAy() ? colors.accentOnDark : colors.onDarkMuted} />
+        <Text style={styles.pillTxt} numberOfLines={1}>{ayAdi(ay).split(" ")[0]}</Text>
+        <Ionicons name="chevron-down" size={12} color={colors.onDarkMuted} />
+      </Pressable>
+      <AySecici visible={acik} onClose={() => setAcik(false)} month={ay}
+                onSelect={onSelect} doluAylar={doluAylar}
+                testID={testID ? `${testID}-sheet` : undefined} />
+    </>
+  );
+}
+
 export function AySecici({
   visible, onClose, month, onSelect, doluAylar = [], testID,
 }: {

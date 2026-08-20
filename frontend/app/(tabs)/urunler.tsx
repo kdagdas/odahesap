@@ -25,7 +25,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { apiGet } from "@/src/api";
 import { useHousehold } from "@/src/household";
 import {
-  ScreenHeader, HeaderSplit, HeaderPills, HeaderPill, Sheet, Card, Divider, Money,
+  ScreenHeader, HeaderSplit, AySecici, Sheet, Card, Divider, Money,
   formatEUR, formatQty, ayAdi, buAy, sonAylar,
   useScrollPad, useGeriDon, useBasaSar, yenileme,
 } from "@/src/ui";
@@ -82,6 +82,7 @@ export default function Urunler() {
      soruya cevap veriyor: "paramız neye gidiyor". */
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [aySecici, setAySecici] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -113,6 +114,7 @@ export default function Urunler() {
           size="l"
           overline={kapsam === "self" ? "KİŞİSEL · ÜRÜNLER" : "ÜRÜNLER"}
           title={ayAdi(ay)}
+          onTitlePress={() => setAySecici(true)}
           right={
             <Pressable onPress={geriDon} hitSlop={12} testID="urunler-back" style={styles.headBtn}>
               <Ionicons name="close" size={20} color={colors.onDark} />
@@ -129,19 +131,10 @@ export default function Urunler() {
               { label: "Ürün", value: `${urunler.length} çeşit` },
             ]}
           />
-          <HeaderPills>
-            <HeaderPill
-              value={ay}
-              options={sonAylar(household?.created_at, household?.first_expense_month)
-                .map((m) => ({
-                  value: m, label: ayAdi(m).split(" ")[0],
-                  hint: ayAdi(m), icon: "calendar-outline",
-                  iconAccent: m === buAy(),
-                }))}
-              onSelect={setAy}
-              testID="urunler-ay"
-            />
-          </HeaderPills>
+          {/* AY HAPI KALKTI: ay zaten BAŞLIKTA yazılı ("Ağustos 2026") ve
+              hap onu ikinci kez söylüyordu. Aynı bilgiyi iki yerde göstermek,
+              hangisinin doğru olduğunu sorduruyor. Başlığa dokunmak seçiciyi
+              açıyor — Analiz ve Harcamalar'daki kalıbın aynısı. */}
         </ScreenHeader>
 
         <Sheet>
@@ -198,6 +191,15 @@ export default function Urunler() {
           </View>
         </Sheet>
       </ScrollView>
+
+      <AySecici
+        visible={aySecici}
+        onClose={() => setAySecici(false)}
+        month={ay}
+        onSelect={setAy}
+        doluAylar={sonAylar(household?.created_at, household?.first_expense_month)}
+        testID="urunler-ay-secici"
+      />
     </View>
   );
 }

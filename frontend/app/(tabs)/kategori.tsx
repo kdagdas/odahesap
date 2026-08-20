@@ -22,7 +22,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { apiGet } from "@/src/api";
 import { useHousehold } from "@/src/household";
 import {
-  ScreenHeader, HeaderPills, HeaderPill, Sheet, Card, Divider, Money,
+  ScreenHeader, HeaderPills, AyPill, Sheet, Card, Divider, Money,
   CategoryIcon, categoryLabel, MerchantBadge, AylikCubuk,
   formatEUR, formatQty, ayAdi, buAy, sonAylar, degisimTxt,
   useScrollPad, useGeriDon, useBasaSar, yenileme,
@@ -125,15 +125,13 @@ export default function KategoriDetay() {
             </View>
           )}
           <HeaderPills>
-            <HeaderPill
-              value={ay}
-              options={sonAylar(household?.created_at, household?.first_expense_month)
-                .map((m) => ({
-                  value: m, label: ayAdi(m).split(" ")[0],
-                  hint: ayAdi(m), icon: "calendar-outline",
-                  iconAccent: m === buAy(),
-                }))}
+            {/* Ay seçici IZGARA: düz liste `sonAylar()` ile 60 aya kadar
+                büyüyordu. Kompakt menüye de geçmedi — ay seçmek yıl
+                gezinmesi olan bir görev, kısa bir seçim değil. */}
+            <AyPill
+              ay={ay}
               onSelect={setAy}
+              doluAylar={sonAylar(household?.created_at, household?.first_expense_month)}
               testID="kategori-ay"
             />
           </HeaderPills>
