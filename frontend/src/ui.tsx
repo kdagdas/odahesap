@@ -24,7 +24,7 @@ import { useSafeAreaInsets, type EdgeInsets } from "react-native-safe-area-conte
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import {
-  Gesture, GestureDetector, GestureHandlerRootView,
+  Gesture, GestureDetector, GestureHandlerRootView, Swipeable,
 } from "react-native-gesture-handler";
 
 import {
@@ -808,23 +808,105 @@ export function HintCard({
 export const SIL_GENIS = 84;
 
 /**
- * Kaydırınca açılan sil alanı — **parmağı takip ediyor.**
+ * Kaydırarak silme — **yarım kaydırma düğmeyi gösterir, tam kaydırma siler.**
+ *
+ * ### Neden iki kademe
+ *
+ * iOS Mail ve Gmail'in kalıbı, ve iyi bir kalıp olmasının sebebi ödülü
+ * TEKRAR EDENE vermesi: listeden beş şey silecek biri beş kez düğme arayıp
+ * basmıyor. Yeni kullanıcı düğmeyi buluyor, alışmış kullanıcı jestle
+ * geçiyor; ikisi aynı arayüzde yaşıyor.
+ *
+ * ### Neden onay YOK, geri alma VAR
+ *
+ * Onay kutusu jestin var olma sebebini öldürür: hızı. Geri alma ise doğru
+ * olduğunda hiçbir bedel ödetmez, yanıldığında kurtarır — Gmail'de de onay
+ * yok, geri alma var. Alınacaklar'da yanlış silmenin maliyeti yeniden yazmak
+ * değil, **haberinin olmaması**: markette süt olmadığını anlarsın. Sessiz
+ * kayıp, gürültülü kayıptan pahalıdır.
+ *
+ * Geri almanın ikinci faydası görünmez ama büyük: geri alınabileceğini bilen
+ * insan **daha rahat siler.** Yoksa her silme öncesi bir an duraksar ve o
+ * duraksama, jestin kazandırdığı hızı geri alır.
+ *
+ * ### Eşiğin görünür karşılığı
+ *
+ * Eşiği geçince ikon doluyor ve yazı "Sil" yerine **"Bırak"** oluyor. Satır
+ * zaten parmağın altında normalden fazla kaymış durumda; iki işaret birlikte
+ * "bunu bırakırsan gider" cümlesini kuruyor. Sessizce silmek, kullanıcıya
+ * jesti öğretmeden cezalandırmak olurdu.
+ */
+export function KaydirSil({
+  onSil, testID, children,
+}: { onSil: () => void; testID?: string; children: React.ReactNode }) {
+  const ref = React.useRef<any>(null);
+  /* Eşiğin geçilip geçilmediği REF'te tutuluyor, state'te değil: bırakma
+     anında `onSwipeableWillOpen` bu değeri okuyor ve state güncellemesi o
+     ana yetişmeyebilir. State yalnızca ÇİZİM için (ikon/yazı). */
+  const esikte = React.useRef(false);
+  const silindi = React.useRef(false);
+  const [gorselEsik, setGorselEsik] = React.useState(false);
+  const { width } = useWindowDimensions();
+  /* Ekranın %42'si, ama en az 150 px. Oran tek başına küçük telefonda çok
+     kolay, tablette çok zor bir eşik üretiyor. */
+  const esik = Math.max(150, Math.round(width * 0.42));
+
+  const sil = () => {
+    if (silindi.current) return;      // hem bırakma hem düğme tetikleyebilir
+    silindi.current = true;
+    onSil();
+  };
+
+  return (
+    <Swipeable
+      ref={ref}
+      overshootRight
+      overshootFriction={1}
+      rightThreshold={44}
+      onSwipeableWillOpen={() => { if (esikte.current) sil(); }}
+      onSwipeableWillClose={() => { esikte.current = false; setGorselEsik(false); }}
+      renderRightActions={(progress: any, dragX: any) => (
+        <SilPaneli
+          progress={progress}
+          dragX={dragX}
+          esik={esik}
+          gecti={gorselEsik}
+          onEsik={(v: boolean) => { esikte.current = v; setGorselEsik(v); }}
+          onSil={sil}
+          testID={testID}
+        />
+      )}
+    >
+      {children}
+    </Swipeable>
+  );
+}
+
+/**
+ * Sil alanının kendisi — **parmağı takip ediyor.**
  *
  * Önce `renderRightActions={() => (...)}` yazılıydı ve Swipeable'ın verdiği
  * animasyon değerleri hiç kullanılmıyordu: satır parmakla kayıyor ama düğme
- * tam boyutta bir anda basılıyordu ("hop beliriyor"). Şimdi `progress` ile
- * kayıyor, yani alan **kaydırıldığı kadar** açılıyor.
- *
- * `progress` 0→1 arası ve satır tam açıldığında 1 oluyor; düğmeyi kendi
- * genişliği kadar sağdan içeri kaydırmak, "arkadan çıkıyor" hissini veren
- * en ucuz yol. Yazı ayrıca soluyor: yarı yolda okunamayan bir kelime
- * titreşim gibi görünüyor.
- *
- * Alınacaklar'da doğdu, Aktivite de aynısını istedi. **İki ekran ayrışmasın
- * diye buraya taşındı** — kopyalansaydı biri düzeltilip diğeri unutulurdu.
+ * tam boyutta bir anda basılıyordu ("hop beliriyor"). `progress` ile
+ * kaydığında alan **kaydırıldığı kadar** açılıyor; yazı da soluyor, çünkü
+ * yarı yolda okunamayan bir kelime titreşim gibi görünüyor.
  */
-export const silAlani = (onSil: () => void, testID?: string) =>
-  (progress: Animated.AnimatedInterpolation<number>) => (
+function SilPaneli({
+  progress, dragX, esik, gecti, onEsik, onSil, testID,
+}: {
+  progress: Animated.AnimatedInterpolation<number>;
+  dragX: Animated.AnimatedInterpolation<number>;
+  esik: number; gecti: boolean;
+  onEsik: (v: boolean) => void; onSil: () => void; testID?: string;
+}) {
+  React.useEffect(() => {
+    const id = (dragX as any).addListener?.(({ value }: { value: number }) => {
+      onEsik(value < -esik);
+    });
+    return () => { if (id != null) (dragX as any).removeListener?.(id); };
+  }, [dragX, esik, onEsik]);
+
+  return (
     <View style={styles.silKap}>
       <Animated.View
         style={{
@@ -836,7 +918,7 @@ export const silAlani = (onSil: () => void, testID?: string) =>
         }}
       >
         <Pressable style={styles.silAlan} onPress={onSil} testID={testID}>
-          <Ionicons name="trash-outline" size={19} color={colors.onBrand} />
+          <Ionicons name={gecti ? "trash" : "trash-outline"} size={19} color={colors.onBrand} />
           <Animated.Text
             style={[styles.silTxt, {
               opacity: progress.interpolate({
@@ -844,12 +926,42 @@ export const silAlani = (onSil: () => void, testID?: string) =>
               }),
             }]}
           >
-            Sil
+            {gecti ? "Bırak" : "Sil"}
           </Animated.Text>
         </Pressable>
       </Animated.View>
     </View>
   );
+}
+
+/**
+ * Geri alma şeridi — silinen şeyin son sözü.
+ *
+ * Diyalog DEĞİL: diyalog kullanıcıyı durdurur ve jestin kazandırdığı hızı
+ * geri alır. Şerit hiçbir şeyi durdurmuyor, sadece bir kapı açık bırakıyor
+ * ve kendiliğinden kapanıyor.
+ *
+ * Süre 5 saniye: 3 saniye "gördüm ama yetişemedim" üretiyor, 10 saniye
+ * ekranda unutulmuş bir kutu gibi duruyor.
+ */
+export function GeriAlSeridi({
+  gorunur, metin, onGeriAl, alt = 0, testID,
+}: {
+  gorunur: boolean; metin: string; onGeriAl: () => void;
+  alt?: number; testID?: string;
+}) {
+  if (!gorunur) return null;
+  return (
+    <View style={[styles.geriAlKap, { bottom: alt + spacing.lg }]} pointerEvents="box-none">
+      <View style={styles.geriAl} testID={testID}>
+        <Text style={styles.geriAlTxt} numberOfLines={1}>{metin}</Text>
+        <Pressable onPress={onGeriAl} hitSlop={10} testID={testID ? `${testID}-btn` : undefined}>
+          <Text style={styles.geriAlBtn}>GERİ AL</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
 
 /* Bu açılışta hangi ipuçları oynadı. **Modül düzeyinde, cihazda DEĞİL:**
    uygulama kapanıp açılınca sıfırlanması tam olarak istenen şey. */
@@ -2498,6 +2610,21 @@ const styles = StyleSheet.create({
   // Zemin tam genişlikte kalır (kenardan kenara tasarım ögesi), yalnızca
   // içindekiler ortalanır.
   sheetInner: { width: "100%", maxWidth: CONTENT_MAX_WIDTH, alignSelf: "center", flex: 1 },
+  geriAlKap: {
+    position: "absolute", left: spacing.lg, right: spacing.lg,
+    alignItems: "center",
+  },
+  geriAl: {
+    flexDirection: "row", alignItems: "center", gap: spacing.lg,
+    backgroundColor: colors.dark, borderRadius: radius.pill,
+    paddingVertical: spacing.md, paddingHorizontal: spacing.lg,
+    /* Gölge: şerit içeriğin ÜSTÜNDE yüzüyor, bir satırı değil. */
+    shadowColor: "#000", shadowOpacity: 0.22, shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 }, elevation: 6,
+    maxWidth: 420,
+  },
+  geriAlTxt: { ...T.caption, color: colors.onDarkMuted, flexShrink: 1 },
+  geriAlBtn: { ...T.captionSb, color: colors.accentOnDark, letterSpacing: 0.6 },
   card: {
     backgroundColor: colors.surface, borderRadius: radius.lg,
     borderWidth: 1, borderColor: colors.border, overflow: "hidden",

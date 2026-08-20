@@ -10,17 +10,16 @@
  *  (`bildirimYolu`), sola kaydırınca siliniyor, okunmuşlar topluca
  *  temizlenebiliyor.
  */
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, RefreshControl,
 } from "react-native";
 import { useRouter, useFocusEffect } from "expo-router";
-import { Swipeable } from "react-native-gesture-handler";
 import { Ionicons } from "@expo/vector-icons";
 import { apiGet, apiPost, apiDelete } from "@/src/api";
 import {
   Card, Divider, Overline, ScreenHeader, Sheet, IconPill, useScrollPad, yenileme,
-  silAlani, KaydirmaIpucu, useKaydirmaIpucu,
+  KaydirSil, GeriAlSeridi, KaydirmaIpucu, useKaydirmaIpucu,
 } from "@/src/ui";
 import { bildirimYolu } from "@/src/bildirimYolu";
 import { colors, spacing, type as T, metrics } from "@/src/theme";
@@ -86,10 +85,49 @@ export default function Aktivite() {
      silmek paylaşılan hiçbir şeyi bozmuyor ve onay sormaya değmiyor.
      (Alınacaklar'da tersi geçerli olurdu: orada ev arkadaşının yazdığı bir
      madde siliniyor.) */
-  const sil = async (n: Notification) => {
-    setRows((cur) => cur.filter((r) => r.notification_id !== n.notification_id));
+  /* Alınacaklar'daki jestin AYNISI — tam kaydırma siler, geri alma şeridi
+     beş saniye açık kalır. İki ekranda aynı jestin farklı davranması,
+     kullanıcının "kaydırmak ne yapar" bilgisini ekrana bağımlı kılardı ve o
+     bilgi bir daha güvenilir olmazdı.
+
+     Silme sunucuya GECİKMELİ gidiyor: geri alma yeniden yaratmak zorunda
+     kalsaydı bildirimin kimliği ve okunma durumu değişirdi. */
+  const geriAlSayaci = useRef<any>(null);
+  const [silinen, setSilinen] = useState<Notification | null>(null);
+
+  const gercektenSil = async (n: Notification) => {
     try { await apiDelete(`/notifications/${n.notification_id}`); } catch { load(); }
   };
+
+  const sil = (n: Notification) => {
+    setRows((cur) => cur.filter((r) => r.notification_id !== n.notification_id));
+    if (geriAlSayaci.current) {
+      clearTimeout(geriAlSayaci.current);
+      if (silinen) gercektenSil(silinen);
+    }
+    setSilinen(n);
+    geriAlSayaci.current = setTimeout(() => {
+      geriAlSayaci.current = null;
+      setSilinen(null);
+      gercektenSil(n);
+    }, 5000);
+  };
+
+  const geriAl = () => {
+    if (geriAlSayaci.current) { clearTimeout(geriAlSayaci.current); geriAlSayaci.current = null; }
+    const geri = silinen;
+    setSilinen(null);
+    if (!geri) return;
+    // Sıra bozulmasın diye listenin kendi sıralaması yeniden uygulanıyor:
+    // bildirimler yeniden eskiye ve geri gelen satır ortaya dönmeli.
+    setRows((cur) => (cur.some((r) => r.notification_id === geri.notification_id)
+      ? cur
+      : [...cur, geri].sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""))));
+  };
+
+  useEffect(() => () => {
+    if (geriAlSayaci.current) { clearTimeout(geriAlSayaci.current); }
+  }, []);
 
   /* Topluca temizleme yalnızca OKUNMUŞLARI siliyor. Bu ekran açılışta hepsini
      okundu işaretlediği için pratikte "ekranda gördüğün her şey" demek; ama
@@ -168,11 +206,8 @@ export default function Aktivite() {
                       <View key={n.notification_id}>
                         {i > 0 && <Divider />}
                         <KaydirmaIpucu oyna={i === 0 && ipucuOyna}>
-                          <Swipeable
-                            overshootRight={false}
-                            rightThreshold={44}
-                            renderRightActions={silAlani(() => sil(n), `aktivite-del-${n.notification_id}`)}
-                          >
+                          <KaydirSil onSil={() => sil(n)}
+                                     testID={`aktivite-del-${n.notification_id}`}>
                             {hedef ? (
                               <Pressable onPress={() => router.push(hedef as any)}
                                          android_ripple={{ color: colors.divider }}
@@ -182,7 +217,7 @@ export default function Aktivite() {
                             ) : (
                               <View testID={`aktivite-item-${n.notification_id}`}>{govde}</View>
                             )}
-                          </Swipeable>
+                          </KaydirSil>
                         </KaydirmaIpucu>
                       </View>
                     );
@@ -199,6 +234,12 @@ export default function Aktivite() {
           </View>
         </Sheet>
       </ScrollView>
+      <GeriAlSeridi
+        gorunur={!!silinen}
+        metin="Bildirim silindi"
+        onGeriAl={geriAl}
+        testID="aktivite-geri-al"
+      />
     </View>
   );
 }

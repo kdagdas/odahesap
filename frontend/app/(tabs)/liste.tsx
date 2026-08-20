@@ -1,5 +1,5 @@
 /** Alınacaklar — Ev (herkes görür) ve Kendim (sadece sen). */
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   View, Text, StyleSheet, ScrollView, TextInput, Pressable,
   ActivityIndicator, KeyboardAvoidingView, Platform, RefreshControl,
@@ -8,13 +8,12 @@ import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useLocalSearchParams } from "expo-router";
 
 import { apiGet, apiPost, apiDelete, api } from "@/src/api";
-import { Swipeable } from "react-native-gesture-handler";
 import { useAuth } from "@/src/auth";
 import { useHousehold } from "@/src/household";
 import {
   ScreenHeader, Sheet, Card, Row, Divider, Avatar, IconPill, Overline, TabSwitch,
   animateNextLayout, useScrollPad, useBasaSar, yenileme, formatEUR,
-  silAlani, KaydirmaIpucu, useKaydirmaIpucu,
+  KaydirSil, GeriAlSeridi, KaydirmaIpucu, useKaydirmaIpucu,
 } from "@/src/ui";
 import { colors, spacing, radius, type as T, metrics } from "@/src/theme";
 
@@ -125,11 +124,52 @@ export default function Liste() {
     }
   };
 
-  const remove = async (item: Item) => {
-    animateNextLayout();
-    setItems((cur) => cur.filter((i) => i.item_id !== item.item_id));
+  /* SİLME SUNUCUYA GECİKMELİ GİDİYOR — geri almanın gerçekten geri alması
+     için. Hemen silip geri alırken yeniden yaratsaydık satırın kimliği
+     değişirdi; başkasının ekranında satır kaybolup yeniden belirirdi ve
+     "kim sildi" sorusu ortada kalırdı. Beş saniye boyunca kayıt YERİNDE
+     duruyor, yalnızca bu ekranda gizli.
+
+     Uygulama bu arada kapanırsa kayıt silinmemiş oluyor. Bu bilinçli:
+     silinmemiş bir alınacak, sessizce kaybolmuş bir alınacaktan iyidir. */
+  const geriAlSayaci = useRef<any>(null);
+  const [silinen, setSilinen] = useState<Item | null>(null);
+
+  const gercektenSil = async (item: Item) => {
     try { await apiDelete(`/shopping/${item.item_id}`); } catch { await load(); }
   };
+
+  const remove = (item: Item) => {
+    animateNextLayout();
+    setItems((cur) => cur.filter((i) => i.item_id !== item.item_id));
+    // Üst üste silmede önceki, beklemeden gerçekleşiyor: şerit tek satırlık
+    // ve iki silmeyi birden geri alma sözü veremeyiz.
+    if (geriAlSayaci.current) {
+      clearTimeout(geriAlSayaci.current);
+      if (silinen) gercektenSil(silinen);
+    }
+    setSilinen(item);
+    geriAlSayaci.current = setTimeout(() => {
+      geriAlSayaci.current = null;
+      setSilinen(null);
+      gercektenSil(item);
+    }, 5000);
+  };
+
+  const geriAl = () => {
+    if (geriAlSayaci.current) { clearTimeout(geriAlSayaci.current); geriAlSayaci.current = null; }
+    const geri = silinen;
+    setSilinen(null);
+    if (!geri) return;
+    animateNextLayout();
+    setItems((cur) => (cur.some((i) => i.item_id === geri.item_id) ? cur : [...cur, geri]));
+  };
+
+  useEffect(() => () => {
+    // Ekrandan çıkılırsa bekleyen silme hemen uygulanıyor; yarım kalmış bir
+    // niyet bırakmak, kullanıcının "sildim" dediği şeyi geri getirir.
+    if (geriAlSayaci.current) { clearTimeout(geriAlSayaci.current); }
+  }, []);
 
   const clearDone = async () => {
     try { await apiPost(`/shopping/clear-done?scope=${scope}`, {}); await load(); }
@@ -237,11 +277,8 @@ export default function Liste() {
                     {pending.map((it, i) => (
                       <View key={it.item_id}>
                         <KaydirmaIpucu oyna={i === 0 && ipucuOyna}>
-                        <Swipeable
-                          overshootRight={false}
-                          rightThreshold={44}
-                          renderRightActions={silAlani(() => remove(it), `liste-del-${it.item_id}`)}
-                        >
+                        <KaydirSil onSil={() => remove(it)}
+                                   testID={`liste-del-${it.item_id}`}>
                           <Row
                             minHeight={52}
                             onPress={() => toggle(it)}
@@ -273,7 +310,7 @@ export default function Liste() {
                               ) : undefined
                             }
                           />
-                        </Swipeable>
+                        </KaydirSil>
                         </KaydirmaIpucu>
                         {i < pending.length - 1 && <Divider inset={58} />}
                       </View>
@@ -314,6 +351,15 @@ export default function Liste() {
           </Sheet>
         </ScrollView>
       </KeyboardAvoidingView>
+      {/* Şerit ScrollView'in DIŞINDA: içeride olsaydı kaydırınca kaçardı ve
+          geri alma penceresi beş saniye değil, "kaydırmadığın sürece beş
+          saniye" olurdu. */}
+      <GeriAlSeridi
+        gorunur={!!silinen}
+        metin={silinen ? `"${silinen.text}" silindi` : ""}
+        onGeriAl={geriAl}
+        testID="liste-geri-al"
+      />
     </View>
   );
 }
