@@ -62,7 +62,8 @@ export default function Manual() {
    *  listelerinde ham adlarıyla tek tek durur. */
   const [generic, setGeneric] = useState("");
   /** Evin kendi geçmişinden gelen genel ad önerileri. */
-  const [oneriler, setOneriler] = useState<string[]>([]);
+  /** Öneriler: genel ad + o adın geçmişteki kategorisi. */
+  const [oneriler, setOneriler] = useState<{ name: string; category: string }[]>([]);
   const [katAcik, setKatAcik] = useState(false);
   const [katTutamak, setKatTutamak] = useState<MenuTutamak | null>(null);
   const katRef = useRef<any>(null);
@@ -83,9 +84,10 @@ export default function Manual() {
     if (!kelime || generic) { setOneriler([]); return; }
     const t = setTimeout(async () => {
       try {
-        const r = await apiGet<{ products: { name: string }[] }>(
+        const r = await apiGet<{ products: { name: string; category?: string }[] }>(
           `/search?q=${encodeURIComponent(kelime)}`);
-        setOneriler((r.products || []).slice(0, 4).map((p) => p.name));
+        setOneriler((r.products || []).slice(0, 4).map(
+          (p) => ({ name: p.name, category: p.category || "diger" })));
       } catch { setOneriler([]); }
     }, 250);
     return () => clearTimeout(t);
@@ -302,10 +304,19 @@ export default function Manual() {
             {oneriler.length > 0 && (
               <ScrollView horizontal showsHorizontalScrollIndicator={false}
                           style={styles.altSerit} contentContainerStyle={styles.chipRow}>
+                {/* Öneriye dokunmak KATEGORİYİ de dolduruyor.
+                    "Yüzey temizlik mendili" daha önce ev ürünleri diye
+                    işaretlendiyse aynı soruyu bir daha sormanın anlamı yok —
+                    cevabı zaten evin kendi geçmişinde yazılı. Bir dokunuş iki
+                    alanı dolduruyor ve tutarlılık kendiliğinden oluşuyor. */}
                 {oneriler.map((o) => (
-                  <Chip key={o} label={o} active={generic.toLowerCase() === o.toLowerCase()}
-                        onPress={() => setGeneric(o.toLowerCase())}
-                        testID={`manual-generic-${o}`} />
+                  <Chip key={o.name} label={o.name}
+                        active={generic.toLowerCase() === o.name.toLowerCase()}
+                        onPress={() => {
+                          setGeneric(o.name.toLowerCase());
+                          setCategory(o.category);
+                        }}
+                        testID={`manual-generic-${o.name}`} />
                 ))}
               </ScrollView>
             )}

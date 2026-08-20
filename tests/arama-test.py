@@ -206,6 +206,51 @@ d = c.get(f"{API}/stats/product", headers=hdr(alice), params={"key": "mantar"}).
 check("Alice mantar sayfasini goremiyor", d["months"] == [], str(d))
 
 print()
+print()
+print("== ONERI KATEGORIYI tasiyor; `diger` OY KULLANMIYOR ==")
+# AYRI BIR EV: yukaridaki sayimlari bozmasin.
+#
+# Kritik nokta: `diger` bir kategori DEGIL, kategorinin yoklugu -- OCR ne
+# oldugunu anlayamadiginda oraya dusuyor. Bilinmeyenin bilineni oy coklugu
+# ile ezmesine izin verilirse urun tumden bilgisiz gorunuyor. Gercek veride
+# olculdu: "Yuzey temizlik mendili"nin iki kalemi `diger`, biri
+# `ev_urunleri` idi ve sonuc `diger` cikiyordu.
+kat_tok, _ = reg("kategori")
+r = c.post(f"{API}/households", headers=hdr(kat_tok), json={"name": f"Kat Ev {TAG}"})
+r.raise_for_status()
+c.post(f"{API}/expenses", headers=hdr(kat_tok), json={
+    "target_type": "household", "total": 6.0, "source": "receipt",
+    "merchant": "ROSSMANN", "expense_date": "2026-08-05",
+    "items": [
+        {"name": "SLEPPY EASY CLEAN", "price": 2.0, "quantity": 1,
+         "generic": "yüzey temizlik mendili", "category": "diger"},
+        {"name": "SLEPPY REFILL", "price": 2.0, "quantity": 1,
+         "generic": "yüzey temizlik mendili", "category": "diger"},
+        {"name": "Slipy", "price": 2.0, "quantity": 1,
+         "generic": "yüzey temizlik mendili", "category": "ev_urunleri"},
+    ]})
+r = c.get(f"{API}/search", headers=hdr(kat_tok), params={"q": "sleppy"}).json()
+check("marka ile bulundu", len(r["products"]) == 1, str(r["products"]))
+if r["products"]:
+    p0 = r["products"][0]
+    check("kategori alani geliyor", "category" in p0, str(p0))
+    check("iki `diger`e karsi tek bilinen oy kazandi",
+          p0.get("category") == "ev_urunleri",
+          f'{p0.get("category")} olmali ev_urunleri')
+
+# Hicbir bilinen kategori yoksa `diger` kaliyor -- uydurma yok.
+c.post(f"{API}/expenses", headers=hdr(kat_tok), json={
+    "target_type": "household", "total": 3.0, "source": "receipt",
+    "merchant": "ROSSMANN", "expense_date": "2026-08-06",
+    "items": [{"name": "BILINMEYEN SEY", "price": 3.0, "quantity": 1,
+               "generic": "bilinmeyen", "category": "diger"}]})
+r = c.get(f"{API}/search", headers=hdr(kat_tok), params={"q": "bilinmeyen"}).json()
+check("hepsi diger ise diger kaliyor",
+      r["products"] and r["products"][0].get("category") == "diger",
+      str(r["products"]))
+c.post(f"{API}/households/leave", headers=hdr(kat_tok))
+c.post(f"{API}/auth/logout", headers=hdr(kat_tok))
+
 print("== temizlik ==")
 for t in (alice, bob, carol):
     c.post(f"{API}/households/leave", headers=hdr(t))

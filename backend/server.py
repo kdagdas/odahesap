@@ -4107,6 +4107,18 @@ def _breakdown(exps: List[dict]) -> dict:
     return {"cats": cats, "merchants": merchants, "merchant_names": merchant_names}
 
 
+def _baskin_kategori(sayim: Dict[str, int]) -> str:
+    """En çok tekrar eden kategori; `diger` yalnızca başka hiçbir şey yoksa.
+
+    `diger` "bilinmiyor" demek ve bir bilinmeyenin bilineni bastırması,
+    veriyi olduğundan daha bilgisiz gösterir.
+    """
+    bilinen = {k: v for k, v in sayim.items() if k and k != "diger"}
+    if bilinen:
+        return max(bilinen, key=bilinen.get)
+    return "diger"
+
+
 def _urunler(exps: List[dict]) -> List[dict]:
     """Ürün bazlı aylık toplam — "Süt · 14 lt · 3 markette · 17,20 €".
 
@@ -4161,6 +4173,11 @@ def _urunler(exps: List[dict]) -> List[dict]:
                 # bandı alınmıştı. Sayım fiş kimliğiyle yapılıyor.
                 "total": 0.0, "fisler": set(),
                 "markets": set(), "units": {}, "qty": 0.0, "bozuk_birim": False,
+                # Bu ürünün kategorisi: kalemler arasında EN ÇOK tekrar eden.
+                # Elle giriş ekranında öneriye dokunan kişiye kategoriyi de
+                # doldurmak için gerekiyor — "yüzey temizlik mendili" daha önce
+                # ev ürünleri diye işaretlendiyse aynısı bir daha sorulmasın.
+                "kategoriler": {},
             })
             # Genel ad varsa ekranda O yazılıyor ("Süt"), market markası değil.
             # Yoksa ham adların en kısası — ticari ek taşımayan hâli insanların
@@ -4183,6 +4200,8 @@ def _urunler(exps: List[dict]) -> List[dict]:
             if birim == "adet" and abs(miktar - round(miktar)) > 1e-9:
                 k["bozuk_birim"] = True
             k["units"][birim] = k["units"].get(birim, 0) + 1
+            kat = (i.get("category") or "diger").strip() or "diger"
+            k["kategoriler"][kat] = k["kategoriler"].get(kat, 0) + 1
             k["qty"] += miktar
 
     out = []
@@ -4198,6 +4217,17 @@ def _urunler(exps: List[dict]) -> List[dict]:
             "total": round(k["total"], 2),
             "count": len(k["fisler"]),
             "market_count": len(k["markets"]),
+            # BASKIN KATEGORİ — ama `diger` OY KULLANMIYOR.
+            #
+            # `diger` bir kategori değil, kategorinin YOKLUĞU: OCR ne olduğunu
+            # anlayamadığında oraya düşüyor. Bilinmeyenin bilineni oy
+            # çokluğuyla ezmesine izin verilirse sonuç şu oluyordu (gerçek
+            # veride ölçüldü): "Süt"ün beş kaleminin dördü `sut_urunleri`,
+            # biri `diger` — ve kullanıcının görebildiği alt kümede `diger`
+            # kazanıyordu. Aynısı "Yüzey temizlik mendili"nde de vardı.
+            #
+            # Bilinen tek bir oy bile, bilinmeyen yığınından değerlidir.
+            "category": _baskin_kategori(k["kategoriler"]),
             "qty": None if karisik else round(k["qty"], 2),
             "unit": None if karisik else baskin,
         })

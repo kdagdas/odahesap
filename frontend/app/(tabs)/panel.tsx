@@ -69,28 +69,41 @@ const ONE_CIKAN_IKON: Record<string, any> = {
  * Beş kaynak var ve öncelik sırası sunucuda: para > fiyat > ürün > değişim.
  * Borç kazanıyor çünkü bir EYLEM istiyor; ötekiler bilgi veriyor.
  */
-function oneCikanMetni(o: OneCikan): string {
+/**
+ * Cümle ÜÇ PARÇA dönüyor: önce · VURGU · sonra.
+ *
+ * Tek bir gri satır olarak yazıldığında sayı cümlenin içinde kayboluyordu.
+ * Cümlenin taşıdığı bilgi zaten o sayı; gerisi onu konuşulur hâle getiren
+ * bağlam. Vurgu beyaz ve yarım punto kalın — parlak bir renk gerekmiyor,
+ * kontrast yetiyor.
+ */
+function oneCikanMetni(o: OneCikan): [string, string, string] {
   switch (o.kind) {
     case "odesme": {
       const hafta = Math.floor(o.days / 7);
       const sure = hafta >= 2 ? `${hafta} haftadır` : `${o.days} gündür`;
-      return `${sure} ödeşilmedi · ${formatEUR(o.amount)} borcun var`;
+      return [`${sure} ödeşilmedi · `, `${formatEUR(o.amount)} borcun var`, ""];
     }
     case "zam":
-      return `${o.name} ${o.merchant.toLocaleUpperCase("tr-TR")}'de `
-        + `%${o.pct} zamlanmış · şimdi ${formatEUR(o.now)}/${o.unit}`;
+      return [`${o.name} ${o.merchant.toLocaleUpperCase("tr-TR")}'de `,
+              `%${o.pct} zamlanmış`,
+              ` · şimdi ${formatEUR(o.now)}/${o.unit}`];
     case "ucuz":
-      return `${o.name} ${o.merchant.toLocaleUpperCase("tr-TR")}'de `
-        + `%${Math.abs(o.pct)} ucuzlamış · şimdi ${formatEUR(o.now)}/${o.unit}`;
+      return [`${o.name} ${o.merchant.toLocaleUpperCase("tr-TR")}'de `,
+              `%${Math.abs(o.pct)} ucuzlamış`,
+              ` · şimdi ${formatEUR(o.now)}/${o.unit}`];
     case "market_farki":
-      return `${o.name}: ${o.cheap.toLocaleUpperCase("tr-TR")} `
-        + `${formatEUR(o.cheap_price)}/${o.unit}, `
-        + `${o.expensive.toLocaleUpperCase("tr-TR")} ${formatEUR(o.expensive_price)}`;
+      return [`${o.name}: `,
+              `${o.cheap.toLocaleUpperCase("tr-TR")} ${formatEUR(o.cheap_price)}`,
+              `, ${o.expensive.toLocaleUpperCase("tr-TR")} `
+              + `${formatEUR(o.expensive_price)}`];
     case "degisim":
-      return `Bu ay ${formatEUR(Math.abs(o.diff))} ${o.diff > 0 ? "fazla" : "az"}`
-        + ` · çoğu ${categoryLabel(o.category).toLocaleLowerCase("tr-TR")} harcamasında`;
+      return ["Bu ay ",
+              `${formatEUR(Math.abs(o.diff))} ${o.diff > 0 ? "fazla" : "az"}`,
+              ` · çoğu ${categoryLabel(o.category).toLocaleLowerCase("tr-TR")}`
+              + " harcamasında"];
     default:
-      return "";
+      return ["", "", ""];
   }
 }
 
@@ -254,7 +267,9 @@ export default function Panel() {
               <Ionicons name={ONE_CIKAN_IKON[oneCikan.kind]} size={14}
                         color={colors.accentOnDark} style={{ marginTop: 2 }} />
               <Text style={styles.oneCikanTxt} numberOfLines={3}>
-                {oneCikanMetni(oneCikan)}
+                {oneCikanMetni(oneCikan)[0]}
+                <Text style={styles.oneCikanVurgu}>{oneCikanMetni(oneCikan)[1]}</Text>
+                {oneCikanMetni(oneCikan)[2]}
               </Text>
             </Pressable>
           )}
@@ -544,10 +559,17 @@ const styles = StyleSheet.create({
     borderColor: colors.borderStrong, alignItems: "center", justifyContent: "center",
   },
   hayaletTxt: { ...T.body, color: colors.inkSecondary },
+  /* Trend satırından bir tık daha AŞAĞIDA: ikisi farklı iş yapıyor ("ne
+     kadar" ile "neden") ve fazla yakın durunca aynı bloğun iki satırı gibi
+     okunuyordu. */
   oneCikan: {
-    flexDirection: "row", alignItems: "flex-start", gap: 6, marginTop: spacing.sm,
+    flexDirection: "row", alignItems: "flex-start", gap: 6, marginTop: spacing.lg,
   },
-  oneCikanTxt: { ...T.caption, color: colors.onDarkMuted, flex: 1, lineHeight: 18 },
+  oneCikanTxt: { ...T.caption, color: colors.onDarkMuted, flex: 1, lineHeight: 19 },
+  /* Vurgu: beyaz ve yarı kalın. Parlak bir renk gerekmiyor — koyu zeminde
+     kontrast tek başına yetiyor ve renk bu uygulamada anlam taşıyor
+     (yeşil = alacak), süs olarak harcanmamalı. */
+  oneCikanVurgu: { ...T.captionSb, color: colors.onDark },
   araKutu: {
     flexDirection: "row", alignItems: "center", gap: spacing.sm,
     backgroundColor: colors.darkSurface, borderRadius: radius.pill,
