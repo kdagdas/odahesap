@@ -414,8 +414,35 @@ export default function Review() {
             </View>
           </View>
 
+          {/* TÜMÜNE UYGULA — çerçeveli 64 piksellik kutudan tek satıra indi.
+              Ölçüldü: blok 64 piksel, kalem satırı 52; bir kez ayarlanan
+              kontrol on beş kez okunan satırdan uzundu. Asıl mesele yükseklik
+              değil AĞIRLIK: tam genişlikte çerçeveli bir kutu "benimle
+              ilgilen" diye okunuyor, oysa çoğu fişte varsayılan zaten doğru.
+
+              Küçültmenin doğru anı da bu: satır başına bölüşüm ucuzlayınca
+              bu kontrol "tek hızlı yol" olmaktan çıktı. Öncesinde küçültmek,
+              yerine geçecek şey daha yokken hızlı yolu zayıflatmak olurdu. */}
           <View style={styles.bulkWrap}>
-            {renderSplit(bulkSplit, applyBulk, "TÜMÜNE UYGULA", total, "bulk")}
+            <SplitPicker
+              value={bulkSplit}
+              onChange={applyBulk}
+              members={members}
+              meId={meId}
+              total={total}
+              allowExact={false}
+              testID="bulk-split"
+              renderTrigger={(ac, ozet) => (
+                <Pressable style={styles.bulkRow} onPress={ac} testID="bulk-split">
+                  <Text style={styles.bulkLabel}>TÜMÜ</Text>
+                  <View style={styles.bulkHap}>
+                    <Ionicons name="home" size={13} color={colors.inkSecondary} />
+                    <Text style={styles.bulkTxt} numberOfLines={1}>{ozet}</Text>
+                    <Ionicons name="chevron-down" size={12} color={colors.inkTertiary} />
+                  </View>
+                </Pressable>
+              )}
+            />
           </View>
 
           {rows.length === 0 && (
@@ -441,24 +468,72 @@ export default function Review() {
               // kullanicinin bildigini yeniden anlatmak olurdu.
               const farkli = splitSummary(r.split, members, meId)
                 !== splitSummary(bulkSplit, members, meId);
+              /* SATIRIN KENDİSİ BÖLÜŞÜMÜ AÇIYOR; düzenleme kenardaki
+                 düğmede.
+                 Ev sahibinin gözlemi: "biz genellikle o satıra tıklamamızın
+                 sebebi bölüşüm." Veri de öyle diyor. Öyleyse satırın asıl
+                 dokunuşu zaten o olmalı; ad/adet/fiyat düzeltmek nadir ve
+                 kendi düğmesini hak ediyor.
+
+                 Önce satırın içine küçük bir "bölüşüm hapı" konması
+                 düşünüldü ve ARİTMETİK ELEDİ: Apple 44 punto, Google 48 dp
+                 dokunma alanı istiyor; 22 piksellik bir hapı 44'e büyütmek
+                 üstündeki ürün adının satırını yutuyordu. Yanlış dokunma
+                 çözülmüyor, yön değiştiriyordu.
+
+                 Şimdi iki hedef KOMŞU DEĞİL: biri satırın tamamı, diğeri
+                 sağ kenarda 46 piksellik şerit. Başparmak satıra basarken
+                 ortaya düşer; kenar kasıtlı bir hareket ister.
+
+                 Ok değil KALEM: aşağı bakan ok "bu satır açılır" demek ve
+                 satır artık açılmıyor. Kalem başka bir söz veriyor ve o söz
+                 tutuluyor. */
               return (
-                <Pressable key={i} onPress={() => setAcikSatir(i)}
-                           style={[styles.satir, i > 0 && styles.satirCizgi]}
-                           testID={`review-item-${i}`}>
-                  <CategoryIcon category={r.category} size={30} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.satirAd} numberOfLines={1}>
-                      {r.name || "Adsız kalem"}
-                    </Text>
-                    {farkli && (
-                      <Text style={styles.satirBolusum} numberOfLines={1}>
-                        {splitSummary(r.split, members, meId)}
-                      </Text>
+                <View key={i} style={[styles.satirKap, i > 0 && styles.satirCizgi]}>
+                  <SplitPicker
+                    value={r.split}
+                    onChange={(sp) => updateRow(i, { split: sp })}
+                    members={members}
+                    meId={meId}
+                    total={rowTotal(r)}
+                    allowExact={false}
+                    testID={`item-${i}-split`}
+                    renderTrigger={(ac, ozet) => (
+                      <Pressable style={styles.satir} onPress={ac}
+                                 android_ripple={{ color: colors.divider }}
+                                 testID={`review-item-${i}`}>
+                        <CategoryIcon category={r.category} size={30} />
+                        <View style={{ flex: 1, minWidth: 0 }}>
+                          <Text style={styles.satirAd} numberOfLines={1}>
+                            {r.name || "Adsız kalem"}
+                          </Text>
+                          {/* Bölüşüm HER satırda yazıyor ama istisna olanlar
+                              vurgulu. Hap artık satırın asıl eylemi olduğu
+                              için her satırda bulunmak zorunda; "bir kez
+                              söyle" düzeni ise vurguyla korunuyor — göz
+                              yeşilleri tarıyor. */}
+                          <View style={[styles.bolusumHap, farkli && styles.bolusumHapVar]}>
+                            <Ionicons name={farkli ? "person" : "home"} size={11}
+                                      color={farkli ? colors.accentDark : colors.inkTertiary} />
+                            <Text style={[styles.bolusumTxt, farkli && styles.bolusumTxtVar]}
+                                  numberOfLines={1}>
+                              {ozet}
+                            </Text>
+                            <Ionicons name="chevron-down" size={10}
+                                      color={farkli ? colors.accentDark : colors.inkTertiary} />
+                          </View>
+                        </View>
+                        <Text style={styles.satirTutar}>{formatEUR(rowTotal(r))}</Text>
+                      </Pressable>
                     )}
-                  </View>
-                  <Text style={styles.satirTutar}>{formatEUR(rowTotal(r))}</Text>
-                  <Ionicons name="chevron-down" size={16} color={colors.inkTertiary} />
-                </Pressable>
+                  />
+                  <Pressable style={styles.duzenleBtn} onPress={() => setAcikSatir(i)}
+                             testID={`review-item-${i}-edit`}>
+                    <View style={styles.duzenleKutu}>
+                      <Ionicons name="pencil" size={14} color={colors.inkSecondary} />
+                    </View>
+                  </Pressable>
+                </View>
               );
             }
             return (
@@ -712,6 +787,20 @@ const styles = StyleSheet.create({
     ...T.body, color: colors.ink,
   },
   bulkWrap: { marginBottom: spacing.xs },
+  /* 38 piksel; dokunma alanı hapın kendisinden geniş çünkü satırın tamamı
+     tetik. Apple'ın 44 pt sınırı satır yüksekliğiyle sağlanıyor. */
+  bulkRow: {
+    flexDirection: "row", alignItems: "center", gap: spacing.sm,
+    minHeight: 44, paddingHorizontal: 2,
+  },
+  bulkLabel: { ...overline, color: colors.onSurfaceTertiary },
+  bulkHap: {
+    flexDirection: "row", alignItems: "center", gap: 5,
+    borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface,
+    borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: 5,
+    flexShrink: 1,
+  },
+  bulkTxt: { ...T.body, color: colors.ink, flexShrink: 1 },
   etiketSatir: { flexDirection: "row", alignItems: "center", gap: 6, minHeight: 22 },
   catAyrac: { ...T.caption, color: colors.onSurfaceTertiary },
   /* Genel ad kategoriyle AYNI puntoda: ikisi de "bu kalem ne" sorusunun
@@ -781,12 +870,34 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: colors.border, overflow: "hidden",
   },
   satirCizgi: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.divider },
+  /* Kap SATIR YÖNLÜ: solda bölüşüm tetiği (esner), sağda düzenle düğmesi. */
+  satirKap: { flexDirection: "row", alignItems: "stretch" },
   satir: {
-    flexDirection: "row", alignItems: "center", gap: spacing.md,
-    paddingHorizontal: spacing.md, paddingVertical: spacing.sm, minHeight: 52,
+    flex: 1, flexDirection: "row", alignItems: "center", gap: spacing.md,
+    paddingLeft: spacing.md, paddingRight: spacing.sm,
+    paddingVertical: spacing.sm, minHeight: 52,
   },
   satirAd: { ...T.body, color: colors.ink },
-  satirBolusum: { ...T.caption, color: colors.accentDark, marginTop: 1 },
+  /* Düğme 46×52 — Apple'ın 44 pt, Google'ın 48 dp alt sınırının üstünde.
+     İkon 28 piksel görünüyor ama dokunulabilir alan tüm şerit. */
+  duzenleBtn: {
+    width: 46, alignItems: "center", justifyContent: "center",
+  },
+  duzenleKutu: {
+    width: 28, height: 28, borderRadius: radius.sm,
+    backgroundColor: colors.surfaceSecondary,
+    alignItems: "center", justifyContent: "center",
+  },
+  bolusumHap: {
+    flexDirection: "row", alignItems: "center", gap: 4, marginTop: 3,
+    alignSelf: "flex-start",
+  },
+  bolusumHapVar: {
+    backgroundColor: colors.accentSoft, borderRadius: radius.pill,
+    paddingHorizontal: 7, paddingVertical: 1, marginLeft: -1,
+  },
+  bolusumTxt: { ...T.caption, fontSize: 11, color: colors.inkTertiary, flexShrink: 1 },
+  bolusumTxtVar: { color: colors.accentDark },
   satirTutar: { ...T.bodySb, color: colors.ink },
   kapatSatir: {
     flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5,
