@@ -7,7 +7,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   View, Text, StyleSheet, ScrollView, TextInput, Pressable,
-  KeyboardAvoidingView, Platform, ActivityIndicator, Alert,
+  KeyboardAvoidingView, Platform, ActivityIndicator, Alert, Keyboard,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -91,6 +91,25 @@ export default function Review() {
   const [silinen, setSilinen] = useState<{ satir: Row; index: number } | null>(null);
   /** Hangi satırın genel adı düzenleniyor. Aynı anda tek satır. */
   const [genelDuzenle, setGenelDuzenle] = useState<number | null>(null);
+
+  /**
+   * Klavye açıkken KAYDET ÇUBUĞU GİZLENİYOR.
+   *
+   * Cihazda şu yaşandı: genel ad alanı düzenlenirken klavye açıldı, "Kaydet"
+   * çubuğu düzenlenen alanın hemen altına geldi ve **"bu düzeltmeyi kaydet"**
+   * gibi okundu. Oysa o düğme fişin tamamını kaydedip ekrandan çıkarıyor.
+   *
+   * Yakınlık bir anlam üretir: iki şey yan yana duruyorsa insan onları
+   * ilişkili sanar. Buradaki yakınlık tesadüftü — klavye itmişti — ama okuma
+   * gerçekti. Yazarken çubuğu hiç göstermemek, hem yanlış okumayı hem de
+   * listeden çalınan yeri ortadan kaldırıyor.
+   */
+  const [klavyeAcik, setKlavyeAcik] = useState(false);
+  useEffect(() => {
+    const ac = Keyboard.addListener("keyboardDidShow", () => setKlavyeAcik(true));
+    const kapa = Keyboard.addListener("keyboardDidHide", () => setKlavyeAcik(false));
+    return () => { ac.remove(); kapa.remove(); };
+  }, []);
 
   // Ev bilgisi fiş okunurken hâlâ iniyor olabiliyor, kalemler ise OCR yanıtı
   // gelir gelmez kuruluyor. Varsayılan "tüm ev" bölüşümü üyeler geldiğinde
@@ -553,8 +572,18 @@ export default function Review() {
                     placeholderTextColor={colors.onSurfaceTertiary}
                     testID={`review-item-${i}-name`}
                   />
-                  <Pressable onPress={() => removeRow(i)} testID={`review-item-${i}-delete`} hitSlop={8}>
-                    <Ionicons name="close-circle" size={22} color={colors.onSurfaceTertiary} />
+                  {/* AYNI YER, TERS İŞLEM.
+                      Burada `close-circle` duruyordu ve SİLME demekti. Kapalı
+                      satırda tam aynı noktada kalem düğmesi var; kullanıcı
+                      kalemle açtığı satırı aynı yere basarak kapatmayı
+                      bekliyor ve bunun yerine kalemi siliyordu. Bu bir zevk
+                      meselesi değil: aynı konumda, biri yıkıcı iki farklı
+                      eylem. Silme aşağıya, ADIYLA birlikte indi. */}
+                  <Pressable onPress={() => setAcikSatir(null)} style={styles.duzenleBtn}
+                             testID={`review-item-${i}-collapse`}>
+                    <View style={styles.duzenleKutu}>
+                      <Ionicons name="chevron-up" size={15} color={colors.inkSecondary} />
+                    </View>
                   </Pressable>
                 </View>
                 <View style={styles.itemBody}>
@@ -630,11 +659,22 @@ export default function Review() {
                   )}
                 </View>
                 {renderSplit(r.split, (sp) => updateRow(i, { split: sp }), "BÖLÜŞÜM", rowTotal(r), `item-${i}`)}
-                <Pressable onPress={() => setAcikSatir(null)} style={styles.kapatSatir}
-                           testID={`review-item-${i}-close`}>
-                  <Ionicons name="chevron-up" size={16} color={colors.inkSecondary} />
-                  <Text style={styles.kapatTxt}>Kapat</Text>
-                </Pressable>
+                {/* Silme artık ADIYLA duruyor ve kırmızı. Simge tek başına
+                    yıkıcı bir eylemi taşıyamaz — ne yaptığını yazması gerekir.
+                    Geri alma şeridi yine devrede, yani yanlışlıkla basılırsa
+                    bedeli tek dokunuş. */}
+                <View style={styles.altEylemler}>
+                  <Pressable onPress={() => removeRow(i)} style={styles.silBtn}
+                             testID={`review-item-${i}-delete`} hitSlop={6}>
+                    <Ionicons name="trash-outline" size={15} color={colors.negative} />
+                    <Text style={styles.silTxt}>Kalemi sil</Text>
+                  </Pressable>
+                  <Pressable onPress={() => setAcikSatir(null)} style={styles.kapatSatir}
+                             testID={`review-item-${i}-close`} hitSlop={6}>
+                    <Ionicons name="chevron-up" size={15} color={colors.inkSecondary} />
+                    <Text style={styles.kapatTxt}>Kapat</Text>
+                  </Pressable>
+                </View>
               </View>
             );
           })}
@@ -664,6 +704,7 @@ export default function Review() {
 
         {/* Alt cubuk telefonun gezinme cubugunun altinda kaliyordu: kenardan
             kenara cizim acik oldugu icin guvenli alan payini elle eklemek sart. */}
+        {!klavyeAcik && (
         <View style={[styles.footer, { paddingBottom: spacing.lg + insets.bottom }]}>
           {error && <Text style={styles.error} testID="review-error">{error}</Text>}
           {/* Toplam buradan kaldırıldı: başlıkta zaten kocaman duruyor.
@@ -689,6 +730,7 @@ export default function Review() {
             </Pressable>
           </View>
         </View>
+        )}
       </KeyboardAvoidingView>
 
       {/* Fis kaydedildikten SONRA aciliyor: kaydetmeden once kalemler hala
@@ -899,9 +941,20 @@ const styles = StyleSheet.create({
   bolusumTxt: { ...T.caption, fontSize: 11, color: colors.inkTertiary, flexShrink: 1 },
   bolusumTxtVar: { color: colors.accentDark },
   satirTutar: { ...T.bodySb, color: colors.ink },
+  /* İki eylem de en az 44 piksel yüksekliğinde ve UÇLARDA — yanlışlıkla
+     birine basıp diğerini yapma ihtimali en aza iniyor. */
+  altEylemler: {
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    marginTop: spacing.sm,
+  },
+  silBtn: {
+    flexDirection: "row", alignItems: "center", gap: 5,
+    minHeight: 44, paddingRight: spacing.lg,
+  },
+  silTxt: { ...T.captionSb, color: colors.negative },
   kapatSatir: {
     flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5,
-    paddingTop: spacing.sm,
+    minHeight: 44, paddingLeft: spacing.lg,
   },
   kapatTxt: { ...T.captionSb, color: colors.inkSecondary },
   // Acik kalem: kendi cercevesi YOK, tek kabin icinde vurgulu bir bolge.
