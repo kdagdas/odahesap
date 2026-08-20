@@ -139,8 +139,15 @@ export default function Liste() {
     try { await apiDelete(`/shopping/${item.item_id}`); } catch { await load(); }
   };
 
+  /* Silinen satırın YERİ de saklanıyor. Önce geri alınca listenin sonuna
+     ekleniyordu: yazdıkça en üste çıkan bir listede, geri alınan madde en
+     alta düşüyordu. Geri alma "eski hâline döndür" demek; başka bir yere
+     koymak yeni bir işlem yapmaktır. */
+  const silinenSira = useRef<number>(-1);
+
   const remove = (item: Item) => {
     animateNextLayout();
+    silinenSira.current = items.findIndex((i) => i.item_id === item.item_id);
     setItems((cur) => cur.filter((i) => i.item_id !== item.item_id));
     // Üst üste silmede önceki, beklemeden gerçekleşiyor: şerit tek satırlık
     // ve iki silmeyi birden geri alma sözü veremeyiz.
@@ -162,7 +169,13 @@ export default function Liste() {
     setSilinen(null);
     if (!geri) return;
     animateNextLayout();
-    setItems((cur) => (cur.some((i) => i.item_id === geri.item_id) ? cur : [...cur, geri]));
+    setItems((cur) => {
+      if (cur.some((i) => i.item_id === geri.item_id)) return cur;
+      const yeni = [...cur];
+      const yer = silinenSira.current;
+      yeni.splice(yer >= 0 && yer <= yeni.length ? yer : yeni.length, 0, geri);
+      return yeni;
+    });
   };
 
   useEffect(() => () => {

@@ -1433,11 +1433,57 @@ async def gemini_vision(system_prompt: str, user_text: str, image_b64: str, mime
     raise HTTPException(status_code=502, detail="Fiş okunamadı, lütfen tekrar deneyin")
 
 
+# OCR KOTASI — kişi başına. Bu uç modelin faturasına doğrudan bağlı ve
+# **hiç sınırı yoktu**: kimlik doğrulaması vardı, o kadar. Ücretsiz katmanda
+# sağlayıcının kendi 429'u duvar görevi görüyordu; ücretli katmana geçildiği
+# gün o duvar da kalkar ve gerçekten sınırsız bir borç riski doğar.
+#
+# Sayılar ölçüyle: bu ev iki ayda 48 fiş taramış (ayda ~24, kişi başı ~8).
+# Aylık 100, gerçek kullanıcı için 12 kat pay demek.
+#
+# ASIL koruma SAATLİK olan. Aylık tavan, tek gecede kotayı yakan bir betiği
+# durdurmaz; saatte 20 sınırı o betiği anlamsız kılar — insan saatte 20 fiş
+# taramaz.
+#
+# Üçüncü ve atlatılamaz katman kodda DEĞİL: sağlayıcı panelinde API kotası.
+# Kodla yapılan her şey bir açık bulunursa atlatılabilir; fatura tavanı
+# atlatılamaz. Ücretli katmana geçmeden önce yapılacak ilk iş odur.
+OCR_AYLIK_SINIR = 100
+OCR_SAATLIK_SINIR = 20
+
+
+async def _ocr_kota_kontrol(user_id: str) -> None:
+    """Kotayı kontrol eder ve çağrıyı KAYDEDER — sırası önemli.
+
+    Kayıt modele gitmeden önce atılıyor. Başarısız bir çağrı da kotadan
+    düşüyor, çünkü aksi hâlde bozuk görüntü göndererek sınırsız çağrı
+    yapılabilirdi: maliyet doğar, sayaç dönmez.
+    """
+    simdi = now_utc()
+    bir_saat = simdi - timedelta(hours=1)
+    ay_basi = simdi.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+    saatlik = await db.ocr_calls.count_documents({"user_id": user_id, "at": {"$gte": bir_saat}})
+    if saatlik >= OCR_SAATLIK_SINIR:
+        raise HTTPException(
+            status_code=429,
+            detail="Saatlik fiş tarama sınırına ulaştınız. Bir süre sonra tekrar deneyin.")
+
+    aylik = await db.ocr_calls.count_documents({"user_id": user_id, "at": {"$gte": ay_basi}})
+    if aylik >= OCR_AYLIK_SINIR:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Bu ay {OCR_AYLIK_SINIR} fiş taradınız. Kota ayın başında yenilenir.")
+
+    await db.ocr_calls.insert_one({"user_id": user_id, "at": simdi})
+
+
 @api.post("/ocr/receipt")
 async def ocr_receipt(body: OCRRequest, user=Depends(get_current_user)):
     if not GEMINI_API_KEY:
         raise HTTPException(status_code=500, detail="GEMINI_API_KEY tanımlı değil")
 
+    await _ocr_kota_kontrol(user["user_id"])
     hh = await get_user_household(user["user_id"])
     b64 = body.image_base64
     mime = "image/jpeg"
@@ -6126,6 +6172,10 @@ async def on_startup():
     await db.shopping_items.create_index("item_id", unique=True)
     await db.shopping_items.create_index([("household_id", 1), ("scope", 1)])
     await db.shopping_items.create_index([("added_by", 1), ("scope", 1)])
+    # OCR sayacı: sorgu daima (kullanıcı, zaman) ikilisi. TTL 40 gün — aylık
+    # pencere için yeterli, ve sayaç sonsuza kadar büyümüyor.
+    await db.ocr_calls.create_index([("user_id", 1), ("at", -1)])
+    await db.ocr_calls.create_index("at", expireAfterSeconds=60 * 60 * 24 * 40)
     # Fiyat kayıtlarında kimlik alanı yok, indeks de sorgunun kendisine göre:
     # "şu ürün, şu ülkede, şu paket sınıfında, hangi markette kaça".
     await db.price_points.create_index(
