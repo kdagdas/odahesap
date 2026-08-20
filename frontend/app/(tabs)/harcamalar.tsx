@@ -52,6 +52,21 @@ const AKIS_ADI: Record<string, string> = {
   baskasi: "Başkası için aldıkların",
   kendim: "Kendine aldıkların",
 };
+/**
+ * HAPTA yazılan kısa ad. Uzun adlar (yukarıda) kart başlığında ve başlıktaki
+ * sayının etiketinde kalıyor — orada yer var ve cümle tam olmalı.
+ *
+ * Hapta ise "Tüm hareketler" tek başına satırın üçte birini yiyordu ve üç hap
+ * alt satıra kayıyordu. İkon zaten ne olduğunu söylüyor; hapın işi hangi
+ * değerin seçili olduğunu bildirmek, tanımı tekrar etmek değil.
+ */
+const AKIS_KISA: Record<string, string> = {
+  ev: "Eve",
+  bana: "Sana",
+  baskasi: "Başkasına",
+  kendim: "Kendine",
+};
+
 const AKIS_ALT: Record<string, string> = {
   ev: "evin tamamına bölünen",
   bana: "seni içeren, başkasının aldığı",
@@ -242,12 +257,13 @@ export default function Harcamalar() {
             <HeaderPill
               value={akis ?? ""}
               options={[
-                { value: "", label: "Tüm hareketler", icon: "swap-vertical-outline" },
+                { value: "", label: "Tümü", icon: "swap-vertical-outline" },
                 ...(["ev", "bana", "baskasi", "kendim"] as const).map((k) => ({
-                  value: k, label: AKIS_ADI[k], hint: AKIS_ALT[k], icon: AKIS_ICON[k],
+                  value: k, label: AKIS_KISA[k], hint: AKIS_ALT[k], icon: AKIS_ICON[k],
                 })),
               ]}
               onSelect={(v) => setAkis(v || undefined)}
+              menu
               testID="filter-akis"
             />
             <HeaderPill
@@ -278,6 +294,7 @@ export default function Harcamalar() {
                 })),
               ]}
               onSelect={(v) => setMemberFilter(v || undefined)}
+              menu
               testID="filter-member"
             />
           </HeaderPills>

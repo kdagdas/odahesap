@@ -997,16 +997,20 @@ export function AnchorMenu({
 
 /** Kompakt menünün tek satırı. Yükseklik 46 — Apple 44 / Google 48 arası. */
 export function MenuSatir({
-  icon, label, secili, onPress, alt, chevron, testID,
+  icon, label, secili, onPress, alt, chevron, testID, leading,
 }: {
-  icon: string; label: string; secili?: boolean; onPress: () => void;
+  icon?: string; label: string; secili?: boolean; onPress: () => void;
   alt?: string; chevron?: boolean; testID?: string;
+  /** İkon yerine özel bir düğüm — kişi listesinde avatar. */
+  leading?: React.ReactNode;
 }) {
   return (
     <Pressable style={[styles.menuRow, secili && styles.menuRowOn]} onPress={onPress}
                android_ripple={{ color: colors.divider }} testID={testID}>
-      <Ionicons name={icon as any} size={16}
-                color={secili ? colors.accentDark : colors.inkSecondary} />
+      {leading ?? (icon ? (
+        <Ionicons name={icon as any} size={16}
+                  color={secili ? colors.accentDark : colors.inkSecondary} />
+      ) : null)}
       <Text style={[styles.menuTxt, secili && styles.menuTxtOn]} numberOfLines={1}>{label}</Text>
       {alt ? <Text style={styles.menuAlt} numberOfLines={1}>{alt}</Text> : null}
       {secili ? <Ionicons name="checkmark" size={16} color={colors.accentDark} /> : null}
@@ -1108,18 +1112,39 @@ export function HeaderClearPill({
 }
 
 export function HeaderPill<T extends string>({
-  value, options, onSelect, testID,
+  value, options, onSelect, testID, menu = false,
 }: {
   value: T;
   options: SelectOption<T>[];
   onSelect: (v: T) => void;
   testID?: string;
+  /**
+   * Alt sayfa yerine hapın altından açılan KOMPAKT menü.
+   *
+   * Kural: liste kısa ve iş bir SEÇİMSE menü, uzun ve iş bir GÖREVSE alt
+   * sayfa. Kişi ve akış süzgeçleri dört-altı satır — menü. Ay seçici ise yıl
+   * okları ve 12 aylık ızgarayla bir gezinme işi; menüye sığmaz, sığdırılsa
+   * okunmaz. Bu yüzden bu bayrak her hapta açılmıyor.
+   */
+  menu?: boolean;
 }) {
   const [open, setOpen] = React.useState(false);
+  const [menuAcik, setMenuAcik] = React.useState(false);
+  const [tutamak, setTutamak] = React.useState<MenuTutamak | null>(null);
+  const hapRef = React.useRef<any>(null);
   const current = options.find((o) => o.value === value);
+
+  const ac = () => {
+    if (!menu) { setOpen(true); return; }
+    hapRef.current?.measureInWindow?.((x: number, y: number, w: number, h: number) => {
+      setTutamak({ x, y, width: w, height: h });
+      setMenuAcik(true);
+    });
+  };
+
   return (
     <>
-      <Pressable style={styles.pill} onPress={() => setOpen(true)} testID={testID}>
+      <Pressable ref={hapRef} style={styles.pill} onPress={ac} testID={testID}>
         {current?.avatarlar?.length ? (
           <AvatarYigin kisiler={current.avatarlar} size={17} />
         ) : current?.avatar ? (
@@ -1134,6 +1159,26 @@ export function HeaderPill<T extends string>({
         <Text style={styles.pillTxt} numberOfLines={1}>{current?.label ?? value}</Text>
         <Ionicons name="chevron-down" size={12} color={colors.onDarkMuted} />
       </Pressable>
+
+      <AnchorMenu visible={menuAcik} tutamak={tutamak} onClose={() => setMenuAcik(false)}
+                  testID={testID ? `${testID}-menu` : undefined}>
+        {options.map((o) => (
+          <MenuSatir
+            key={o.value}
+            label={o.label}
+            secili={o.value === value}
+            icon={o.icon}
+            leading={o.avatarlar?.length ? (
+              <AvatarYigin kisiler={o.avatarlar} size={18} />
+            ) : o.avatar ? (
+              <Avatar name={o.avatar.name} size={18} avatarId={o.avatar.avatarId}
+                      userId={o.avatar.userId} photoVersion={o.avatar.photoVersion} />
+            ) : undefined}
+            onPress={() => { setMenuAcik(false); onSelect(o.value); }}
+            testID={testID ? `${testID}-${o.value || "hepsi"}` : undefined}
+          />
+        ))}
+      </AnchorMenu>
 
       <BottomSheet visible={open} onClose={() => setOpen(false)}>
         {options.map((o, i) => (
