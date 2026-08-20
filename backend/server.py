@@ -7,6 +7,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, EmailStr, Field
 from typing import Iterable, List, Literal, Optional, Dict
 from datetime import datetime, timezone, timedelta, date
+from zoneinfo import ZoneInfo
 from pathlib import Path
 import asyncio
 import base64
@@ -209,6 +210,43 @@ class OCRRequest(BaseModel):
 # ---------- Helpers ----------
 def now_utc() -> datetime:
     return datetime.now(timezone.utc)
+
+
+# Evin saat dilimi ÜLKESİNDEN türüyor; kullanıcıya ayrıca sorulmuyor.
+#
+# Sorulsaydı kurulum ekranına anlamı belirsiz bir soru daha eklenirdi ("neden
+# önemli?") ve cevabı zaten ülkeden çıkarılabiliyor. İki ülke desteklendiği
+# için tablo da iki satır; yeni ülke eklenirse buraya bir satır düşer.
+COUNTRY_TZ = {"DE": "Europe/Berlin", "TR": "Europe/Istanbul"}
+_VARSAYILAN_TZ = "Europe/Berlin"
+
+
+def ev_saat_dilimi(hh: Optional[dict]) -> ZoneInfo:
+    try:
+        return ZoneInfo(COUNTRY_TZ.get((hh or {}).get("country") or "DE", _VARSAYILAN_TZ))
+    except Exception:  # noqa: BLE001 — tzdata yoksa uygulama yine ayağa kalksın
+        return ZoneInfo(_VARSAYILAN_TZ)
+
+
+def ev_bugun(hh: Optional[dict]) -> date:
+    """Bu ev için BUGÜN.
+
+    `now_utc().date()` yanlış cevap veriyordu ve belirtisi geceleri
+    görünüyordu: Almanya yaz saatinde UTC+2, yani yerel saat 01:00'de UTC hâlâ
+    "dün". Ayın 1'inde gece yarısından sonra açan biri Anasayfa'da **geçen
+    ayın** rakamlarını görüyordu; "bu ayın kaçıncı günündeyiz" hesabı da bir
+    gün geride kalıyordu (trend satırı bu sayıya dayanıyor).
+
+    Zaman damgaları (`created_at`) UTC kalmaya devam ediyor — onlar bir AN'ı
+    kaydediyor ve anın saat dilimi yok. Değişen yalnızca "bugün hangi gün,
+    hangi ay" sorusu; o soru evin takvimine ait.
+
+    **Gezen kullanıcı evin takvimini taşımıyor.** Kadir Türkiye'deyken de ev
+    Almanya saatiyle çalışır: ay sınırı ev arkadaşlarının ortak defterine ait,
+    kimin nerede olduğuna değil. Aksi hâlde aynı harcama iki telefonda iki
+    farklı aya düşebilirdi.
+    """
+    return now_utc().astimezone(ev_saat_dilimi(hh)).date()
 
 
 def new_id(prefix: str) -> str:
@@ -1786,7 +1824,7 @@ async def create_expense(body: ExpenseCreate, user=Depends(get_current_user)):
         "merchant": await resolve_merchant(hh["household_id"], body.merchant),
         "notes": body.notes,
         "currency": hh.get("currency", "EUR"),
-        "expense_date": parse_date(body.expense_date) or now_utc().strftime("%Y-%m-%d"),
+        "expense_date": parse_date(body.expense_date) or ev_bugun(hh).isoformat(),
         "created_at": now_utc(),
     }
     await db.expenses.insert_one(doc.copy())
@@ -3059,7 +3097,7 @@ async def _compute_balances(household_id: str, period_id: str) -> dict:
 
 
 async def _ekstre(household_id: str, period_id: str, user_id: str,
-                  members: List[str], member_ids: List[str]) -> dict:
+                  members: List[str], member_ids: List[str], bugun: date) -> dict:
     """Bir kişinin bakiyesinin AY AY dökümü.
 
     Kasa'nın ekstre bloğu ile borç dökümü sayfası **aynı hesaptan** besleniyor;
@@ -3148,7 +3186,7 @@ async def _ekstre(household_id: str, period_id: str, user_id: str,
         for t in TURLER:
             k.pop(t, None)
 
-    bu_ay = month_key(now_utc().date())
+    bu_ay = month_key(bugun)
     return {
         # Değişimi sıfır olan ay hiç görünmüyor: her ay aynı şeyi söyleyen
         # satır listeyi doldurup asıl değişeni gizler.
@@ -3201,10 +3239,10 @@ async def balances(period_id: Optional[str] = None, user=Depends(get_current_use
     # Ekstre: bakiyenin ay ay dökümü. Kapalı dönemde hesaplanmıyor — orada
     # bakiye sıfır ve gösterilecek bir borç yok.
     result["statement"] = (
-        {"months": [], "carried": 0, "current_month": month_key(now_utc().date())}
+        {"months": [], "carried": 0, "current_month": month_key(ev_bugun(hh))}
         if snap else
         await _ekstre(hh["household_id"], period["period_id"], user["user_id"],
-                      participants, hh["member_ids"])
+                      participants, hh["member_ids"], ev_bugun(hh))
     )
     return result
 
@@ -3355,7 +3393,7 @@ async def list_recurring(user=Depends(get_current_user)):
     hh = await get_user_household(user["user_id"])
     if not hh:
         return {"recurring": [], "due": []}
-    today = now_utc().date()
+    today = ev_bugun(hh)
     rows = await db.recurring.find(
         await _visible_recurring(user["user_id"], hh["household_id"]), {"_id": 0}
     ).sort("day_of_month", 1).to_list(200)
@@ -3404,7 +3442,7 @@ async def create_recurring(body: RecurringCreate, user=Depends(get_current_user)
             f"{user['name']} · {doc['name']} · her ayın {doc['day_of_month']}'i",
             "recurring", {"recurring_id": doc["recurring_id"]},
         )
-    return {"recurring": _public_recurring(doc, now_utc().date())}
+    return {"recurring": _public_recurring(doc, ev_bugun(hh))}
 
 
 async def _own_recurring(recurring_id: str, user: dict) -> dict:
@@ -3462,7 +3500,7 @@ async def update_recurring(recurring_id: str, body: RecurringUpdate,
         patch["updated_at"] = now_utc()
         await db.recurring.update_one({"recurring_id": recurring_id}, {"$set": patch})
     updated = await db.recurring.find_one({"recurring_id": recurring_id}, {"_id": 0})
-    return {"recurring": _public_recurring(updated, now_utc().date())}
+    return {"recurring": _public_recurring(updated, ev_bugun(hh))}
 
 
 @api.delete("/recurring/{recurring_id}")
@@ -3537,7 +3575,7 @@ async def confirm_recurring(recurring_id: str, body: RecurringConfirm,
         "merchant": doc.get("merchant"),
         "notes": body.notes if body.notes is not None else doc.get("notes"),
         "currency": hh.get("currency", "EUR"),
-        "expense_date": parse_date(body.expense_date) or now_utc().strftime("%Y-%m-%d"),
+        "expense_date": parse_date(body.expense_date) or ev_bugun(hh).isoformat(),
         "created_at": now_utc(),
         # Hangi şablondan geldiği kayıtta duruyor: "bu kirayı kim ekledi"
         # sorusunun cevabı aylar sonra da bulunabilsin.
@@ -3813,11 +3851,15 @@ async def stats(period_id: Optional[str] = None, user=Depends(get_current_user))
         d = (e.get("expense_date") or "")[:10]
         days_of.append(d or make_aware(e["created_at"]).date().isoformat())
 
-    # Pencerenin sonu UTC "bugün" DEĞİL, bunun ile en yeni harcama tarihinin
-    # büyüğü. expense_date kullanıcının yerel takviminden geliyor: Almanya'da
-    # gece 01:00'de girilen harcama UTC'ye göre yarın tarihli olur ve sabit
-    # UTC penceresi onu grafikten tamamen düşürürdü.
-    last = max([now_utc().date().isoformat()] + days_of)
+    # Pencerenin sonu EVİN bugünü ile en yeni harcama tarihinin büyüğü.
+    #
+    # Buradaki "en yeni harcamayla da karşılaştır" kuralı, saat dilimi hatasına
+    # karşı elle yazılmış bir yamaydı: UTC "bugün" yerel gece yarısından sonra
+    # bir gün geride kalıyor ve o gece girilen harcama grafiğin dışında
+    # kalıyordu. Kök sebep `ev_bugun()` ile kalktı; kural yine de duruyor
+    # çünkü GELECEK tarihli bir fiş (kullanıcı elle ileri tarih girebilir) hâlâ
+    # pencerenin dışına düşerdi.
+    last = max([ev_bugun(hh).isoformat()] + days_of)
     end = date.fromisoformat(last)
     span = [end - timedelta(days=i) for i in range(13, -1, -1)]
     daily_map: Dict[str, float] = {d.isoformat(): 0.0 for d in span}
@@ -4161,7 +4203,7 @@ async def monthly_stats(
     user=Depends(get_current_user),
 ):
     hh = await get_user_household(user["user_id"])
-    today = now_utc().date()
+    today = ev_bugun(hh)
     month = month if (month and len(month) == 7) else month_key(today)
     empty = {
         "month": month, "scope": scope, "total": 0, "expense_count": 0,
@@ -4393,7 +4435,7 @@ async def product_stats(
     hh = await get_user_household(user["user_id"])
     if not hh:
         return {"month": month, "products": []}
-    month = month if (month and len(month) == 7) else month_key(now_utc().date())
+    month = month if (month and len(month) == 7) else month_key(ev_bugun(hh))
     uyeler = await period_participants(
         hh["household_id"],
         (await get_active_period(hh["household_id"]) or {}).get("period_id", ""),
@@ -4746,7 +4788,7 @@ async def price_moves(
     bos = {"month": month, "up": [], "down": [], "threshold": 8}
     if not hh:
         return bos
-    month = month if (month and len(month) == 7) else month_key(now_utc().date())
+    month = month if (month and len(month) == 7) else month_key(ev_bugun(hh))
     onceki = _prev_month(month)
 
     lo, _ = _month_bounds(onceki)
@@ -4851,7 +4893,7 @@ async def merchant_stats(
            "expenses": []}
     if not hh:
         return bos
-    month = month if (month and len(month) == 7) else month_key(now_utc().date())
+    month = month if (month and len(month) == 7) else month_key(ev_bugun(hh))
     uyeler = await period_participants(
         hh["household_id"],
         (await get_active_period(hh["household_id"]) or {}).get("period_id", ""),
@@ -4942,7 +4984,7 @@ async def category_stats(
            "products": [], "merchants": [], "expense_count": 0}
     if not hh:
         return bos
-    month = month if (month and len(month) == 7) else month_key(now_utc().date())
+    month = month if (month and len(month) == 7) else month_key(ev_bugun(hh))
     uyeler = await period_participants(
         hh["household_id"],
         (await get_active_period(hh["household_id"]) or {}).get("period_id", ""),
