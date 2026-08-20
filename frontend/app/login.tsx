@@ -112,7 +112,7 @@ export default function LoginScreen() {
                     style={styles.input}
                     value={name}
                     onChangeText={setName}
-                    placeholder="Örn. Kadir"
+                    placeholder="Adın"
                     placeholderTextColor={colors.inkTertiary}
                     autoCapitalize="words"
                     testID="name-input"

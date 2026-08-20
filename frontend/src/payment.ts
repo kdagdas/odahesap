@@ -97,6 +97,24 @@ export function ibanError(v?: string): string | null {
   return null;
 }
 
+/**
+ * O ülkenin IBAN'ı nasıl görünüyor — yer tutucu için.
+ *
+ * Yer tutucu `"DE00 0000 0000 0000 0000 00"` diye sabit yazılıydı ve bu
+ * Almanya'ya özgü: Türk IBAN'ı 26 karakter, Alman IBAN'ı 22. Türkiye'deki
+ * bir eve yanlış uzunlukta bir örnek göstermek, "IBAN'ım tutmuyor" dedirtir.
+ *
+ * Uzunluk zaten `IBAN_LENGTHS` tablosunda duruyor; örnek ondan üretiliyor,
+ * yani yeni bir ülke eklendiğinde yer tutucu kendiliğinden doğru oluyor.
+ */
+export function ibanOrnek(ulke?: string | null): string {
+  const kod = (ulke || "DE").toUpperCase();
+  const uzunluk = IBAN_LENGTHS[kod];
+  if (!uzunluk) return "IBAN";
+  const sifir = "0".repeat(uzunluk - 2);
+  return (kod + sifir).replace(/(.{4})/g, "$1 ").trim();
+}
+
 export const looksLikeIban = (v?: string) => !!normalizeIban(v) && ibanError(v) === null;
 
 export async function getMyPayment(): Promise<PaymentInfo> {

@@ -12,7 +12,8 @@ import { useAuth } from "@/src/auth";
 import { useHousehold } from "@/src/household";
 import {
   ScreenHeader, Sheet, Chip, MerchantBadge, SplitPicker, splitAll, formatEUR, todayISO,
-  CategoryIcon, AnchorMenu, MenuSatir, type Split, type MenuTutamak,
+  CategoryIcon, AnchorMenu, MenuSatir, useSikMarketler, marketIpucu,
+  type Split, type MenuTutamak,
 } from "@/src/ui";
 import {
   colors, spacing, radius, type as T, overline, fontFamily, CATEGORY_LABEL_TR,
@@ -55,17 +56,12 @@ export default function Manual() {
   const [quantity, setQuantity] = useState("1");
   const [title, setTitle] = useState("");
   const [merchant, setMerchant] = useState<string>("");
-  /** Çipler EVİN KENDİ geçmişinden geliyor, sabit listeden değil.
+  /** Çipler ve yer tutucu EVİN KENDİ geçmişinden, sabit listeden değil.
    *  Burada on bir Alman zinciri yazılıydı ve bu evin en sık gittiği yer
    *  olan "kasap" listede yoktu; listedeki OBI/IKEA ise hiç geçmiyordu.
-   *  Üstelik Alanya'daki ev için REWE diye bir şey yok — sabit liste tek
-   *  ülkeye göre yazılmıştı. Geçmiş, çeviri dosyası olmadan yerelleşiyor. */
-  const [siklar, setSiklar] = useState<string[]>([]);
-  useEffect(() => {
-    apiGet<{ merchants: { name: string }[] }>("/merchants/frequent?limit=6")
-      .then((r) => setSiklar((r.merchants || []).map((m) => m.name)))
-      .catch(() => setSiklar([]));
-  }, []);
+   *  Üstelik sabit liste tek ülkeye göre yazılmıştı — Alanya'daki ev için
+   *  REWE diye bir şey yok. Geçmiş, çeviri dosyası olmadan yerelleşiyor. */
+  const siklar = useSikMarketler(6);
   const [dateInput, setDateInput] = useState(toDDMMYYYY(todayISO()));
   const [category, setCategory] = useState<string>("diger");
   /** Ürünün NE olduğu. Elle girişte de toplanıyor; yoksa bu kayıtlar ürün
@@ -252,7 +248,7 @@ export default function Manual() {
                 style={[styles.input, { flex: 1 }]}
                 value={merchant}
                 onChangeText={setMerchant}
-                placeholder="REWE, EDEKA, elektrik şirketi…"
+                placeholder={marketIpucu(siklar)}
                 placeholderTextColor={colors.inkTertiary}
                 autoCapitalize="characters"
                 testID="manual-merchant-input"

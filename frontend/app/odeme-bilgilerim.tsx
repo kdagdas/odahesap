@@ -12,11 +12,12 @@ import {
   View, Text, StyleSheet, ScrollView, TextInput, Pressable, Share,
 } from "react-native";
 import { useRouter } from "expo-router";
+import { useHousehold } from "@/src/household";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@/src/auth";
 import { ScreenHeader, Sheet, Card, HintCard, useScrollPad } from "@/src/ui";
 import {
-  getMyPayment, setMyPayment, shareText, formatIban, ibanError,
+  getMyPayment, setMyPayment, shareText, formatIban, ibanError, ibanOrnek,
   markPaymentShared, type PaymentInfo,
 } from "@/src/payment";
 import { colors, spacing, radius, type as T, overline, fontFamily } from "@/src/theme";
@@ -25,6 +26,9 @@ export default function OdemeBilgilerim() {
   const router = useRouter();
   const altPay = useScrollPad();
   const { user } = useAuth();
+  /* IBAN örneği evin ÜLKESİNDEN: Türk IBAN'ı 26, Alman IBAN'ı 22
+     karakter. Yanlış uzunlukta bir örnek "IBAN'ım tutmuyor" dedirtir. */
+  const { household } = useHousehold();
   const [iban, setIban] = useState("");
   const [paypal, setPaypal] = useState("");
   const [holder, setHolder] = useState("");
@@ -104,7 +108,7 @@ export default function OdemeBilgilerim() {
                 style={[styles.input, styles.mono]}
                 value={iban}
                 onChangeText={(t) => setIban(formatIban(t))}
-                placeholder="DE00 0000 0000 0000 0000 00"
+                placeholder={ibanOrnek(household?.country)}
                 placeholderTextColor={colors.inkTertiary}
                 autoCapitalize="characters"
                 testID="odeme-iban"

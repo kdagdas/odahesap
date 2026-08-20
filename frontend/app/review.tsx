@@ -20,6 +20,7 @@ import {
   CategoryPicker, CategoryIcon, MerchantBadge, ScreenHeader, formatEUR, formatDateTR,
   todayISO, nextUnit, UnitPicker, HintCard, SplitPicker, splitAll, splitSummary,
   BottomSheet, Divider, type Split,
+  useSikMarketler, marketIpucu,
 } from "@/src/ui";
 import {
   colors, spacing, radius, type as T, overline, fontFamily, CATEGORY_ICONS, CATEGORY_LABEL_TR,
@@ -59,6 +60,9 @@ export default function Review() {
   const { members } = useHousehold();
   const meId = user?.user_id || "";
   /** Acik olan kalem. Tek satir acik kalir: iki kalem birden duzenlenmiyor. */
+  /* Market yer tutucusu evin kendi geçmişinden; sabit "REWE, EDEKA"
+     başka bir ülkedeki evde anlamsız kalıyordu. */
+  const sikMarketler = useSikMarketler(2);
   const [acikSatir, setAcikSatir] = useState<number | null>(null);
 
   // Batch progress (multi-receipt gallery pick)
@@ -427,7 +431,7 @@ export default function Review() {
                   style={styles.metaInput}
                   value={merchant}
                   onChangeText={setMerchant}
-                  placeholder="REWE, EDEKA, ALDI…"
+                  placeholder={marketIpucu(sikMarketler)}
                   placeholderTextColor={colors.onSurfaceTertiary}
                   testID="review-merchant-input"
                 />

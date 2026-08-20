@@ -145,7 +145,7 @@ export default function Onboarding() {
                   style={styles.input}
                   value={name}
                   onChangeText={setName}
-                  placeholder="Örn. Berlin Öğrenci Evi"
+                  placeholder={country === "TR" ? "Örn. Deniz Manzaralı Ev" : "Örn. Şehir Merkezi Evi"}
                   placeholderTextColor={colors.inkTertiary}
                   testID="household-name-input"
                 />

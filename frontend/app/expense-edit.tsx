@@ -15,6 +15,7 @@ import { useHousehold } from "@/src/household";
 import {
   ScreenHeader, Sheet, Card, Divider, Chip, MerchantBadge, CategoryPicker, formatEUR, nextUnit, UnitPicker,
   SplitPicker, splitFromExpense, type Split,
+  useSikMarketler, marketIpucu,
 } from "@/src/ui";
 import {
   colors, spacing, radius, type as T, overline, fontFamily,
@@ -56,6 +57,9 @@ export default function ExpenseEdit() {
   const { user } = useAuth();
   const { members } = useHousehold();
 
+  /* Market yer tutucusu evin kendi geçmişinden; sabit "REWE, EDEKA"
+     başka bir ülkedeki evde anlamsız kalıyordu. */
+  const sikMarketler = useSikMarketler(2);
   const [expense, setExpense] = useState<Expense | null>(null);
   const [rows, setRows] = useState<Row[]>([]);
   const [dateInput, setDateInput] = useState("");
@@ -388,7 +392,7 @@ export default function ExpenseEdit() {
                     style={[styles.input, { flex: 1 }]}
                     value={merchant}
                     onChangeText={setMerchant}
-                    placeholder="REWE, EDEKA…"
+                    placeholder={marketIpucu(sikMarketler)}
                     placeholderTextColor={colors.inkTertiary}
                     autoCapitalize="characters"
                     testID="edit-merchant"

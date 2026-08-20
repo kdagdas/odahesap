@@ -982,6 +982,32 @@ export function useAramaIpucu(uyeAdi?: string | null): string {
 }
 
 /**
+ * Evin en sık gittiği marketler — çipler ve yer tutucular için.
+ *
+ * Üç ekranda market alanının yer tutucusu `"REWE, EDEKA…"` diye sabit
+ * yazılıydı. Türkiye'deki bir evde ikisi de yok; örnek öğretmek yerine
+ * "bu uygulama benim için yazılmamış" diyor.
+ *
+ * Tek kancada duruyor ki üç ekran ayrışmasın — market çipleri de aynı
+ * kaynaktan besleniyor, yani çipler ile yer tutucu hep aynı şeyi söylüyor.
+ */
+export function useSikMarketler(limit = 6): string[] {
+  const [liste, setListe] = React.useState<string[]>([]);
+  React.useEffect(() => {
+    let canli = true;
+    require("./api").apiGet(`/merchants/frequent?limit=${limit}`)
+      .then((r: any) => { if (canli) setListe((r?.merchants || []).map((m: any) => m.name)); })
+      .catch(() => {});
+    return () => { canli = false; };
+  }, [limit]);
+  return liste;
+}
+
+/** Market alanının yer tutucusu. Geçmiş boşsa ülke adı uydurmuyoruz. */
+export const marketIpucu = (marketler: string[]) =>
+  marketler.length ? `${marketler.slice(0, 2).join(", ")}…` : "Market adı";
+
+/**
  * Geri alma şeridi — silinen şeyin son sözü.
  *
  * Diyalog DEĞİL: diyalog kullanıcıyı durdurur ve jestin kazandırdığı hızı
