@@ -1,5 +1,5 @@
 /** Manuel harcama — no photo. Tarih + market + adet destekli. */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   View, Text, StyleSheet, ScrollView, TextInput, Pressable,
   KeyboardAvoidingView, Platform, ActivityIndicator, Keyboard,
@@ -12,7 +12,7 @@ import { useAuth } from "@/src/auth";
 import { useHousehold } from "@/src/household";
 import {
   ScreenHeader, Sheet, Chip, MerchantBadge, SplitPicker, splitAll, formatEUR, todayISO,
-  type Split,
+  CategoryIcon, AnchorMenu, MenuSatir, type Split, type MenuTutamak,
 } from "@/src/ui";
 import {
   colors, spacing, radius, type as T, overline, fontFamily, CATEGORY_LABEL_TR,
@@ -63,6 +63,10 @@ export default function Manual() {
   const [generic, setGeneric] = useState("");
   /** Evin kendi geçmişinden gelen genel ad önerileri. */
   const [oneriler, setOneriler] = useState<string[]>([]);
+  const [katAcik, setKatAcik] = useState(false);
+  const [katTutamak, setKatTutamak] = useState<MenuTutamak | null>(null);
+  const katRef = useRef<any>(null);
+  const [notAcik, setNotAcik] = useState(false);
   /* Başlık yazıldıkça evin geçmişinden genel ad önerisi.
      Ayrı bir uç yazılmadı: `/search` zaten ürünleri genel adıyla döndürüyor
      ve aynı kaynaktan beslenmek iki listenin ayrışmasını imkânsız kılıyor.
@@ -227,7 +231,10 @@ export default function Manual() {
               </View>
             </View>
 
-            <Text style={styles.label}>MARKET / SATICI (OPSİYONEL)</Text>
+            {/* "(OPSİYONEL)" kalktı: yer tutucu zaten örnek veriyor ve
+                zorunlu alanlar kaydetmeye basınca kendini söylüyor. Etiket
+                bir uyarı yeri değil bir ad yeri. */}
+            <Text style={styles.label}>MARKET</Text>
             <View style={styles.merchantRow}>
               <TextInput
                 style={[styles.input, { flex: 1 }]}
@@ -240,40 +247,61 @@ export default function Manual() {
               />
               {merchant ? <MerchantBadge name={merchant} /> : null}
             </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}
+                        style={styles.altSerit} contentContainerStyle={styles.chipRow}>
               {COMMON_MERCHANTS.map((m) => (
                 <Chip key={m} label={m} active={merchant === m} onPress={() => setMerchant(merchant === m ? "" : m)} testID={`manual-merchant-${m}`} />
               ))}
             </ScrollView>
 
-            <Text style={styles.label}>KATEGORİ</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-              {KATEGORILER.map((k) => (
-                <Chip key={k} label={CATEGORY_LABEL_TR[k]} active={category === k}
-                      onPress={() => setCategory(k)} testID={`manual-cat-${k}`} />
-              ))}
-            </ScrollView>
+            {/* KATEGORİ + GENEL AD TEK SATIRDA.
+                Önce dokuz kategori çipi yan yana duruyordu ve altında ayrı
+                bir "BU NE?" alanı vardı — iki etiket, iki blok, ekranın
+                üçte biri. İkisi de aynı soruyu farklı kabalıkta soruyor
+                ("bu kalem ne"), o yüzden aynı satırda.
 
-            {/* GENEL AD — fişteki gibi, kategorinin hemen altında ve küçük.
-                Altındaki öneriler evin KENDİ geçmişinden geliyor (`/search`),
-                yani ayrı bir sözlük tutulmuyor. Amaç yazdırmak değil
-                DOKUNDURMAK: "elektrik faturası"nı yeniden yazmak yerine
-                geçen ayın kelimesine basmak hem hızlı hem de tutarlılığı
-                kendiliğinden üretiyor. Kimseye kategori sorulmuyor, en ucuz
-                yol zaten tutarlı olan yol. */}
-            <Text style={styles.label}>BU NE? (OPSİYONEL)</Text>
-            <TextInput
-              style={styles.input}
-              value={generic}
-              onChangeText={setGeneric}
-              placeholder="süt, sucuk, elektrik faturası…"
-              placeholderTextColor={colors.inkTertiary}
-              autoCapitalize="none"
-              testID="manual-generic-input"
-            />
+                Dokuz seçenek KOMPAKT MENÜ: kural yazılı — kısa liste ve iş
+                bir seçimse menü. Çip şeridi seçileni göstermiyordu bile,
+                yatayda kayıp gidiyordu. */}
+            <View style={styles.kategoriSatir}>
+              <Pressable ref={katRef} style={styles.katHap}
+                         onPress={() => katRef.current?.measureInWindow?.(
+                           (x: number, y: number, w: number, h: number) => {
+                             setKatTutamak({ x, y, width: w, height: h });
+                             setKatAcik(true);
+                           })}
+                         testID="manual-cat">
+                <CategoryIcon category={category} size={22} />
+                <Text style={styles.katTxt}>{CATEGORY_LABEL_TR[category]}</Text>
+                <Ionicons name="chevron-down" size={13} color={colors.inkTertiary} />
+              </Pressable>
+              <Text style={styles.katAyrac}>·</Text>
+              <TextInput
+                style={styles.genelInput}
+                value={generic}
+                onChangeText={setGeneric}
+                placeholder="bu ne? (süt, sucuk…)"
+                placeholderTextColor={colors.inkTertiary}
+                autoCapitalize="none"
+                testID="manual-generic-input"
+              />
+            </View>
+            <AnchorMenu visible={katAcik} tutamak={katTutamak}
+                        onClose={() => setKatAcik(false)} testID="manual-cat-menu">
+              {KATEGORILER.map((k) => (
+                <MenuSatir key={k} label={CATEGORY_LABEL_TR[k]} secili={category === k}
+                           leading={<CategoryIcon category={k} size={22} />}
+                           onPress={() => { setCategory(k); setKatAcik(false); }}
+                           testID={`manual-cat-${k}`} />
+              ))}
+            </AnchorMenu>
+
+            {/* Öneriler evin KENDİ geçmişinden (`/search`) — ayrı sözlük yok.
+                Amaç yazdırmak değil DOKUNDURMAK: en ucuz yol zaten tutarlı
+                olan yol olunca kimseye "tutarlı ol" demeye gerek kalmıyor. */}
             {oneriler.length > 0 && (
               <ScrollView horizontal showsHorizontalScrollIndicator={false}
-                          contentContainerStyle={styles.chipRow}>
+                          style={styles.altSerit} contentContainerStyle={styles.chipRow}>
                 {oneriler.map((o) => (
                   <Chip key={o} label={o} active={generic.toLowerCase() === o.toLowerCase()}
                         onPress={() => setGeneric(o.toLowerCase())}
@@ -294,7 +322,18 @@ export default function Manual() {
               />
             </View>
 
-            <Text style={styles.label}>NOT (OPSİYONEL)</Text>
+            {/* NOT KATLANDI. Nadiren dolduruluyor ama her açılışta 96
+                piksellik boş bir kutu olarak duruyordu — ekranın en büyük
+                boşluğu, en az kullanılan alandı. */}
+            {!notAcik && !notes ? (
+              <Pressable onPress={() => setNotAcik(true)} hitSlop={8}
+                         style={styles.notEkle} testID="manual-not-ekle">
+                <Ionicons name="add" size={15} color={colors.accentDark} />
+                <Text style={styles.notEkleTxt}>Not ekle</Text>
+              </Pressable>
+            ) : (
+            <>
+            <Text style={styles.label}>NOT</Text>
             <TextInput
               style={[styles.input, styles.notesInput]}
               value={notes}
@@ -304,6 +343,8 @@ export default function Manual() {
               placeholderTextColor={colors.inkTertiary}
               testID="manual-notes-input"
             />
+            </>
+            )}
 
             {error && <Text style={styles.error} testID="manual-error">{error}</Text>}
           </View>
@@ -341,20 +382,48 @@ const styles = StyleSheet.create({
   },
   amountPreview: { ...T.captionSb, color: colors.accentOnDark, marginTop: spacing.xs },
   page: { backgroundColor: colors.bg, flexGrow: 1 },
-  form: { padding: spacing.lg, paddingTop: spacing.sm, gap: spacing.sm, paddingBottom: spacing.xxl },
-  label: { ...overline, marginTop: spacing.md },
+  /* TEK RİTİM.
+     Önce `form` bütün çocuklara 8 piksel boşluk veriyordu, `label` üstüne
+     ayrıca 12 ekliyordu ve çip şeritleriyle seçici kutunun kendi
+     `marginTop`ları vardı. Sonuç: alan araları 8 ile 20 arasında gidip
+     geliyordu ve göz bunu "hizasız" diye okuyordu.
+
+     Kural artık iki sayı: alan grupları arası 16, etiket ile kendi
+     kontrolü arası 4. Aradaki her şey bu ikisinden birini kullanıyor. */
+  form: { padding: spacing.lg, paddingTop: spacing.sm, gap: 0, paddingBottom: spacing.xxl },
+  label: { ...overline, marginTop: spacing.lg, marginBottom: spacing.xs },
   row2: { flexDirection: "row", gap: spacing.md },
+  /* Girdiye AİT olan şerit: gruplar arası değil, grup içi boşluk. */
+  altSerit: { marginTop: spacing.xs },
   input: {
     borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface,
     borderRadius: radius.md, paddingHorizontal: spacing.lg, paddingVertical: spacing.md,
     fontSize: 16, fontFamily: fontFamily.regular, color: colors.ink, minHeight: 52,
   },
   merchantRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  /* Kategori + genel ad tek satır: ikisi de "bu kalem ne" sorusunun cevabı. */
+  kategoriSatir: {
+    marginTop: spacing.lg,
+    flexDirection: "row", alignItems: "center", gap: spacing.sm,
+    borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface,
+    borderRadius: radius.md, paddingHorizontal: spacing.md, minHeight: 52,
+  },
+  katHap: { flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: spacing.md },
+  katTxt: { ...T.body, color: colors.ink },
+  katAyrac: { ...T.body, color: colors.onSurfaceTertiary },
+  genelInput: {
+    flex: 1, ...T.body, color: colors.ink, padding: 0, minWidth: 60,
+  },
+  notEkle: {
+    flexDirection: "row", alignItems: "center", gap: 5, alignSelf: "flex-start",
+    minHeight: 44, marginTop: spacing.sm,
+  },
+  notEkleTxt: { ...T.bodySb, color: colors.accentDark },
   // Seçici bir girdi alanı gibi okunmalı: çevresindeki TextInput'larla aynı
   // kenarlık ve yüzey, ama içindeki satırın kendi dolgusu var.
   splitBox: {
     borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface,
-    borderRadius: radius.md, marginTop: spacing.md, overflow: "hidden",
+    borderRadius: radius.md, marginTop: spacing.lg, overflow: "hidden",
   },
   notesInput: { minHeight: 96, textAlignVertical: "top" },
   chipRow: { gap: spacing.sm, alignItems: "center", paddingRight: spacing.lg, paddingVertical: 2 },
