@@ -5968,6 +5968,17 @@ async def reopen_period(user=Depends(get_current_user)):
 # ---------- Health ----------
 @api.get("/")
 async def root():
+    """Sağlık kontrolü — ve **hangi kodun çalıştığı.**
+
+    `commit` alanı iki kez pahalıya mal olduktan sonra eklendi: "kodu deploy
+    ettim ama davranış değişmedi" durumunda tek bilinmeyen sunucunun hangi
+    sürümde olduğuydu ve dışarıdan sorulamıyordu. Tahmin etmek yerine
+    okunabilir olmalı.
+
+    `RENDER_GIT_COMMIT`'i Render kendisi veriyor; yerelde yok, o yüzden
+    "yerel" yazıyor — yani bu alan aynı zamanda "üretime mi bakıyorum"
+    sorusunu da cevaplıyor.
+    """
     # push_ready surfaces the boot-time check so a broken notification setup is
     # visible from outside instead of only in the logs.
     check = getattr(app.state, "push_check", None) or {}
@@ -5976,6 +5987,8 @@ async def root():
         "ok": True,
         "push_ready": bool(check.get("token")),
         "push_detail": check.get("detail"),
+        "commit": (os.environ.get("RENDER_GIT_COMMIT") or "yerel")[:8],
+        "tazelik_gun": TAZELIK_GUN,
     }
 
 
