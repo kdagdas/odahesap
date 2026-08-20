@@ -1683,7 +1683,17 @@ export function SplitPicker({
    * kullaniyor -- biri kisayol, oteki elle secim. Artik listeye ilk dokunus
    * kisayolu birakip yalnizca o kisiyi seciyor.
    */
-  const kisayolAktif = hepsiSecili || !!tekSecili;
+  /* DİKKAT — burada bir hata yapıldı ve cihazda yakalandı.
+     "Sadece Kemal" varış noktaları eklenirken bu satır `hepsiSecili ||
+     !!tekSecili` olmuştu, yani listeden TEK kişi seçmek de kısayol sayılıyordu.
+     Sonuç: listede ikinci kişiye dokunmak eklemiyor, DEĞİŞTİRİYORDU — iki
+     kişilik bölüşüm tamamen imkânsız hale gelmişti.
+
+     Kısayol yalnızca "tüm ev" ve "sadece ben" hâlleridir; onlardan listeye
+     ilk dokunuş sıfırdan başlar. Tek bir başkası seçiliyken liste NORMAL
+     çalışır (dokunuş ekler/çıkarır). `tekSecili` yalnızca varış noktasının
+     onay işaretini çizmek için kullanılıyor, davranışı belirlemiyor. */
+  const kisayolAktif = hepsiSecili || benSecili;
 
   /**
    * Varis noktasi secimi. `allowExact` kapaliysa (fis kalemi) sayfa kapanir --
