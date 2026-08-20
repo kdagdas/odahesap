@@ -4681,18 +4681,59 @@ def _arama_anahtari(s: str) -> str:
     return " ".join(t.split())
 
 
+BULANIK_ASGARI = 5          # bu uzunluğun altında yazım hatası affedilmiyor
+
+
+def _bir_harf_farki(a: str, b: str) -> bool:
+    """İki kelime **tek** harf düzeltmesiyle birbirine dönüşüyor mu?
+
+    Ekleme, silme, değiştirme — üçü de bir düzeltme sayılıyor. Yer değiştirme
+    ("sucku" → "sucuk") sayılmıyor: o iki konumu birden bozar ve "bir harf"
+    sözünün dışında kalır.
+
+    **İlk harf tutmak zorunda.** Bunu isteyen ölçü değil, mantık: insan
+    aklındaki kelimenin ilk harfini nadiren yanlış yazar, ama ilk harfe izin
+    vermek bulanık eşleşmenin en kötü yanlışlarını açar — "muzlu"/"tuzlu",
+    "kalem"/"balem" gibi. Tek harflik bir kural, bir sürü yanlış eşleşmeyi
+    peşinen eliyor.
+    """
+    if a == b or not a or not b or a[0] != b[0]:
+        return False
+    la, lb = len(a), len(b)
+    if abs(la - lb) > 1:
+        return False
+    if la == lb:                                    # bir harf DEĞİŞMİŞ
+        return sum(1 for x, y in zip(a, b) if x != y) == 1
+    uzun, kisa = (a, b) if la > lb else (b, a)      # bir harf EKSİK / FAZLA
+    i = 0
+    while i < len(kisa) and uzun[i] == kisa[i]:
+        i += 1
+    return uzun[i + 1:] == kisa[i:]
+
+
 def _eslesme_sirasi(anahtar: str, q: str) -> Optional[int]:
     """Sorgu bu anahtarla eşleşiyor mu, ne kadar iyi? Küçük olan daha iyi.
 
-    Üç kademe var ve sırası önemli: "su" yazan biri önce **Su**'yu görmeli,
-    sonra **Su**cuk'u, en sonda Ku**şsu**yu'nu. Baştan eşleşme insanın
-    aklındaki kelimedir; ortadan eşleşme çoğu zaman tesadüftür.
+    Kademeler ve sırası önemli: "su" yazan biri önce **Su**'yu görmeli, sonra
+    **Su**cuk'u, en sonda Ku**şsu**yu'nu. Baştan eşleşme insanın aklındaki
+    kelimedir; ortadan eşleşme çoğu zaman tesadüftür.
 
-    **Bulanık (fuzzy) eşleşme YOK.** Yazım hatasını tolere etmek 400 ürünlük
-    bir listede yanlış satırları da yukarı taşır ve bu projede kural zaten
-    yazılı: *yanlış birleştirmek, birleştirmemekten pahalı.* Kullanıcı bir
-    harf eksik yazdığında hiçbir şey bulamaz ve harfi ekler — yanlış ürünü
-    doğru sanmasından iyidir.
+        0  anahtar baştan başlıyor
+        1  bir kelime baştan başlıyor
+        2  içinde geçiyor
+        4  ham (marka) adıyla eşleşti — bu sırayı ÇAĞIRAN veriyor
+        5  bulanık: tek harf farkı
+
+    3 bilerek boş: ham ad sırası zaten 4'tü ve kaydırmanın kimseye faydası yok.
+
+    **Bulanık eşleşme yalnızca ARAMADA ve yalnızca en sonda.** Gruplama kuralı
+    değişmedi — *yanlış birleştirmek, birleştirmemekten pahalı* hâlâ geçerli;
+    ama arama birleştirmiyor, sıralıyor. Tam eşleşen ne varsa üstte kalıyor ve
+    bulanık olan ancak onların altına düşüyor: kullanıcı yanlış ürünü doğru
+    sanmıyor, sadece bir harf yanlış yazdığında boş ekran görmüyor.
+
+    `BULANIK_ASGARI` harften kısa sorgularda kapalı: "sut"/"tuz"/"un" gibi
+    kelimelerde tek harf farkı, kelimenin kendisi kadar büyük bir fark demek.
     """
     if not q:
         return None
@@ -4702,6 +4743,11 @@ def _eslesme_sirasi(anahtar: str, q: str) -> Optional[int]:
         return 1
     if q in anahtar:
         return 2
+    if len(q) >= BULANIK_ASGARI and (
+        _bir_harf_farki(anahtar, q)
+        or any(_bir_harf_farki(w, q) for w in anahtar.split())
+    ):
+        return 5
     return None
 
 
@@ -4709,6 +4755,58 @@ def _ay_araligi(exps: List[dict]) -> tuple:
     """Bu kayıtların ilk ve son ayı — `("2026-03", "2026-08")`."""
     aylar = sorted({(_expense_day(e) or "")[:7] for e in exps if _expense_day(e)})
     return (aylar[0], aylar[-1]) if aylar else (None, None)
+
+
+@api.get("/merchants/frequent")
+async def frequent_merchants(limit: int = 6, user=Depends(get_current_user)):
+    """Bu evin EN ÇOK ALIŞVERİŞ ETTİĞİ marketler — bütün geçmişte.
+
+    ### Neden var
+
+    Elle giriş ekranında on bir Alman zinciri sabit yazılıydı: REWE, EDEKA,
+    ALDI… Liste kimsenin verisinden gelmiyordu, bir tahmindi. Bu evin gerçek
+    kayıtlarında en çok geçen isimlerden biri **kasap** — sabit listede yok;
+    listedeki OBI, IKEA, BAUHAUS ise hiç geçmiyor. Yani şerit, faydası olan
+    ismi gizleyip faydasız olanı gösteriyordu.
+
+    İkinci ve daha sert sebep: sabit liste **ülkeye bağlı.** Alanya'daki ev
+    için REWE ve PENNY diye bir şey yok. Uygulama iki ülkede çalışıyor, çipler
+    tek ülkeye göre yazılmış durumdaydı. Evin kendi geçmişi hem doğru hem de
+    kendiliğinden yerelleşiyor — çeviri dosyası gerektirmiyor.
+
+    ### Sayım FİŞ sayısı, kalem sayısı değil
+
+    "Kez" bu projede alışveriş sayısı demek (`_urunler` ile aynı kural). Tek
+    fişte otuz kalem olması REWE'yi otuz kat sık yapmaz.
+
+    ### Görünürlük
+
+    `_visible_filter` yine tek geçit: başkasının kişisel harcamasının markası
+    da bir iddiadır ve kullanıcı onu Harcamalar'da doğrulayamaz. Ürün
+    fiyatından farkı bu — fiyat bir olgu, "Ahmet kasaba gitti" bir kayıt.
+    """
+    hh = await get_user_household(user["user_id"])
+    if not hh:
+        return {"merchants": []}
+    sayim: Dict[str, int] = {}
+    adlar: Dict[str, str] = {}
+    async for e in db.expenses.find(
+        {"household_id": hh["household_id"], **_visible_filter(user["user_id"])},
+        {"_id": 0, "merchant": 1},
+    ):
+        ad = (e.get("merchant") or "").strip()
+        if not ad or ad.casefold() in ("diger", "diğer"):
+            continue
+        k = normalize_merchant(ad) or ad.casefold()
+        sayim[k] = sayim.get(k, 0) + 1
+        adlar.setdefault(k, ad)
+    sirali = sorted(sayim.items(), key=lambda kv: (-kv[1], adlar[kv[0]]))
+    return {
+        "merchants": [
+            {"key": k, "name": adlar[k], "count": n}
+            for k, n in sirali[:max(1, min(limit, 12))]
+        ]
+    }
 
 
 @api.get("/search")
@@ -4777,8 +4875,14 @@ async def search(q: str = "", user=Depends(get_current_user)):
             # geride (4) çünkü genel adla eşleşen her zaman daha iyi bir
             # cevaptır — "süt" arayan önce Süt'ü görmeli.
             for ham in ham_adlar.get(u["key"], ()):
-                if _eslesme_sirasi(_arama_anahtari(ham), anahtar) is not None:
-                    sira = 4
+                hs = _eslesme_sirasi(_arama_anahtari(ham), anahtar)
+                if hs is None:
+                    continue
+                # Ham adda TAM eşleşme 4, bulanık eşleşme 5 kalıyor: markayı
+                # doğru yazan, ürün adını yanlış yazandan önce gelmeli.
+                hs = 5 if hs == 5 else 4
+                sira = hs if sira is None else min(sira, hs)
+                if sira == 4:
                     break
         if sira is None:
             continue

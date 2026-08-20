@@ -32,10 +32,12 @@ type Urun = {
   key: string; name: string; total: number; count: number;
   market_count: number; qty?: number | null; unit?: string | null;
   first_month?: string | null; last_month?: string | null;
+  sira?: number;
 };
 type Market = {
   key: string; name: string; total: number; receipts: number;
   first_month?: string | null; last_month?: string | null;
+  sira?: number;
 };
 type Kisi = { user_id: string; name: string };
 type Sonuc = { products: Urun[]; merchants: Market[]; members: Kisi[] };
@@ -108,6 +110,15 @@ export default function Arama() {
   const bosSonuc = !!sonuc && !yukleniyor
     && sonuc.products.length === 0 && sonuc.merchants.length === 0
     && sonuc.members.length === 0 && ekranlar.length === 0;
+
+  /* Sunucu bir harflik yazım hatasını affediyor ama bunu SESSİZCE yapmıyor.
+     Tam eşleşen tek bir sonuç bile varsa uyarı yok — üstteki satır zaten
+     aradığı şey. Uyarı yalnızca ekrandaki HER ŞEY yaklaşıksa çıkıyor:
+     o zaman kullanıcının gördüğü liste, yazdığı kelimenin listesi değil ve
+     bunu söylememek onu yanlış ürünü doğru sanmaya bırakır. */
+  const yaklasik = !!sonuc
+    && (sonuc.products.length > 0 || sonuc.merchants.length > 0)
+    && [...sonuc.products, ...sonuc.merchants].every((x) => x.sira === 5);
 
   const uye = (id: string) => members.find((m) => m.user_id === id);
 
@@ -196,6 +207,15 @@ export default function Arama() {
               </View>
             ) : (
               <View style={{ gap: metrics.cardGap }}>
+                {yaklasik && (
+                  <View style={styles.yaklasik}>
+                    <Ionicons name="information-circle-outline" size={15}
+                              color={colors.inkTertiary} />
+                    <Text style={styles.yaklasikTxt}>
+                      “{q.trim()}” tam olarak bulunamadı; yakın sonuçlar.
+                    </Text>
+                  </View>
+                )}
                 {/* ÜRÜNLER — ekranın asıl kazancı. Alt satır zaman aralığını
                     taşıyor; bunu başka hiçbir ekran veremiyor. */}
                 {!!sonuc?.products.length && (
@@ -346,5 +366,10 @@ const styles = StyleSheet.create({
     width: 72, height: 72, borderRadius: 36, borderWidth: 1, borderColor: colors.border,
     backgroundColor: colors.surface, alignItems: "center", justifyContent: "center",
   },
+  yaklasik: {
+    flexDirection: "row", alignItems: "center", gap: spacing.sm,
+    paddingHorizontal: spacing.xs,
+  },
+  yaklasikTxt: { ...T.caption, color: colors.inkTertiary, flex: 1 },
   bosTxt: { ...T.body, color: colors.inkSecondary, textAlign: "center" },
 });

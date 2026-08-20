@@ -149,6 +149,29 @@ r = c.get(f"{API}/search", headers=hdr(bob), params={"q": "mantar"}).json()
 check("Bob kendi mantarini goruyor", len(r["products"]) == 1, str(r["products"]))
 
 print()
+print("== SIK MARKETLER: elle giris cipleri evin kendi gecmisinden ==")
+# Ciplerde on bir Alman zinciri sabit yaziliydi; bu uc, listeyi evin GERCEK
+# kayitlarindan uretiyor. Iki sey kanitlanmali: (1) sayim FIS sayisi,
+# (2) gorunmeyen harcamanin marketi de gorunmuyor.
+r = c.get(f"{API}/merchants/frequent", headers=hdr(alice)).json()
+ml = r["merchants"]
+check("liste bos degil", len(ml) >= 2, str(ml))
+check("en sik market ilk sirada", ml[0]["count"] >= ml[-1]["count"], str(ml))
+kaufland = next((m for m in ml if "kaufland" in m["key"]), None)
+check("KAUFLAND ile 'Kaufland GmbH' tek satir", kaufland is not None, str(ml))
+check("sayim FIS sayisi (2)", kaufland and kaufland["count"] == 2, str(kaufland))
+check("REWE de listede", any("rewe" in m["key"] for m in ml), str(ml))
+check("Bob'un KISISEL marketi Alice'te YOK",
+      not any("gizli" in m["key"] for m in ml), str(ml))
+
+r = c.get(f"{API}/merchants/frequent", headers=hdr(bob)).json()
+check("Bob kendi kisisel marketini goruyor",
+      any("gizli" in m["key"] for m in r["merchants"]), str(r["merchants"]))
+
+r = c.get(f"{API}/merchants/frequent", headers=hdr(alice), params={"limit": 1}).json()
+check("limit uygulaniyor", len(r["merchants"]) == 1, str(r["merchants"]))
+
+print()
 print("== evsiz kullanici ==")
 carol, _ = reg("carol")
 r = c.get(f"{API}/search", headers=hdr(carol), params={"q": "sut"}).json()
@@ -250,6 +273,64 @@ check("hepsi diger ise diger kaliyor",
       str(r["products"]))
 c.post(f"{API}/households/leave", headers=hdr(kat_tok))
 c.post(f"{API}/auth/logout", headers=hdr(kat_tok))
+
+print("== bulanik eslesme: bir harf tolerans ==")
+# Kural yalnizca ARAMADA gecerli ve en son sirada. Once saf birim testi:
+# eslesme fonksiyonu, sunucu ayakta olmadan da dogru davranmali.
+import os  # noqa: E402
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "backend"))
+try:
+    import server  # noqa: PLC0415
+except Exception as e:  # noqa: BLE001
+    check("server modulu yuklendi", False, str(e))
+else:
+    bhf = server._bir_harf_farki
+    check("harf DEGISMIS", bhf("domates", "domanes"))
+    check("harf EKSIK", bhf("domates", "domtes"))
+    check("harf FAZLA", bhf("domates", "domaates"))
+    check("iki harf farki reddedildi", not bhf("domates", "domnes"))
+    check("ilk harf tutmuyorsa reddedildi", not bhf("muzlu", "tuzlu"))
+    check("yer degistirme bir harf sayilmiyor", not bhf("sucuk", "sucku"))
+    check("ayni kelime bulanik degil", not bhf("domates", "domates"))
+    check("bos kelime reddedildi", not bhf("", "domates"))
+
+    sr = server._eslesme_sirasi
+    check("bastan eslesme hala 0", sr("domates 1 kg", "domates") == 0)
+    check("kelime basi hala 1", sr("kirmizi domates", "domates") == 1)
+    check("icinde gecme hala 2", sr("domatesli makarna", "omatesl") == 2)
+    check("bulanik en son sirada (5)", sr("domates", "domtes") == 5)
+    check("kelime icinde bulanik da 5", sr("kirmizi domates", "domtes") == 5)
+    check(f"{server.BULANIK_ASGARI} harflik sorguda bulanik ACIK",
+          sr("sucuk", "sutuk") == 5)
+    check("3 harflik sorguda bulanik KAPALI",
+          sr("tuz", "tur") is None, "kisa sorgular affedilmemeli")
+    check("4 harflik sorguda bulanik KAPALI",
+          sr("elma", "elna") is None, "kisa sorgular affedilmemeli")
+    check("bulanik olmayan alakasiz kelime hala None", sr("domates", "salatal") is None)
+
+# Ucundan uca: gercek veriyle, yanlis yazilan sorgu urunu buluyor mu ve
+# TAM eslesen hala once mi geliyor?
+bul_tok, bul_id = reg("bulanik")
+c.post(f"{API}/households", headers=hdr(bul_tok), json={"name": f"Bul Ev {TAG}"})
+fis(bul_tok, "REWE", "2026-08-10",
+    [{"name": "TOMATEN RISPE", "price": 2.5, "quantity": 1, "generic": "domates"},
+     {"name": "DOMATES SALCASI", "price": 1.8, "quantity": 1, "generic": "salca"}], 4.3)
+
+r = c.get(f"{API}/search", headers=hdr(bul_tok), params={"q": "domtes"}).json()
+adlar = [p["name"].casefold() for p in r["products"]]
+check("yanlis yazilan sorgu urunu buluyor", "domates" in adlar, str(adlar))
+
+r = c.get(f"{API}/search", headers=hdr(bul_tok), params={"q": "domates"}).json()
+check("tam eslesme bulanigin ustunde",
+      r["products"] and r["products"][0]["name"].casefold() == "domates",
+      str(r["products"]))
+check("tam eslesmenin sirasi bulanik degil",
+      r["products"][0]["sira"] < 5, str(r["products"][0].get("sira")))
+
+r = c.get(f"{API}/search", headers=hdr(bul_tok), params={"q": "zztop"}).json()
+check("alakasiz sorgu hala bos donuyor", not r["products"], str(r["products"]))
+c.post(f"{API}/households/leave", headers=hdr(bul_tok))
+c.post(f"{API}/auth/logout", headers=hdr(bul_tok))
 
 print("== temizlik ==")
 for t in (alice, bob, carol):

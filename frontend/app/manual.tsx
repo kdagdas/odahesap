@@ -38,7 +38,6 @@ const KATEGORILER = [
   "meyve_sebze", "et_balik", "sut_urunleri", "firin", "temel_gida",
   "icecek", "atistirmalik", "ev_urunleri", "diger",
 ] as const;
-const COMMON_MERCHANTS = ["REWE", "EDEKA", "ALDI", "LIDL", "PENNY", "KAUFLAND", "DM", "ROSSMANN", "BAUHAUS", "OBI", "IKEA"];
 
 const toDDMMYYYY = (iso: string) => { const [y, m, d] = iso.split("-"); return `${d}.${m}.${y}`; };
 const fromDDMMYYYY = (s: string): string | null => {
@@ -56,6 +55,17 @@ export default function Manual() {
   const [quantity, setQuantity] = useState("1");
   const [title, setTitle] = useState("");
   const [merchant, setMerchant] = useState<string>("");
+  /** Çipler EVİN KENDİ geçmişinden geliyor, sabit listeden değil.
+   *  Burada on bir Alman zinciri yazılıydı ve bu evin en sık gittiği yer
+   *  olan "kasap" listede yoktu; listedeki OBI/IKEA ise hiç geçmiyordu.
+   *  Üstelik Alanya'daki ev için REWE diye bir şey yok — sabit liste tek
+   *  ülkeye göre yazılmıştı. Geçmiş, çeviri dosyası olmadan yerelleşiyor. */
+  const [siklar, setSiklar] = useState<string[]>([]);
+  useEffect(() => {
+    apiGet<{ merchants: { name: string }[] }>("/merchants/frequent?limit=6")
+      .then((r) => setSiklar((r.merchants || []).map((m) => m.name)))
+      .catch(() => setSiklar([]));
+  }, []);
   const [dateInput, setDateInput] = useState(toDDMMYYYY(todayISO()));
   const [category, setCategory] = useState<string>("diger");
   /** Ürünün NE olduğu. Elle girişte de toplanıyor; yoksa bu kayıtlar ürün
@@ -249,12 +259,19 @@ export default function Manual() {
               />
               {merchant ? <MerchantBadge name={merchant} /> : null}
             </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}
-                        style={styles.altSerit} contentContainerStyle={styles.chipRow}>
-              {COMMON_MERCHANTS.map((m) => (
-                <Chip key={m} label={m} active={merchant === m} onPress={() => setMerchant(merchant === m ? "" : m)} testID={`manual-merchant-${m}`} />
-              ))}
-            </ScrollView>
+            {/* Geçmiş boşsa şerit HİÇ çizilmiyor. Yeni bir eve tahmin
+                göstermektense boş bırakmak doğru: yanlış çip, yazmaktan
+                daha yavaş — insan önce okuyor, sonra yine yazıyor. */}
+            {siklar.length > 0 && (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}
+                          style={styles.altSerit} contentContainerStyle={styles.chipRow}>
+                {siklar.map((m) => (
+                  <Chip key={m} label={m} active={merchant === m}
+                        onPress={() => setMerchant(merchant === m ? "" : m)}
+                        testID={`manual-merchant-${m}`} />
+                ))}
+              </ScrollView>
+            )}
 
             {/* KATEGORİ + GENEL AD TEK SATIRDA.
                 Önce dokuz kategori çipi yan yana duruyordu ve altında ayrı
