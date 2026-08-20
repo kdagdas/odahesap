@@ -108,10 +108,11 @@ print("== FIYAT degisimden ONCE gelir ==")
 # Ayni market, ayni paketli urun, iki ay: %30 zam. Ayni anda toplam da
 # degisiyor, yani iki aday birden var; fiyat kazanmali.
 fy = yeni_ev("fiyat")
+BUGUN = bugun.isoformat()          # TAZE olmali: pencere 7 gun
 fis(fy, f"{gecen_ay}-05", "REWE",
     [{"name": "KAHVE 500G", "price": 5.0, "quantity": 1, "unit": "paket",
       "category": "temel_gida"}], 5.0)
-fis(fy, f"{bu_ay}-05", "REWE",
+fis(fy, BUGUN, "REWE",
     [{"name": "KAHVE 500G", "price": 6.5, "quantity": 1, "unit": "paket",
       "category": "temel_gida"},
      {"name": "DANA KUSBASI", "price": 200.0, "quantity": 1, "category": "et_balik"}], 206.5)
@@ -119,6 +120,64 @@ h = one(fy)
 check("tur zam", h and h["kind"] == "zam", str(h))
 check("urun adi kahve", h and "kahve" in (h.get("name") or "").lower(), str(h))
 check("yuzde ~30", h and 25 <= h.get("pct", 0) <= 35, str(h))
+check("kiyas ayi cumleye gidiyor", h and h.get("prev_month") == gecen_ay, str(h))
+check("etki (para) geliyor", h and isinstance(h.get("impact"), (int, float)), str(h))
+
+print()
+print("== COKLU SATIR: fiyat ve degisim ayni anda ==")
+# Iki aday da var; eskiden fiyat kazanip degisim HIC gorunmuyordu.
+r = c.get(f"{API}/stats/highlight", headers=hdr(fy)).json()
+hs = r.get("highlights") or []
+check("highlights listesi geliyor", isinstance(hs, list) and len(hs) >= 2, str(hs))
+check("ilk satir fiyat", hs and hs[0]["kind"] == "zam", str(hs[:1]))
+check("degisim de listede", any(x["kind"] == "degisim" for x in hs), str([x["kind"] for x in hs]))
+check("en fazla uc satir", len(hs) <= 3, str(len(hs)))
+check("tekil `highlight` hala ilk satir (eski APK'lar)",
+      (r.get("highlight") or {}).get("kind") == hs[0]["kind"], str(r.get("highlight")))
+
+print()
+print("== TAZELIK: 7 gunden eski alis MANSETTE yok ==")
+if bugun.day >= 12:
+    ta = yeni_ev("taze")
+    eski_gun = (bugun - timedelta(days=11)).isoformat()
+    fis(ta, f"{gecen_ay}-05", "REWE",
+        [{"name": "KAHVE 500G", "price": 5.0, "quantity": 1, "unit": "paket",
+          "category": "temel_gida"}], 5.0)
+    fis(ta, eski_gun, "REWE",
+        [{"name": "KAHVE 500G", "price": 6.5, "quantity": 1, "unit": "paket",
+          "category": "temel_gida"}], 6.5)
+    hs2 = (c.get(f"{API}/stats/highlight", headers=hdr(ta)).json().get("highlights") or [])
+    check("bayat hareket mansete cikmiyor",
+          not any(x["kind"] in ("zam", "ucuz") for x in hs2),
+          str([x["kind"] for x in hs2]))
+    # Ama VERI duruyor: yalnizca manset degisti, hesap degil.
+    pr = c.get(f"{API}/stats/prices", headers=hdr(ta)).json()
+    check("hareket /stats/prices icinde duruyor", len(pr.get("up") or []) == 1, str(pr.get("up")))
+else:
+    check("tazelik testi atlandi (ayin ilk gunleri)", True)
+
+print()
+print("== SIRALAMA PARAYA gore, yuzdeye degil ==")
+# Sogan %50 zamli ama ayda 2 kg -> 0,60 EUR. Kiyma %10 zamli ama 4 kg -> 4,80.
+pa = yeni_ev("para")
+fis(pa, f"{gecen_ay}-05", "REWE",
+    [{"name": "SOGAN", "price": 0.60, "quantity": 2, "unit": "kg", "category": "meyve_sebze"},
+     {"name": "KIYMA", "price": 11.90, "quantity": 4, "unit": "kg", "category": "et_balik"}],
+    2 * 0.60 + 4 * 11.90)
+fis(pa, bugun.isoformat(), "REWE",
+    [{"name": "SOGAN", "price": 0.90, "quantity": 2, "unit": "kg", "category": "meyve_sebze"},
+     {"name": "KIYMA", "price": 13.10, "quantity": 4, "unit": "kg", "category": "et_balik"}],
+    2 * 0.90 + 4 * 13.10)
+pr = c.get(f"{API}/stats/prices", headers=hdr(pa)).json()
+ust = (pr.get("up") or [])
+check("iki hareket de bulundu", len(ust) == 2, str([(x["name"], x["change_pct"]) for x in ust]))
+check("ILK SIRADA kiyma (paraca buyuk)", ust and "kiyma" in ust[0]["name"].lower(),
+      str([(x["name"], x["change_pct"], x["impact"]) for x in ust]))
+check("sogan yuzdece buyuk ama ikinci",
+      len(ust) > 1 and ust[1]["change_pct"] > ust[0]["change_pct"],
+      str([(x["name"], x["change_pct"]) for x in ust]))
+check("kiymanin etkisi ~4,80", ust and abs(ust[0]["impact"] - 4.80) < 0.05, str(ust[0]))
+check("soganin etkisi ~0,60", len(ust) > 1 and abs(ust[1]["impact"] - 0.60) < 0.05, str(ust[1]))
 
 print()
 print("== ODESME her seyin ONUNDE ==")

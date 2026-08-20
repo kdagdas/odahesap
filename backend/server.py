@@ -5176,6 +5176,10 @@ def _medyan(sayilar: List[float]) -> float:
     return s[orta] if n % 2 else (s[orta - 1] + s[orta]) / 2
 
 
+TAZELIK_GUN = 7        # fiyat hareketi manşette bu kadar gün durabilir
+ONE_CIKAN_TAVAN = 3    # dördüncü satırda lacivert alan ekranın yarısını geçiyor
+
+
 @api.get("/stats/highlight")
 async def highlight(user=Depends(get_current_user)):
     """Anasayfa'daki tek cümle — **bu ay dikkat çeken şey.**
@@ -5193,11 +5197,32 @@ async def highlight(user=Depends(get_current_user)):
     Almancaya çevrildiğinde sunucuda Türkçe cümleler kalırdı — bildirim
     gövdelerinde bir kez yaşanan hatanın aynısı.
 
-    ### Öncelik: PARA > FİYAT > ÜRÜN > DEĞİŞİM
+    ### EN FAZLA ÜÇ SATIR — tek satır değil, ama liste de değil
 
-    Aynı gün birden çok aday varsa borç kazanır, çünkü borç bir EYLEM ister;
-    ötekiler bilgi verir. Fiyat ikinci, çünkü kullanıcıyı geri getiren şey
-    grafik değil "kahve %25 zamlanmış" cümlesidir.
+    Önce tek bir aday dönüyordu ve "sıra" mutlaktı: borç varsa fiyat hiç
+    görünmüyordu. Ev sahibinin itirazı ölçülebilir biçimde doğruydu —
+    ödeşme uyarısı ile fiyat hareketi FARKLI şeyler söylüyor ve biri
+    ötekini susturmamalı. Üç, keyfi değil: dördüncü satırda lacivert alan
+    ekranın yarısını geçiyor ve blok bir "liste" gibi okunmaya başlıyor.
+
+    Sıra hâlâ anlamlı: önce SENDEN BİR ŞEY İSTEYEN (borç bir eylem ister),
+    sonra paraya göre en büyük fiyat hareketi, sonra yalın bilgiler.
+
+    ### FİYAT SATIRINDA YEDİ GÜNLÜK TAZELİK PENCERESİ
+
+    Fiyat karşılaştırması ay bazlı, yani bir hareket ay sonuna kadar aynı
+    kalıyordu: aynı cümle on dokuz gün. Üçüncü günden sonra duvar kâğıdına
+    dönüşür ve okunmaz — tam da "boş kalabilme cesareti" kararının önlemeye
+    çalıştığı şey.
+
+    Pencere evin kendi ritminden: bu evde iki alışveriş arası ortanca 3 gün,
+    ortalama 4,8. Yedi gün, normal bir haftanın mutlaka bir alışveriş
+    içermesi demek (günlerin %82'si). Beş gün haftayı ortasından keser,
+    on gün bir SONRAKİ alışverişin ötesine sarkar — yeniden alışveriş
+    yaptıysan eski kıyas artık en taze şey değildir.
+
+    Pencere kapanınca bilgi kaybolmuyor: hareket `/stats/prices` içinde
+    duruyor, yalnızca manşetten iniyor.
 
     ### BOŞ KALABİLİR ve bu bilerek
 
@@ -5209,10 +5234,11 @@ async def highlight(user=Depends(get_current_user)):
     """
     hh = await get_user_household(user["user_id"])
     if not hh:
-        return {"highlight": None}
+        return {"highlight": None, "highlights": []}
     bugun = ev_bugun(hh)
     ay = month_key(bugun)
     me = user["user_id"]
+    adaylar: List[dict] = []
 
     # ---------- 1. PARA: ödeşilmemiş borç ----------
     #
@@ -5228,28 +5254,40 @@ async def highlight(user=Depends(get_current_user)):
                 ilk = period.get("started_at") or period.get("created_at")
                 gun = (bugun - make_aware(ilk).date()).days if ilk else 0
                 if gun >= 14:
-                    return {"highlight": {
-                        "kind": "odesme", "amount": round(abs(benim), 2), "days": gun}}
+                    adaylar.append({
+                        "kind": "odesme", "amount": round(abs(benim), 2), "days": gun})
     except Exception:  # noqa: BLE001 — cümle uğruna Anasayfa'yı düşürmeyiz
         logger.exception("one cikan: bakiye okunamadi")
 
     # ---------- 2. FİYAT: zam / ucuzlama ----------
     try:
         fh = await _fiyat_hareketleri(hh, ay)
-        aday = (fh.get("up") or [None])[0]
-        ucuz = (fh.get("down") or [None])[0]
+
+        def taze(x: Optional[dict]) -> bool:
+            """Bu hareketi doğuran alış son YEDİ GÜN içinde mi?"""
+            if not x or not x.get("last_day"):
+                return False
+            try:
+                return (bugun - date.fromisoformat(x["last_day"][:10])).days <= TAZELIK_GUN
+            except ValueError:
+                return False
+
+        aday = next((x for x in (fh.get("up") or []) if taze(x)), None)
+        ucuz = next((x for x in (fh.get("down") or []) if taze(x)), None)
         # Zam ucuzlamadan önce gelir: kötü haber eyleme daha yakın. Ama
         # ucuzlama da gösteriliyor — yalnızca zam göstermek insanı sürekli
-        # kötü haberle karşılar (Tur 11'de verilmiş karar).
+        # kötü haberle karşılar (Tur 11'de verilmiş karar). Karşılaştırma
+        # artık PARA üzerinden: yüzde değil, cebe dokunan tutar.
         secilen = aday or ucuz
-        if aday and ucuz and abs(ucuz["change_pct"]) > abs(aday["change_pct"]) * 1.5:
+        if aday and ucuz and abs(ucuz["impact"]) > abs(aday["impact"]) * 1.5:
             secilen = ucuz
         if secilen:
-            return {"highlight": {
+            adaylar.append({
                 "kind": "zam" if secilen["change_pct"] > 0 else "ucuz",
                 "name": secilen["name"], "pct": secilen["change_pct"],
-                "merchant": secilen["merchant"],
-                "now": secilen["now"], "unit": secilen["unit"]}}
+                "merchant": secilen["merchant"], "impact": secilen["impact"],
+                "prev_month": fh.get("prev_month"),
+                "now": secilen["now"], "unit": secilen["unit"]})
     except Exception:  # noqa: BLE001
         logger.exception("one cikan: fiyat okunamadi")
 
@@ -5306,7 +5344,7 @@ async def highlight(user=Depends(get_current_user)):
                           "expensive": pahali_m, "expensive_price": round(ph, 2),
                           "unit": birim, "pct": round(oran)}
         if en_iyi:
-            return {"highlight": en_iyi}
+            adaylar.append(en_iyi)
     except Exception:  # noqa: BLE001
         logger.exception("one cikan: market farki okunamadi")
 
@@ -5318,11 +5356,14 @@ async def highlight(user=Depends(get_current_user)):
         st = await monthly_stats(month=ay, scope="household", user=user)
         oc = st.get("one_cikan")
         if oc:
-            return {"highlight": {"kind": "degisim", **oc}}
+            adaylar.append({"kind": "degisim", **oc})
     except Exception:  # noqa: BLE001
         logger.exception("one cikan: degisim okunamadi")
 
-    return {"highlight": None}
+    # `highlight` (tekil) v48 ve öncesi için duruyor: eski uygulamalar bu
+    # alanı okuyor ve kaldırılsa Anasayfa'ları sessizce boşalırdı.
+    adaylar = adaylar[:ONE_CIKAN_TAVAN]
+    return {"highlight": adaylar[0] if adaylar else None, "highlights": adaylar}
 
 
 async def _fiyat_hareketleri(hh: dict, month: str) -> dict:
@@ -5344,6 +5385,11 @@ async def _fiyat_hareketleri(hh: dict, month: str) -> dict:
     # (market, ürün anahtarı, ambalaj sınıfı) -> ay -> [birim fiyatlar]
     kova: Dict[tuple, Dict[str, List[float]]] = {}
     adlar: Dict[tuple, str] = {}
+    # Bu ayki MİKTAR (fiyat biriminde) ve SON ALIŞ GÜNÜ.
+    # Miktar sıralama için: bir hareketin değeri yüzdesi değil, kaç euro
+    # tuttuğu. Son gün tazelik için: bir ay önceki alış "haber" değil.
+    miktar: Dict[tuple, float] = {}
+    son_gun: Dict[tuple, str] = {}
     for e in rows:
         ham = (e.get("merchant") or "").strip()
         if not ham:
@@ -5374,6 +5420,17 @@ async def _fiyat_hareketleri(hh: dict, month: str) -> dict:
             urun = p.get("generic_key") or p["product_key"]
             k = (market, urun, p["pack_type"], p["price_unit"])
             kova.setdefault(k, {}).setdefault(ay, []).append(p["unit_price"])
+            if ay == month:
+                # `acik`: quantity zaten kg/lt. `paketli`: paket sayısı ×
+                # paket boyu. İkisi de fiyat biriminde toplanıyor.
+                adet = float(it.get("quantity") or 1) or 1.0
+                birimde = (adet * float(p["size_amount"])
+                           if p["pack_type"] == "paketli" and p.get("size_amount")
+                           else adet)
+                miktar[k] = miktar.get(k, 0.0) + birimde
+                g = _expense_day(e) or ""
+                if g > son_gun.get(k, ""):
+                    son_gun[k] = g
             # Ekranda gösterilecek ad: genel ad varsa o, yoksa en kısa ham ad.
             gorunen = p.get("generic") or p["product"]
             onceki_ad = adlar.get(k)
@@ -5396,19 +5453,25 @@ async def _fiyat_hareketleri(hh: dict, month: str) -> dict:
         if abs(fark) < ESIK:
             continue
         market, urun, ambalaj, birim = k
+        # ETKİ = birim fiyattaki fark × bu ay alınan miktar. Yani "bu hareket
+        # bize bu ay kaç euroya mal oldu". Sıralamayı bu yapıyor, yüzde değil:
+        # soğanın %50'si 0,60 €, dana kıymanın %10'u 4,80 €. Yüzde büyük olan
+        # daha çarpıcı görünüyor ama cebe dokunan öteki.
+        etki = round((y - o) * miktar.get(k, 0.0), 2)
         satir = {
             "key": urun, "name": adlar.get(k, urun),
             "merchant": market, "pack_type": ambalaj,
             "unit": birim, "now": round(y, 2), "prev": round(o, 2),
-            "change_pct": fark,
+            "change_pct": fark, "impact": etki, "last_day": son_gun.get(k),
             # Kaç ölçüme dayandığı ekranda gösterilmiyor ama az ölçüme
             # dayanan satır listenin dibine düşsün diye sıralamada var.
             "samples": len(simdi) + len(gecen),
         }
         (yukari if fark > 0 else asagi).append(satir)
 
-    yukari.sort(key=lambda x: -x["change_pct"])
-    asagi.sort(key=lambda x: x["change_pct"])
+    # PARAYA göre sırala; etki eşitse (miktar bilinmiyorsa) yüzdeye düş.
+    yukari.sort(key=lambda x: (-x["impact"], -x["change_pct"]))
+    asagi.sort(key=lambda x: (x["impact"], x["change_pct"]))
     return {"month": month, "prev_month": onceki,
             "up": yukari, "down": asagi, "threshold": ESIK}
 

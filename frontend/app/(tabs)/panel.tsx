@@ -49,7 +49,8 @@ type Stats = {
  */
 type OneCikan =
   | { kind: "odesme"; amount: number; days: number }
-  | { kind: "zam" | "ucuz"; name: string; pct: number; merchant: string; now: number; unit: string }
+  | { kind: "zam" | "ucuz"; name: string; pct: number; merchant: string; now: number;
+      unit: string; impact?: number; prev_month?: string | null }
   | { kind: "market_farki"; name: string; cheap: string; cheap_price: number;
       expensive: string; expensive_price: number; unit: string; pct: number }
   | { kind: "degisim"; diff: number; category: string; cat_diff: number };
@@ -60,7 +61,43 @@ const ONE_CIKAN_IKON: Record<string, any> = {
   zam: "trending-up",
   ucuz: "trending-down",
   market_farki: "swap-horizontal",
-  degisim: "sparkles-outline",
+  // `sparkles` DEĞİL: ışıltı simgesi bugün her arayüzde "yapay zekâ" demek
+  // ve burada üretilen şey bir tahmin değil, bir toplama. Takvim "bu ay"
+  // diyor — cümlenin ilk kelimesiyle aynı şeyi.
+  degisim: "calendar-outline",
+};
+
+/**
+ * Satırın rengi SESİN YÜKSEKLİĞİNE göre değil, SENDEN NE İSTENDİĞİNE göre.
+ *
+ * Önce hepsi yeşildi, yani renk hiçbir şey söylemiyordu. Sürekli yanıp sönen
+ * kırmızı da düşünüldü ve reddedildi: yanıp sönme bir KESİNTİdir, kesinti
+ * ise "şimdi bir şey yap" demektir. "Domates zamlanmış" hiçbir eylem
+ * istemiyor — alınmış domatesi geri alamazsın. En yüksek sesi eylem
+ * gerektirmeyen bilgiye harcarsan, gerçekten acil bir şey çıktığında o ses
+ * çoktan duvar kâğıdı olmuş olur. Ayrıca hiyerarşi ters dönerdi: fiyat,
+ * borçtan daha acil görünürdü.
+ *
+ * Nabız TEK bir yerde: ödeşme satırında, çünkü senden gerçekten bir şey
+ * isteyen tek satır o. O nabız da sonsuz değil — odaklanınca üç kez atıp
+ * duruyor (`PulseDot`), yani "buraya bir kez bak" diyor.
+ */
+const ONE_CIKAN_RENK: Record<string, string> = {
+  odesme: colors.attention,        // amber — senden bir şey bekliyor
+  zam: colors.negativeOnDark,      // para ters yöne gidiyor
+  ucuz: colors.accentOnDark,       // lehine
+  market_farki: colors.onDarkMuted,
+  degisim: colors.onDarkMuted,
+};
+
+/* Kıyas ayının -e hâli. Elle yazıldı çünkü Türkçede ek ünlü uyumuna ve
+   ünsüz yumuşamasına bağlı: "ocağa" ama "ekime", "aralığa" ama "marta".
+   Kural üretmeye çalışmak, on iki kelimeyi yazmaktan uzun ve daha kırılgan. */
+const AY_E_HALI = ["ocağa", "şubata", "marta", "nisana", "mayısa", "hazirana",
+                   "temmuza", "ağustosa", "eylüle", "ekime", "kasıma", "aralığa"];
+const ayaGore = (ym?: string | null) => {
+  const i = ym ? Number(ym.slice(5, 7)) - 1 : -1;
+  return i >= 0 && i < 12 ? `${AY_E_HALI[i]} göre ` : "";
 };
 
 /**
@@ -84,14 +121,25 @@ function oneCikanMetni(o: OneCikan): [string, string, string] {
       const sure = hafta >= 2 ? `${hafta} haftadır` : `${o.days} gündür`;
       return [`${sure} ödeşilmedi · `, `${formatEUR(o.amount)} borcun var`, ""];
     }
+    /* KIYAS AYI cümlede. Önce yoktu ve cümle şimdiki zamanla konuşuyordu:
+       "%51 zamlanmış" — sanki az önce olmuş gibi. Oysa kıyas iki ayın
+       medyanı arasında ve alışveriş günler öncesinde olabilir. Ev sahibi
+       bunu bir fişi düzelttikten sonra fark etti: uygulama düzenlemeye
+       tepki veriyormuş gibi göründü. Yanlış olan sayı değil, TONDU.
+
+       Kuyrukta artık birim fiyat değil ETKİ var: "şimdi 1,49 €/kg" doğru
+       ama karşılığı olmayan bir sayı; "ayda 4,80 € fazla" cebe dokunuyor.
+       Ürün sayfası zaten birim fiyatı gösteriyor. */
     case "zam":
-      return [`${o.name} ${o.merchant.toLocaleUpperCase("tr-TR")}'de `,
+      return [`${o.name} ${o.merchant.toLocaleUpperCase("tr-TR")}'de ${ayaGore(o.prev_month)}`,
               `%${o.pct} zamlanmış`,
-              ` · şimdi ${formatEUR(o.now)}/${o.unit}`];
+              o.impact ? ` · ayda ${formatEUR(Math.abs(o.impact))} fazla`
+                       : ` · şimdi ${formatEUR(o.now)}/${o.unit}`];
     case "ucuz":
-      return [`${o.name} ${o.merchant.toLocaleUpperCase("tr-TR")}'de `,
+      return [`${o.name} ${o.merchant.toLocaleUpperCase("tr-TR")}'de ${ayaGore(o.prev_month)}`,
               `%${Math.abs(o.pct)} ucuzlamış`,
-              ` · şimdi ${formatEUR(o.now)}/${o.unit}`];
+              o.impact ? ` · ayda ${formatEUR(Math.abs(o.impact))} az`
+                       : ` · şimdi ${formatEUR(o.now)}/${o.unit}`];
     case "market_farki":
       return [`${o.name}: `,
               `${o.cheap.toLocaleUpperCase("tr-TR")} ${formatEUR(o.cheap_price)}`,
@@ -124,7 +172,7 @@ export default function Panel() {
   const [totalsPaid, setTotalsPaid] = useState<Record<string, number>>({});
   const [shopping, setShopping] = useState<ShopItem[]>([]);
   const [unread, setUnread] = useState(0);
-  const [oneCikan, setOneCikan] = useState<OneCikan | null>(null);
+  const [oneCikanlar, setOneCikanlar] = useState<OneCikan[]>([]);
   const [due, setDue] = useState<Due[]>([]);
   const [confirming, setConfirming] = useState<Due | null>(null);
   // PulseDot her değiştiğinde yeniden atıyor; ekran odaklandıkça artıyor,
@@ -142,7 +190,7 @@ export default function Panel() {
         apiGet<{ items: ShopItem[] }>("/shopping?scope=household"),
         apiGet<{ unread: number }>("/notifications"),
         apiGet<{ due: Due[] }>("/recurring"),
-        apiGet<{ highlight: OneCikan | null }>("/stats/highlight"),
+        apiGet<{ highlight: OneCikan | null; highlights?: OneCikan[] }>("/stats/highlight"),
         refreshHH(),
       ]);
       setStats(st);
@@ -153,7 +201,10 @@ export default function Panel() {
       setShopping((shop.items || []).filter((i) => !i.done));
       setUnread(ntf.unread || 0);
       setDue(rec.due || []);
-      setOneCikan(hl?.highlight ?? null);
+      /* `highlights` yeni, `highlight` eski uçtan kalma. Sunucu ikisini de
+         gönderiyor; burada da ikisi de okunuyor ki uygulama eski bir
+         sunucuya bakarken satır sessizce kaybolmasın. */
+      setOneCikanlar(hl?.highlights ?? (hl?.highlight ? [hl.highlight] : []));
     } catch (e) { console.log(e); }
     finally { setLoading(false); setRefreshing(false); }
   }, [refreshHH]);
@@ -260,18 +311,38 @@ export default function Panel() {
               Kayda değer bir şey yoksa çizilmiyor. Dolgu metni yazılsaydı
               kullanıcı bir hafta içinde satırın bazen bilgi taşıdığını
               bazen sadece orada durduğunu öğrenir ve bir daha hiç okumazdı. */}
-          {oneCikan && (
-            <Pressable style={styles.oneCikan} hitSlop={6} testID="one-cikan"
-                       onPress={() => router.push(
-                         oneCikan.kind === "odesme" ? "/(tabs)/denge" : "/istatistik")}>
-              <Ionicons name={ONE_CIKAN_IKON[oneCikan.kind]} size={14}
-                        color={colors.accentOnDark} style={{ marginTop: 2 }} />
-              <Text style={styles.oneCikanTxt} numberOfLines={3}>
-                {oneCikanMetni(oneCikan)[0]}
-                <Text style={styles.oneCikanVurgu}>{oneCikanMetni(oneCikan)[1]}</Text>
-                {oneCikanMetni(oneCikan)[2]}
-              </Text>
-            </Pressable>
+          {oneCikanlar.length > 0 && (
+            <View style={styles.oneCikanBlok} testID="one-cikan">
+              {oneCikanlar.map((o, i) => {
+                const [bas, vurgu, kuyruk] = oneCikanMetni(o);
+                return (
+                  <Pressable
+                    key={`${o.kind}-${i}`}
+                    style={[styles.oneCikan, i > 0 && styles.oneCikanAyrac]}
+                    hitSlop={4}
+                    testID={`one-cikan-${o.kind}`}
+                    onPress={() => router.push(
+                      o.kind === "odesme" ? "/(tabs)/denge" : "/istatistik")}
+                  >
+                    {/* Nabız yalnızca ödeşmede — gerekçesi `ONE_CIKAN_RENK`'te. */}
+                    {o.kind === "odesme" ? (
+                      <View style={styles.oneCikanNabiz}>
+                        <PulseDot size={8} color={colors.attention} trigger={focusTick} />
+                      </View>
+                    ) : (
+                      <Ionicons name={ONE_CIKAN_IKON[o.kind]} size={14}
+                                color={ONE_CIKAN_RENK[o.kind] || colors.onDarkMuted}
+                                style={{ marginTop: 2 }} />
+                    )}
+                    <Text style={styles.oneCikanTxt} numberOfLines={3}>
+                      {bas}
+                      <Text style={styles.oneCikanVurgu}>{vurgu}</Text>
+                      {kuyruk}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
           )}
 
           <Pressable style={styles.araKutu} onPress={() => router.push("/arama")}
@@ -562,9 +633,21 @@ const styles = StyleSheet.create({
   /* Trend satırından bir tık daha AŞAĞIDA: ikisi farklı iş yapıyor ("ne
      kadar" ile "neden") ve fazla yakın durunca aynı bloğun iki satırı gibi
      okunuyordu. */
+  /* Blok bir kez boşluk bırakıyor, satırlar arasında değil: her satıra
+     `marginTop` verilseydi üç satır arasındaki mesafe başlıkla arasındaki
+     mesafe kadar olur ve üçü ayrı ayrı bloklar gibi okunurdu. */
+  oneCikanBlok: { marginTop: spacing.lg },
   oneCikan: {
-    flexDirection: "row", alignItems: "flex-start", gap: 6, marginTop: spacing.lg,
+    flexDirection: "row", alignItems: "flex-start", gap: 6,
   },
+  /* İnce ayraç: üç satır aynı bloğa ait ama ayrı cümleler. Ayraç olmadan
+     saran bir satırın nerede bitip ötekinin nerede başladığı belirsizdi. */
+  oneCikanAyrac: {
+    marginTop: spacing.sm, paddingTop: spacing.sm,
+    borderTopWidth: 1, borderTopColor: colors.darkSurface,
+  },
+  /* Nabız noktası ikondan küçük; ikon hizasında dursun diye kendi kabı var. */
+  oneCikanNabiz: { width: 14, alignItems: "center", marginTop: 5 },
   oneCikanTxt: { ...T.caption, color: colors.onDarkMuted, flex: 1, lineHeight: 19 },
   /* Vurgu: beyaz ve yarı kalın. Parlak bir renk gerekmiyor — koyu zeminde
      kontrast tek başına yetiyor ve renk bu uygulamada anlam taşıyor
