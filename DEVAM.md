@@ -569,6 +569,33 @@ birbirine göre konumlanıyorsa **aynı tabandan** ölçüldüklerini doğrulay�
 etiket yüksekliği sabit yazılmaz, `onLayout` ile ölçülür (telefonun yazı
 boyutu ayarı sabit sayıyı yine kaydırır).
 
+## Üç açılma biçimi — hangisi ne zaman
+
+Uygulamada üç ayrı "bir şey açılıyor" mekanizması var ve **üçü de doğru**;
+tehlike sayıları değil, kuralın yazılı olmaması. Yazılı değilse bir sonraki
+ekran havasına göre seçer ve zamanla hepsi birbirine benzemeye başlar.
+
+| Biçim | İşi | Nerede |
+|---|---|---|
+| **`BottomSheet`** | **Görev**: "şunu yap, sonra geri dön." Uzun olabilir, odaklanma ister, iptal edilebilir. | Ödeme akışı, çoklu kişi seçimi, tutar girme, köprü onayı |
+| **Yerinde açılım** (kart) | **Açıklama**: "bu satır neyden oluşuyor?" Bağlamı BOZMAMAK varlık sebebi. | Kasa'nın ekstre satırları, Harcamalar'daki fiş kalemleri |
+| **`AnchorMenu`** | **Seçim**: kısa bir listeden birini seç, dokunulan şeye bağlı. | Fiş kaleminin bölüşümü |
+
+Ayrımın testi tek soru: **kullanıcı buradan bir şeyle mi dönecek (görev), bir
+şey mi öğrenecek (açıklama), yoksa bir seçenek mi işaretleyecek (seçim)?**
+
+- **Kasa'daki yerinde açılımı menüye çevirmeyin.** Onun tasarımı bilerek öyle:
+  açılım kavisin altında, dokunulan satır lacivertte vurgulu kalıyor ve ikisi
+  arasındaki bağ ekranın kendisi. Bir açılır pencere o bağı koparır — yani
+  varlık sebebini siler.
+- **`AnchorMenu` uzarsa yanlış biçimi seçmişsinizdir.** Altı satırı geçiyorsa
+  o bir seçim değil bir görevdir; `BottomSheet`'e taşıyın. Bölüşümde bu sınır
+  "Birkaç kişi…" satırıyla korunuyor.
+- **Gerçek birleştirme fırsatı başka yerde:** başlıktaki süzgeç hapları
+  (`HeaderPill` → ay, kişi, akış) bugün `BottomSheet` kullanıyor ama yaptıkları
+  iş tam olarak SEÇİM. `AnchorMenu`'ye geçmeleri hem doğru biçim olur hem üç
+  ekranda tam sayfa bağlam değişimini kaldırır. Yapılmadı; sıraya alındı.
+
 ## Kolay gözden kaçan tasarım kararları
 
 **Bildirim hataları yutulur.** `notify()` hiçbir zaman istisna fırlatmaz —
