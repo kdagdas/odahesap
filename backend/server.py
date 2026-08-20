@@ -2060,7 +2060,42 @@ async def _get_editable_expense(expense_id: str, user: dict) -> dict:
 # Kimin payını değiştiren alanlar. Nottaki bir yazım hatası kimseyi
 # ilgilendirmiyor; telefon her düzeltmede titrerse insanlar bildirimleri
 # kapatır ve asıl önemli olanı da kaçırır.
-MATERIAL_FIELDS = ("total", "target_type", "target_user_id", "split_with")
+def _bildirilecek_paylar(e: dict, uyeler: List[str]) -> Dict[str, float]:
+    """Bu harcamanın kime KAÇ PARA yazdığı — kuruşa yuvarlanmış.
+
+    Kişisel harcama kimsenin payı değil; boş dönüyor.
+    """
+    if e.get("target_type") == "self":
+        return {}
+    return {u: round(v, 2) for u, v in expense_shares(e, uyeler).items() if round(v, 2)}
+
+
+def _para_degisti(before: dict, after: dict, uyeler: List[str]) -> bool:
+    """Bu düzenleme birinin cebine dokundu mu?
+
+    ### Neden ALANLARA değil SONUCA bakıyor
+
+    Önce dört alan karşılaştırılıyordu: `total`, `target_type`,
+    `target_user_id`, `split_with`. Ham alan karşılaştırması bir düzenlemeyi
+    "önemli" sanabiliyor — ve saniyordu:
+
+    Eski kayıtlarda `split_with` alanı **boştu** (`null`), çünkü eşit bölüşme
+    varsayılandı ve yazılmıyordu. Böyle bir fişte tek bir kalemin BİRİMİ
+    düzeltilince (adet -> kg, ödenen tutar aynı) `resolve_split` alanı
+    eşdeğeriyle dolduruyor: `null` -> `{üç kişi, 1.0}`. Ham karşılaştırma
+    bunu "bölüşüm değişti" okuyor ve herkese "Harcama güncellendi · artık
+    27,80 €" gidiyor — oysa toplam da paylar da kuruşu kuruşuna aynı.
+
+    Gerçek veride ölçüldü (`rev_3d3f3faaaece`): toplam 27,80 -> 27,80,
+    paylar 9,27 -> 9,27 -> 9,27. Kimsenin cebine hiçbir şey olmadı.
+
+    Bildirimin verdiği söz "bakiyen değişmiş olabilir". Değişmediyse mesaj
+    gürültüdür ve gürültünün bedeli ağır: insan kanalı bir kez boş bulursa
+    bir daha açmaz. O yüzden ölçü, alanın kendisi değil **sonucu.**
+    """
+    if round(float(before.get("total") or 0), 2) != round(float(after.get("total") or 0), 2):
+        return True
+    return _bildirilecek_paylar(before, uyeler) != _bildirilecek_paylar(after, uyeler)
 
 
 # Fişin üstündeki ticari unvan ekleri. "BIM BIRLESIK MAGAZALAR A.Ş." ile
@@ -2389,16 +2424,15 @@ async def _record_revision(before: dict, patch: dict, user: dict, action: str) -
 
 async def _notify_expense_change(before: dict, patch: dict, user: dict, action: str) -> None:
     """Tutarı ya da kime ait olduğunu değiştiren düzenlemeyi ilgililere duyur."""
-    if action == "edit" and not any(
-        k in patch and patch[k] != before.get(k) for k in MATERIAL_FIELDS
-    ):
-        return
-
     hh = await db.households.find_one({"household_id": before["household_id"]}, {"_id": 0})
     if not hh:
         return
 
     after = {**before, **patch}
+    # Kararı ALANLAR değil SONUÇ veriyor — gerekçesi `_para_degisti`'de.
+    if action == "edit" and not _para_degisti(before, after, hh["member_ids"]):
+        return
+
     # Kişisel harcama kimseyi ilgilendirmez — ne eski ne yeni hâlinde.
     was = set() if before.get("target_type") == "self" else set(
         expense_shares(before, hh["member_ids"]))

@@ -130,6 +130,48 @@ check("silinen fisin kimligi duruyor", sil["data"].get("expense_id") == exp_id,
       str(sil["data"]))
 
 print()
+print("== PARA DEGISMEDIYSE bildirim YOK ==")
+# Eski kayitlarda `split_with` alani BOS (`null`) -- esit bolusme varsayilandi
+# ve yazilmiyordu. Boyle bir fiste tek bir kalemin birimi duzeltilince
+# (odenen tutar ayni) `resolve_split` alani esdegeriyle dolduruyor ve ham
+# alan karsilastirmasi bunu "bolusum degisti" saniyordu. Kimsenin cebine
+# hicbir sey olmadan bildirim gidiyordu.
+r = c.post(f"{API}/expenses", headers=hdr(alice), json={
+    "target_type": "household", "total": 27.80, "source": "receipt",
+    "merchant": "BIZIM", "expense_date": "2026-08-12",
+    "items": [{"name": "STR.TOMATEN", "price": 1.10, "quantity": 1.0}]})
+sessiz_id = r.json()["expense"]["expense_id"]
+# Sunucunun kaydettigi split_with'i BOSALT -- eski kayitlarin hali bu.
+c.get(f"{API}/notifications", headers=hdr(bob))          # sayaci sifirla
+c.post(f"{API}/notifications/read", headers=hdr(bob))
+onceki = len(c.get(f"{API}/notifications", headers=hdr(bob)).json()["notifications"])
+
+# Yalnizca KALEMI degistir: odenen tutar ayni, birim duzeliyor.
+r = c.patch(f"{API}/expenses/{sessiz_id}", headers=hdr(alice), json={
+    "total": 27.80,
+    "items": [{"name": "STR.TOMATEN", "price": 1.49, "quantity": 0.74, "unit": "kg"}]})
+check("duzenleme kabul edildi", r.status_code == 200, str(r.status_code))
+nb = c.get(f"{API}/notifications", headers=hdr(bob)).json()
+check("paylar aynıyken bildirim GITMEDI", len(nb["notifications"]) == onceki,
+      f'{len(nb["notifications"])} != {onceki}')
+
+# Ama tutar gercekten degisince bildirim SART.
+c.patch(f"{API}/expenses/{sessiz_id}", headers=hdr(alice), json={"total": 40.0})
+nb = c.get(f"{API}/notifications", headers=hdr(bob)).json()
+check("tutar degisince bildirim GELDI", len(nb["notifications"]) == onceki + 1,
+      f'{len(nb["notifications"])} != {onceki + 1}')
+check("cumle yeni tutari tasiyor", "40" in nb["notifications"][0]["body"],
+      nb["notifications"][0]["body"])
+
+# Bolusumden cikarilmak da para hareketidir.
+c.patch(f"{API}/expenses/{sessiz_id}", headers=hdr(alice),
+        json={"target_type": "self"})
+nb = c.get(f"{API}/notifications", headers=hdr(bob)).json()
+check("bolusumden cikarilinca bildirim GELDI", len(nb["notifications"]) == onceki + 2,
+      f'{len(nb["notifications"])} != {onceki + 2}')
+c.delete(f"{API}/expenses/{sessiz_id}", headers=hdr(alice))
+
+print()
 print("== tek bildirim silme ==")
 onceki = len(nb["notifications"])
 hedef = nb["notifications"][0]["notification_id"]
