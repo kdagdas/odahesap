@@ -21,7 +21,13 @@ import {
   CATEGORY_ICONS, CATEGORY_LABEL_TR,
 } from "@/src/theme";
 
-type Row = { name: string; price: string; quantity: string; unit: string; category: string };
+type Row = {
+  name: string; price: string; quantity: string; unit: string; category: string;
+  /** Ürünün NE olduğu — gruplamanın tamamı buna dayanıyor, o yüzden
+   *  düzenlemede de taşınıyor. Taşınmasaydı burada adı düzeltilen bir kalem
+   *  eski genel adıyla kalır ve iki ad sessizce ayrışırdı. */
+  generic?: string | null;
+};
 type Item = { name: string; price: number; quantity?: number; unit?: string; category: string };
 type Expense = {
   expense_id: string; added_by: string; target_type: string; target_user_id?: string;
@@ -95,6 +101,7 @@ export default function ExpenseEdit() {
               quantity: String(it.quantity ?? 1).replace(".", ","),
               unit: it.unit || "adet",
               category: it.category || "diger",
+              generic: (it as any).generic || null,
             }))
           // Older entries saved before item tracking: seed one line from the
           // total so there is something to edit instead of an empty screen.
@@ -121,12 +128,35 @@ export default function ExpenseEdit() {
     }
   }, [expense, members]);
 
+  const [silinen, setSilinen] = useState<{ satir: Row; index: number } | null>(null);
+  const [genelDuzenle, setGenelDuzenle] = useState<number | null>(null);
+  useEffect(() => {
+    if (!silinen) return;
+    const t = setTimeout(() => setSilinen(null), 8000);
+    return () => clearTimeout(t);
+  }, [silinen]);
+
   const rowTotal = (r: Row) => num(r.price) * num(r.quantity, 1);
   const total = useMemo(() => rows.reduce((s, r) => s + rowTotal(r), 0), [rows]);
 
   const updateRow = (i: number, patch: Partial<Row>) =>
     setRows((rs) => rs.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
-  const removeRow = (i: number) => setRows((rs) => rs.filter((_, idx) => idx !== i));
+  /* Silme GERİ ALINABİLİR — fiş inceleme ekranındaki kuralın aynısı.
+     Onay sorulmuyor: silme çoğu zaman bilinçli ve her seferinde "emin misin?"
+     sormak doğru işi cezalandırır. Geri alma yalnızca hata yapana bedel
+     ödetiyor, o da tek dokunuş. Satır ESKİ YERİNE dönüyor. */
+  const removeRow = (i: number) => {
+    const satir = rows[i];
+    setRows((rs) => rs.filter((_, idx) => idx !== i));
+    if (satir) setSilinen({ satir, index: i });
+  };
+
+  const geriAl = () => {
+    if (!silinen) return;
+    const { satir, index } = silinen;
+    setRows((rs) => [...rs.slice(0, index), satir, ...rs.slice(index)]);
+    setSilinen(null);
+  };
   const addRow = () =>
     setRows((rs) => [...rs, { name: "", price: "0,00", quantity: "1", unit: "adet", category: "diger" }]);
 
@@ -160,6 +190,7 @@ export default function ExpenseEdit() {
             quantity: num(r.quantity, 1),
             unit: r.unit,
             category: r.category,
+            generic: (r.generic || "").trim().toLowerCase() || null,
           })),
           total: newTotal,
           expense_date: iso,
@@ -248,10 +279,50 @@ export default function ExpenseEdit() {
                               placeholderTextColor={colors.inkTertiary}
                               testID={`edit-item-${i}-name`}
                             />
-                            <Text style={styles.catLabel}>{CATEGORY_LABEL_TR[r.category]}</Text>
+                            {/* KATEGORİ · GENEL AD — fiş inceleme ekranıyla
+                                birebir aynı. Genel ad ürün gruplamasının
+                                tamamını besliyor; burada görünmezse kayıtlı
+                                bir fişte ürün adını düzelten kişi genel adı
+                                eskisiyle bırakır ve iki ad birbirinden
+                                sessizce ayrışır. */}
+                            <View style={styles.etiketSatir}>
+                              <Text style={styles.catLabel}>{CATEGORY_LABEL_TR[r.category]}</Text>
+                              <Text style={styles.catAyrac}>·</Text>
+                              {genelDuzenle === i ? (
+                                <TextInput
+                                  style={styles.genelInput}
+                                  value={r.generic || ""}
+                                  onChangeText={(t) => updateRow(i, { generic: t || null })}
+                                  onBlur={() => setGenelDuzenle(null)}
+                                  onSubmitEditing={() => setGenelDuzenle(null)}
+                                  placeholder="süt, sucuk…"
+                                  placeholderTextColor={colors.inkTertiary}
+                                  autoCapitalize="none"
+                                  autoFocus
+                                  returnKeyType="done"
+                                  testID={`edit-item-${i}-generic`}
+                                />
+                              ) : (
+                                <Pressable onPress={() => setGenelDuzenle(i)} hitSlop={8}
+                                           testID={`edit-item-${i}-generic-edit`}>
+                                  <Text style={[styles.genelTxt, !r.generic && styles.genelBos]}>
+                                    {r.generic || "genel ad yok"}
+                                  </Text>
+                                </Pressable>
+                              )}
+                            </View>
                           </View>
-                          <Pressable onPress={() => removeRow(i)} hitSlop={8} testID={`edit-item-${i}-delete`}>
-                            <Ionicons name="close-circle" size={22} color={colors.inkTertiary} />
+                          {/* ÇÖP KUTUSU, çarpı değil. `close-circle` "kapat"
+                              diye okunuyordu ve fiş inceleme ekranında tam bu
+                              yüzden kaza oldu. Burada satırlar zaten açık
+                              olduğu için yazılı bir eylem satırı her kaleme
+                              tekrar ederdi; simgeyi DEĞİŞTİRMEK yetiyor —
+                              çöp kutusu ne yaptığını kendi söylüyor. Yanlış
+                              dokunuşun bedelini de geri alma karşılıyor. */}
+                          <Pressable onPress={() => removeRow(i)} hitSlop={10}
+                                     style={styles.silDugme}
+                                     testID={`edit-item-${i}-delete`}>
+                            <Ionicons name="trash-outline" size={17} color={colors.negative} />
                           </Pressable>
                         </View>
                         {/* Etiket satırı sabit yükseklikte: "BİRİM FİYAT" iki
@@ -363,6 +434,18 @@ export default function ExpenseEdit() {
         </Sheet>
         </ScrollView>
 
+        {silinen && (
+          <View style={styles.geriSerit} testID="edit-undo">
+            <Ionicons name="trash-outline" size={16} color={colors.onDarkMuted} />
+            <Text style={styles.geriTxt} numberOfLines={1}>
+              {silinen.satir.name || "Kalem"} silindi
+            </Text>
+            <Pressable onPress={geriAl} hitSlop={10} testID="edit-undo-btn">
+              <Text style={styles.geriBtn}>Geri al</Text>
+            </Pressable>
+          </View>
+        )}
+
         {expense && benimMi && (
           <View style={[styles.footer, { paddingBottom: spacing.lg + insets.bottom }]}>
               <View style={{ flex: 1 }}>
@@ -411,6 +494,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
     fontSize: 15, fontFamily: fontFamily.medium, color: colors.ink, minHeight: 40,
   },
+  geriSerit: {
+    flexDirection: "row", alignItems: "center", gap: spacing.md,
+    backgroundColor: colors.dark, marginHorizontal: spacing.lg,
+    borderRadius: radius.md, paddingHorizontal: spacing.lg, paddingVertical: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  geriTxt: { ...T.caption, color: colors.onDark, flex: 1 },
+  geriBtn: { ...T.bodySb, color: colors.accentOnDark },
+  etiketSatir: { flexDirection: "row", alignItems: "center", gap: 6, minHeight: 20 },
+  catAyrac: { ...T.caption, color: colors.onSurfaceTertiary },
+  genelTxt: { ...T.captionSb, color: colors.inkSecondary },
+  genelBos: { ...T.caption, color: colors.onSurfaceTertiary, fontStyle: "italic" },
+  genelInput: {
+    ...T.captionSb, color: colors.ink, padding: 0, minWidth: 90,
+    borderBottomWidth: 1, borderBottomColor: colors.accent,
+  },
+  /* 44 piksellik dokunma alanı; ikon 17 ama basılacak yer daha geniş. */
+  silDugme: { width: 40, height: 40, alignItems: "center", justifyContent: "center" },
   catLabel: { ...T.caption, color: colors.inkTertiary, marginLeft: 2 },
   itemBody: { flexDirection: "row", gap: spacing.sm, paddingLeft: 52 },
   qtyBox: { width: 74 },

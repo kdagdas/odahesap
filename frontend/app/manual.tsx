@@ -7,16 +7,37 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { apiPost } from "@/src/api";
+import { apiGet, apiPost } from "@/src/api";
 import { useAuth } from "@/src/auth";
 import { useHousehold } from "@/src/household";
 import {
   ScreenHeader, Sheet, Chip, MerchantBadge, SplitPicker, splitAll, formatEUR, todayISO,
   type Split,
 } from "@/src/ui";
-import { colors, spacing, radius, type as T, overline, fontFamily } from "@/src/theme";
+import {
+  colors, spacing, radius, type as T, overline, fontFamily, CATEGORY_LABEL_TR,
+} from "@/src/theme";
 
-const SUGGESTED_TAGS = ["Kira", "Elektrik", "Su", "İnternet", "Isınma", "Tamir", "Temizlik", "Yiyecek", "Ulaşım", "Eğlence", "Diğer"];
+/**
+ * Kategoriler artık FİŞLERLE AYNI liste.
+ *
+ * Burada ayrı bir etiket kümesi vardı (Kira, Elektrik, Su, Yiyecek…) ve
+ * ekranda çalışıyor görünüyordu ama **hiçbir yere ulaşmıyordu:** seçilen
+ * etiket harcamaya yazılıyor, kalemin kategorisi ise kodda sabit `"diger"`
+ * kalıyordu. "Nereye Gitti" halkası kalemin kategorisini okuduğu için elle
+ * girilen her şey, ne seçilirse seçilsin, Diğer diliminde birikiyordu.
+ * Gerçek veride doğrulandı: beş elle harcamanın beşi de etiketliydi, beşinin
+ * de kalem kategorisi `diger`.
+ *
+ * İki listeyi tek listeye indirmek, iki farklı taksonomiyi barıştırmaktan
+ * ucuz: kira ve abonelik gibi tekrar eden şeylerin yeri zaten DÜZENLİ
+ * ÖDEMELER ekranı; elle giriş çoğunlukla gerçek bir alışveriş oluyor
+ * (kasap, market) ve o da bu dokuz kategoriye oturuyor.
+ */
+const KATEGORILER = [
+  "meyve_sebze", "et_balik", "sut_urunleri", "firin", "temel_gida",
+  "icecek", "atistirmalik", "ev_urunleri", "diger",
+] as const;
 const COMMON_MERCHANTS = ["REWE", "EDEKA", "ALDI", "LIDL", "PENNY", "KAUFLAND", "DM", "ROSSMANN", "BAUHAUS", "OBI", "IKEA"];
 
 const toDDMMYYYY = (iso: string) => { const [y, m, d] = iso.split("-"); return `${d}.${m}.${y}`; };
@@ -36,7 +57,28 @@ export default function Manual() {
   const [title, setTitle] = useState("");
   const [merchant, setMerchant] = useState<string>("");
   const [dateInput, setDateInput] = useState(toDDMMYYYY(todayISO()));
-  const [category, setCategory] = useState<string>("Kira");
+  const [category, setCategory] = useState<string>("diger");
+  /** Ürünün NE olduğu. Elle girişte de toplanıyor; yoksa bu kayıtlar ürün
+   *  listelerinde ham adlarıyla tek tek durur. */
+  const [generic, setGeneric] = useState("");
+  /** Evin kendi geçmişinden gelen genel ad önerileri. */
+  const [oneriler, setOneriler] = useState<string[]>([]);
+  /* Başlık yazıldıkça evin geçmişinden genel ad önerisi.
+     Ayrı bir uç yazılmadı: `/search` zaten ürünleri genel adıyla döndürüyor
+     ve aynı kaynaktan beslenmek iki listenin ayrışmasını imkânsız kılıyor.
+     250 ms bekleme, her harfte istek atmamak için. */
+  useEffect(() => {
+    const k = title.trim();
+    if (k.length < 3 || generic) { setOneriler([]); return; }
+    const t = setTimeout(async () => {
+      try {
+        const r = await apiGet<{ products: { name: string }[] }>(
+          `/search?q=${encodeURIComponent(k)}`);
+        setOneriler((r.products || []).slice(0, 4).map((p) => p.name));
+      } catch { setOneriler([]); }
+    }, 250);
+    return () => clearTimeout(t);
+  }, [title, generic]);
   const [notes, setNotes] = useState("");
   const [split, setSplit] = useState<Split>({ mode: "equal", with: {} });
   const [saving, setSaving] = useState(false);
@@ -73,7 +115,13 @@ export default function Manual() {
       await apiPost("/expenses", {
         split_mode: split.mode,
         split_with: split.with,
-        items: [{ name: title.trim(), price: parsedAmount, quantity: parsedQty, category: "diger" }],
+        items: [{
+          name: title.trim(), price: parsedAmount, quantity: parsedQty,
+          // Kategori artık SEÇİLENİ yazıyor. Sabit "diger" olduğu için elle
+          // girilen her şey analizde Diğer'e düşüyordu.
+          category,
+          generic: generic.trim().toLowerCase() || null,
+        }],
         total: totalAmount,
         source: "manual",
         category,
@@ -178,10 +226,39 @@ export default function Manual() {
 
             <Text style={styles.label}>KATEGORİ</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-              {SUGGESTED_TAGS.map((t) => (
-                <Chip key={t} label={t} active={category === t} onPress={() => setCategory(t)} testID={`manual-cat-${t}`} />
+              {KATEGORILER.map((k) => (
+                <Chip key={k} label={CATEGORY_LABEL_TR[k]} active={category === k}
+                      onPress={() => setCategory(k)} testID={`manual-cat-${k}`} />
               ))}
             </ScrollView>
+
+            {/* GENEL AD — fişteki gibi, kategorinin hemen altında ve küçük.
+                Altındaki öneriler evin KENDİ geçmişinden geliyor (`/search`),
+                yani ayrı bir sözlük tutulmuyor. Amaç yazdırmak değil
+                DOKUNDURMAK: "elektrik faturası"nı yeniden yazmak yerine
+                geçen ayın kelimesine basmak hem hızlı hem de tutarlılığı
+                kendiliğinden üretiyor. Kimseye kategori sorulmuyor, en ucuz
+                yol zaten tutarlı olan yol. */}
+            <Text style={styles.label}>BU NE? (OPSİYONEL)</Text>
+            <TextInput
+              style={styles.input}
+              value={generic}
+              onChangeText={setGeneric}
+              placeholder="süt, sucuk, elektrik faturası…"
+              placeholderTextColor={colors.inkTertiary}
+              autoCapitalize="none"
+              testID="manual-generic-input"
+            />
+            {oneriler.length > 0 && (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}
+                          contentContainerStyle={styles.chipRow}>
+                {oneriler.map((o) => (
+                  <Chip key={o} label={o} active={generic.toLowerCase() === o.toLowerCase()}
+                        onPress={() => setGeneric(o.toLowerCase())}
+                        testID={`manual-generic-${o}`} />
+                ))}
+              </ScrollView>
+            )}
 
             <View style={styles.splitBox}>
               <SplitPicker
