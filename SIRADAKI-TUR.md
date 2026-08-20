@@ -1005,6 +1005,32 @@ biriminde harcama yapıp evin birimine yazmak isterse. O güne kadar canlı kur
 kaynağı, önbellek ve "kur eskidi" hata durumu eklemek, olmayan bir soruna
 bakım yükü almaktır.
 
+### DERLEME BEKLEYENLER (v53'e girecek)
+
+Sunucu tarafı düzeltmeler canlıya anında gidiyor; istemci tarafı bir sonraki
+APK'yı bekliyor. Şu an kodda hazır ama v52'de OLMAYAN:
+
+- **"Bu tarih son ödeşmeden önce" uyarısı** — fiş ve elle giriş ekranlarında,
+  tarih alanının altında tek satır. Yalnızca tarih gerçekten eskiyse çıkıyor.
+  `last_settlement` alanı `/households/me`'ye eklendi (sunucu tarafı, canlıda).
+- **Arama yer tutucusundaki örnek kişi** artık kendin değil bir ev arkadaşı
+  (panel ekranıyla aynı kural; arama ekranında atlanmıştı).
+
+**Neden engelleme değil uyarı:** geriye tarihli fiş, oluşturulduğu andaki
+AÇIK döneme yazılıyor, yani borç ekleniyor ve listede çizginin ALTINDA
+görünüyor. Kapanmış ödeşmeye dokunmak "ödeştik" demenin anlamını kaldırırdı.
+Engellemek üç sebeple reddedildi: (1) unutulmuş bir fişi ödeştikten sonra
+girmek normaldir, (2) eski fiş ANALİZ için değerlidir ve ev sahibinin kendi
+istediği kullanımdır, (3) **bir reddetme kendini açıklamak zorundadır** —
+yani engellemek de bir arayüzdür, üstelik daha büyüğü.
+
+Asıl çözüm (kaydederken "bu zaten ödeşildi" seçeneği) yeni bir arayüz ister;
+o gün geldiğinde yapılır.
+
+**Not:** Splitwise ve Tricount'ta bu sorun YOK çünkü dönem kapatma diye bir
+şey yok — ödeşme orada sadece bir ödeme kaydı, bakiye sürekli akıyor. Bu uç
+durum, KaSa'nın onlardan FAZLA bir şey yapmasının bedeli.
+
 ### AÇILIŞ SİHİRBAZI — ülke, para birimi, tema
 
 **Ölçüldü ve kusur ev sahibinin KENDİ evinde:** "Kadir ve Cariyeleri" evinin

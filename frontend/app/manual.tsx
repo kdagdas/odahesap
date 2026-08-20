@@ -14,6 +14,7 @@ import {
   ScreenHeader, Sheet, Chip, MerchantBadge, SplitPicker, splitAll, formatEUR, todayISO,
   CategoryIcon, AnchorMenu, MenuSatir, useSikMarketler, marketIpucu,
   type Split, type MenuTutamak,
+  OdesmeUyarisi,
 } from "@/src/ui";
 import {
   colors, spacing, radius, type as T, overline, fontFamily, CATEGORY_LABEL_TR,
@@ -51,7 +52,7 @@ export default function Manual() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
-  const { members } = useHousehold();
+  const { members, household } = useHousehold();
   const [amount, setAmount] = useState("");
   const [quantity, setQuantity] = useState("1");
   const [title, setTitle] = useState("");
@@ -238,6 +239,12 @@ export default function Manual() {
                 />
               </View>
             </View>
+            {/* Uyarı satırın ALTINDA, tarih alanının içinde değil: iki alanlı
+                satırda alanın altına sıkıştırılan bir cümle ötekini de
+                aşağı itip hizayı bozardı. */}
+            <OdesmeUyarisi tarihISO={fromDDMMYYYY(dateInput)}
+                           sonOdesme={household?.last_settlement}
+                           testID="manual-odesme-uyari" />
 
             {/* "(OPSİYONEL)" kalktı: yer tutucu zaten örnek veriyor ve
                 zorunlu alanlar kaydetmeye basınca kendini söylüyor. Etiket

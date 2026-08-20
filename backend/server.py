@@ -1113,8 +1113,30 @@ async def my_household(user=Depends(get_current_user)):
         ).sort("expense_date", 1).limit(1).to_list(1)
         if ilk and ilk[0].get("expense_date"):
             ilk_ay = ilk[0]["expense_date"][:7]
+        # SON ÖDEŞME TARİHİ — kaydet ekranındaki uyarı için.
+        #
+        # Geriye tarihli bir fiş, oluşturulduğu andaki AÇIK döneme yazılıyor
+        # (`period_id` tarihten değil, o andan geliyor). Yani 1 Ağustos
+        # tarihli bir fişi ödeştikten sonra girersen borç eklenir ve
+        # listede çizginin ALTINDA görünür — doğru davranış, ama sürpriz.
+        #
+        # Sürprizi engellemek değil SÖYLEMEK çözüyor: kaydet ekranında tek
+        # satır uyarı. Engellemek de bir arayüzdür, üstelik daha zoru —
+        # bir reddetme kendini açıklamak zorundadır, ve unutulmuş bir fişi
+        # ödeştikten sonra girmek son derece normal.
+        #
+        # Buraya konuyor çünkü `/households/me` zaten her açılışta yükleniyor;
+        # ayrı bir uç, kaydet ekranına ikinci bir bekleme eklerdi.
+        son_kapali = await db.periods.find(
+            {"household_id": hh["household_id"], "status": "closed",
+             "closed_at": {"$ne": None}},
+            {"_id": 0, "closed_at": 1},
+        ).sort("closed_at", -1).limit(1).to_list(1)
         hh_out = dict(hh)
         hh_out["first_expense_month"] = ilk_ay
+        hh_out["last_settlement"] = (
+            make_aware(son_kapali[0]["closed_at"]).date().isoformat()
+            if son_kapali else None)
         return {
             "household": hh_out,
             "members": members,

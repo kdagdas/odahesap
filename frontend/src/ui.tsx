@@ -1008,6 +1008,40 @@ export const marketIpucu = (marketler: string[]) =>
   marketler.length ? `${marketler.slice(0, 2).join(", ")}…` : "Market adı";
 
 /**
+ * "Bu tarih son ödeşmeden önce" uyarısı — kaydet ekranlarında tek satır.
+ *
+ * Geriye tarihli bir fiş, oluşturulduğu andaki AÇIK döneme yazılıyor
+ * (`period_id` tarihten değil o andan geliyor). Yani ödeştikten sonra
+ * girilen eski tarihli bir fiş borç ekliyor ve Harcamalar listesinde
+ * "buraya kadar ödeşildi" çizgisinin ALTINDA görünüyor. Doğru davranış —
+ * kapanmış bir ödeşmeye dokunmak, "ödeştik" demenin anlamını kaldırırdı —
+ * ama sürpriz.
+ *
+ * ENGELLEMEK yerine SÖYLEMEK seçildi. Üç sebep: unutulmuş bir fişi
+ * ödeştikten sonra girmek normaldir; eski fiş ANALİZ için değerlidir
+ * (fiyat geçmişi, ürün); ve bir reddetme kendini açıklamak zorunda
+ * olduğu için aslında daha büyük bir arayüz ister.
+ *
+ * Uyarı yalnızca gerçekten eskiyse çıkıyor — her kayıtta duran bir uyarı,
+ * üçüncü günden sonra okunmayan bir şeye dönüşür.
+ */
+export function OdesmeUyarisi({
+  tarihISO, sonOdesme, testID,
+}: { tarihISO?: string | null; sonOdesme?: string | null; testID?: string }) {
+  if (!tarihISO || !sonOdesme || tarihISO >= sonOdesme) return null;
+  return (
+    <View style={styles.odesmeUyari} testID={testID}>
+      <Ionicons name="information-circle-outline" size={14} color={colors.warning} />
+      <Text style={styles.odesmeUyariTxt}>
+        Bu tarih son ödeşmeden (
+        {new Date(sonOdesme).toLocaleDateString("tr-TR", { day: "numeric", month: "long" })}
+        ) önce · yine de borç olarak eklenecek
+      </Text>
+    </View>
+  );
+}
+
+/**
  * Geri alma şeridi — silinen şeyin son sözü.
  *
  * Diyalog DEĞİL: diyalog kullanıcıyı durdurur ve jestin kazandırdığı hızı
@@ -2694,6 +2728,13 @@ const styles = StyleSheet.create({
   // Zemin tam genişlikte kalır (kenardan kenara tasarım ögesi), yalnızca
   // içindekiler ortalanır.
   sheetInner: { width: "100%", maxWidth: CONTENT_MAX_WIDTH, alignSelf: "center", flex: 1 },
+  odesmeUyari: {
+    flexDirection: "row", alignItems: "flex-start", gap: 6,
+    backgroundColor: colors.warningSoft, borderRadius: radius.md,
+    paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  odesmeUyariTxt: { ...T.caption, color: colors.warning, flex: 1, lineHeight: 17 },
   geriAlKap: {
     position: "absolute", left: spacing.lg, right: spacing.lg,
     alignItems: "center",

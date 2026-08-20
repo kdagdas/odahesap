@@ -19,6 +19,8 @@ export type Household = {
   first_expense_month?: string | null;
   /** Bir ev = bir para birimi. Karisirsa toplama islemi anlamsizlasir. */
   country?: "DE" | "TR";
+  /** Son kapanan dönemin tarihi — kaydet ekranındaki uyarı bunu okuyor. */
+  last_settlement?: string | null;
   currency?: "EUR" | "TRY";
 };
 export type Period = {

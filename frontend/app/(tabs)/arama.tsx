@@ -21,6 +21,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { apiGet } from "@/src/api";
 import { useHousehold } from "@/src/household";
+import { useAuth } from "@/src/auth";
 import {
   ScreenHeader, Sheet, Card, Row, Divider, Overline, Avatar, IconPill,
   MerchantBadge, Money, useScrollPad, useGeriDon, ayAdi,
@@ -62,9 +63,13 @@ export default function Arama() {
   const router = useRouter();
   const geriDon = useGeriDon();
   const { members } = useHousehold();
+  const { user } = useAuth();
   /* Yer tutucu evin kendi verisinden; sabit "REWE, Kemal" bu evin
      kalıntısıydı ve başka bir evde yabancılık üretiyordu. */
-  const aramaIpucu = useAramaIpucu(members[0]?.name);
+  /* Örnek kişi SEN DEĞİL, bir ev arkadaşı: kendi adını aramak kimsenin
+     aklına gelmez, aranan hep öteki taraftır. Panel ekranıyla aynı kural. */
+  const aramaIpucu = useAramaIpucu(
+    members.find((m) => m.user_id !== user?.user_id)?.name);
   const [q, setQ] = useState("");
   const [sonuc, setSonuc] = useState<Sonuc | null>(null);
   const [yukleniyor, setYukleniyor] = useState(false);

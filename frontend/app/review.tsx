@@ -21,6 +21,7 @@ import {
   todayISO, nextUnit, UnitPicker, HintCard, SplitPicker, splitAll, splitSummary,
   BottomSheet, Divider, type Split,
   useSikMarketler, marketIpucu,
+  OdesmeUyarisi,
 } from "@/src/ui";
 import {
   colors, spacing, radius, type as T, overline, fontFamily, CATEGORY_ICONS, CATEGORY_LABEL_TR,
@@ -57,7 +58,7 @@ export default function Review() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
-  const { members } = useHousehold();
+  const { members, household } = useHousehold();
   const meId = user?.user_id || "";
   /** Acik olan kalem. Tek satir acik kalir: iki kalem birden duzenlenmiyor. */
   /* Market yer tutucusu evin kendi geçmişinden; sabit "REWE, EDEKA"
@@ -454,6 +455,9 @@ export default function Review() {
               />
             </View>
           </View>
+          <OdesmeUyarisi tarihISO={fromDDMMYYYY(dateInput)}
+                         sonOdesme={household?.last_settlement}
+                         testID="review-odesme-uyari" />
 
           {/* TÜMÜNE UYGULA — çerçeveli 64 piksellik kutudan tek satıra indi.
               Ölçüldü: blok 64 piksel, kalem satırı 52; bir kez ayarlanan
