@@ -346,7 +346,17 @@ export default function Review() {
 
   return (
     <View style={styles.root} testID="review-screen">
-      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
+      {/* Android'de KAYDIRMA TELAFİSİ YOK ve bu bilerek.
+          `behavior="height"` pencereyi kendi yeniden ölçüyor; Android zaten
+          `adjustResize` ile aynı işi yapıyor ve kenardan kenara çizimde ikisi
+          üst üste binip alt tarafta boş bir şerit bırakıyordu — ekranın altı
+          Kaydet düğmesinden sonra kocaman boş kalıyordu.
+
+          Telafiye artık ihtiyaç da yok: klavye açılınca Kaydet çubuğu zaten
+          gizleniyor, geriye kalan tek iş odaklanılan alanı görünür tutmak ve
+          onu `ScrollView` kendisi yapıyor. */}
+      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined}
+                            style={{ flex: 1 }}>
         {/* Başlık kaydırma alanının içinde; alttaki Kaydet çubuğu sabit kalıyor. */}
         <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.page}
                     keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>

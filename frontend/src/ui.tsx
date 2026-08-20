@@ -1709,6 +1709,21 @@ export function SplitPicker({
 }) {
   const [open, setOpen] = React.useState(false);
   const [menuAcik, setMenuAcik] = React.useState(false);
+  /**
+   * Kullanıcı LİSTEYE dokundu mu?
+   *
+   * Kısayol ("tüm ev" / "sadece ben") etkinken listeye ilk dokunuş sıfırdan
+   * başlıyor. Ama bu hâlin bitip bitmediğini seçimin KENDİSİNDEN çıkarmak
+   * hataya yol açtı: kendinden başlayan biri `picked=[ben]` yapıyor, bu da
+   * yine "sadece ben" kısayoluna denk düşüyor ve ikinci dokunuş yine
+   * sıfırlıyordu — yani **kendinle başlayarak iki kişi seçmek imkânsızdı.**
+   * Başkasıyla başlayınca çalışıyordu; belirti tam da bu asimetriydi.
+   *
+   * Niyet, seçimin şeklinden tahmin edilemez. Ayrı bir bayrak tutuluyor.
+   */
+  const [elleSecim, setElleSecim] = React.useState(false);
+  /** "Birkaç kişi…" ile açıldı: varış noktaları çizilmiyor, yalnızca liste. */
+  const [sadeceListe, setSadeceListe] = React.useState(false);
   const [tutamak, setTutamak] = React.useState<MenuTutamak | null>(null);
   const tetikRef = React.useRef<any>(null);
   const [mode, setMode] = React.useState<Split["mode"]>(value.mode);
@@ -1733,6 +1748,8 @@ export function SplitPicker({
       )
     );
     setErr(null);
+    setElleSecim(false);
+    setSadeceListe(false);
     if (kompakt && renderTrigger) {
       // Ölçüm PENCEREYE göre: menü bir Modal içinde çiziliyor ve o pencere
       // kök pencereyle aynı geometride (`statusBarTranslucent`).
@@ -1805,7 +1822,7 @@ export function SplitPicker({
      ilk dokunuş sıfırdan başlar. Tek bir başkası seçiliyken liste NORMAL
      çalışır (dokunuş ekler/çıkarır). `tekSecili` yalnızca varış noktasının
      onay işaretini çizmek için kullanılıyor, davranışı belirlemiyor. */
-  const kisayolAktif = hepsiSecili || benSecili;
+  const kisayolAktif = !elleSecim && (hepsiSecili || benSecili);
 
   /**
    * Varis noktasi secimi. `allowExact` kapaliysa (fis kalemi) sayfa kapanir --
@@ -1813,6 +1830,7 @@ export function SplitPicker({
    */
   const hedefSec = (ids: string[]) => {
     setErr(null);
+    setElleSecim(false);
     setPicked(ids);
     if (mode === "equal" && ids.length) {
       setAmounts(Object.fromEntries(members.map((m) => [
@@ -1880,7 +1898,7 @@ export function SplitPicker({
         ))}
         <MenuSatir
           icon="people" label="Birkaç kişi…" chevron
-          onPress={() => { setMenuAcik(false); setOpen(true); }}
+          onPress={() => { setMenuAcik(false); setSadeceListe(true); setElleSecim(true); setOpen(true); }}
           testID={testID ? `${testID}-coklu` : undefined}
         />
       </AnchorMenu>
@@ -1891,6 +1909,14 @@ export function SplitPicker({
               <Text style={styles.splitTotal}>{formatEUR(total)}</Text>
             </View>
 
+            {/* VARIS NOKTALARI yalnizca ilk acilista.
+                "Birkac kisi..." ile gelinmisse cizilmiyor ve sebebi ev
+                sahibinin gozlemi: o satira basan kisi zaten "Tum ev / Sadece
+                Kemal" seceneklerini kompakt menude gordu ve REDDETTI. Ayni
+                secenekleri bir kat asagida tekrar gostermek, verilmis bir
+                karari yeniden sormak olur -- ve dort bes kisilik evde sayfayi
+                iki katina cikarir. */}
+            {!sadeceListe && (<>
             {/* En sik iki durum artik birer VARIS NOKTASI, listeyi degistiren
                 cip degil. Onceden "sadece ben" demek uc dokunustu (ac - cip -
                 Tamam) ve fiste 15 kalem varsa bu 45 dokunus ediyordu.
@@ -1971,6 +1997,7 @@ export function SplitPicker({
                 </React.Fragment>
               );
             })}
+            </>)}
 
             {/* "Hicbiri" bir DURUM degil bir ARAC -- ev sahibi de onu zaten
                 "temizle" diye kullaniyordu. Digerleriyle ayni boyda durmasi
@@ -1979,7 +2006,7 @@ export function SplitPicker({
               {/* "Ya da" kasitli: kisayollarla listenin AYRI oldugunu, denemeden
                   once soyluyor. Bos kutucuklar da ayni seyi gosteriyor ama
                   yazi onu bir kesinlige baglıyor. */}
-              <Text style={overline}>YA DA KİŞİ SEÇ</Text>
+              <Text style={overline}>{sadeceListe ? "KİŞİLER" : "YA DA KİŞİ SEÇ"}</Text>
               {!kisayolAktif && picked.length > 0 && (
                 <Pressable onPress={() => { setErr(null); setPicked([]); }} hitSlop={10}
                            testID={testID ? `${testID}-quick-none` : undefined}>
@@ -2015,6 +2042,7 @@ export function SplitPicker({
                     onPress={() => {
                       // Kisayoldan geliniyorsa liste sifirdan baslar: tek
                       // dokunusla "yalniz bu kisi".
+                      setElleSecim(true);
                       if (kisayolAktif) { setErr(null); setPicked([m.user_id]); return; }
                       toggle(m.user_id);
                     }}
