@@ -1035,14 +1035,92 @@ Sıra:
 
 ## Tur 14 planı — öncelik sırasıyla
 
-1. **Genele açma paketi** — çevrimdışı kuyruk, e-posta doğrulama, şifre
-   sıfırlama, rıza + gizlilik metni. (Karanlık tema Tur 13'te çıktı.)
-2. **Elle giriş sadeleştirmesi.**
-3. **Grup/etkinlik kipi** — giriş ekranının ev/grup diye ikiye bölünmesi.
-   Çoklu ev altyapısı ~%70 hazır; `join_household` içindeki tek satır
-   ("Zaten bir evdesiniz", `server.py:853`) engelliyor.
-4. **Test verisi üreticisi** — 4 kişilik ev, 6 ay.
-5. **Dışa aktarma (CSV/PDF).**
+### 1. ÖDEYEN ile EKLEYEN ayrılıyor — en yüksek getirili madde
+
+Bugün `added_by` iki işi birden yapıyor: kaydı **kim girdi** ve parayı **kim
+ödedi**. İkisi ayrılmadığı için "Kemal 18 € ödedi" diye bir kayıt açmak
+imkânsız. Sonuç eksik özellik değil, **YANLIŞ RAKAM**: ev arkadaşı harcamasını
+bildirdiğinde ya kayıt hiç açılmıyor (onun alacağı kayboluyor) ya da giren
+kişiye yazılıyor (onun ödediği şişiyor). Bölüşme uygulamasının doğru yapmak
+zorunda olduğu tek şeyde hata.
+
+**Bu madde analizi kurtarmıyor, BÖLÜŞMEYİ kurtarıyor** — ve ev sahibinin
+koyduğu sınır da buydu: *"en azından bölüşmeyi doğru yaptığımız sürece."*
+
+Ölçüldü: `added_by` kodda 31 yerde geçiyor ama ÜÇ ayrı anlamda —
+**ödeyen** (para hesabı, ~8-10 yer), **yazar** (izin: "kaydı sadece ekleyen
+düzenleyebilir"), **kişisel harcamanın sahibi**. Ayrılacak olan yalnızca
+birincisi. Geriye dönük uyum bedava: `paid_by or added_by`, veri taşıma YOK.
+
+Arayüz:
+- Fiş/elle giriş/düzenleme ekranlarında **sessiz** bir `Ödeyen · Sen ▾`
+  satırı, market ve tarihin yanında ("bu fiş kimin" sorusu "nasıl
+  bölüşülüyor"dan önce gelir). Kompakt menü — kısa liste + seçim işi.
+  Bölüşme seçicisiyle BİRLEŞTİRİLMİYOR: tek kontrol iki soruya cevap veremez.
+- Listelerde avatar **ödeyene** ait; "ekleyen X" satırı yalnızca ikisi
+  farklıysa yazılıyor. Her satıra yazmak %95'ine hiçbir şey katmaz.
+- Adına kayıt açılan kişiye **her zaman bildirim**: bakiyesi o hiçbir şey
+  yapmadan değişiyor. Onay akışı YOK — özelliğin amacı onun hiçbir şey
+  yapmaması. Serbestçe kaydet, haber ver, düzeltme geçmişi izi tutsun.
+
+**Dikkat:** bakiye kodu uygulamanın en hassas yeri; oradaki bir hata parayı
+yanlış gösterir.
+
+**Sınırı da yazalım:** "başkasının fişini tara" YÜKSEK GÜVENLİ ilişkilerde
+çalışır (çiftler, aileler, yakın arkadaşlar). Düşük samimiyetli bir WG'de
+çalışmaz ve sebebi iletişim değil, **fişin kendisinin mahrem olması** —
+o kâğıtta kişinin eczaneden aldığı da yazıyor. Düşük güven için mekanizma
+başka ve zaten kodda: **alınacaklar listesi bir sözleşmedir.** Ev "süt,
+deterjan" yazdıysa o kalemler kim alırsa alsın eve aittir; `/shopping/match`
+fiş satırlarını listeyle eşleştirir, kimse kimsenin fişini okumaz.
+
+### 2. ÜÇ KİP — ama kullanıcı "kip" diye bir şey GÖRMEYECEK
+
+Uygulamanın içinde iki ayrı ürün var: **bölüşme** (en az iki kişi + ayrı para
+gerektiriyor, ve emtia — Splitwise/Tricount hepsi yapıyor) ve **fiş zekâsı**
+(kalem kalem okuma, genel ad, birim fiyat, fiyat hareketi — bölüşmeden
+tamamen bağımsız çalışıyor ve rakiplerde YOK).
+
+Üç yapılandırma:
+
+| Kip | Bölüşme | Kasa/Denge | Ana ekranın merkezi |
+|---|---|---|---|
+| Ev (WG) | açık | görünür | bölüşme + analiz |
+| Tek kişi / aile | KAPALI | gizli | **analiz** |
+| Grup / etkinlik | açık | görünür | bölüşme, dönem = etkinlik |
+
+Aile kipi kültürel bir zorunluluk: geleneksel bir Türk ailesinde eve alınan
+alınmıştır, kim ne kadar içti diye bakılmaz. O davranış tam olarak
+"bölüşmesi kapalı mod" demek — yani en zor sanılan kültürel uyum, bir anahtar.
+
+**Kullanıcıya kip sorulmayacak.** Kurulumda TEK bir insan sorusu var —
+*"Kimlerle kullanacaksın?"* → ev arkadaşlarımla / eşim ve ailemle / bir
+etkinlik için / yalnız — ve yapılandırma ondan türüyor. Kip bir uygulama
+detayıdır, kullanıcı arayüzü değil. "Özellik menüsü" gibi sunulan bir uygulama
+üç şeyi birden olmaya çalışıp hiçbiri olmaz.
+
+**Bölüşme kapalıyken bedeli var, yazılsın:** büyüme motoru zayıflıyor. Çok
+kişili olmak yayılmayı sağlıyor (bir ev kurulunca 2-3 kişi birden geliyor);
+bölüşmesiz ailede uygulamayı tek kişi kullanır ve kimseyi davet etmez.
+**Erişimi büyütür, yayılmayı yavaşlatır.** Hangisinin daha değerli olduğu
+ancak kullanım verisiyle bilinir.
+
+### 3. Grup kipi KUR DÖNÜŞÜMÜNÜ getiriyor
+
+Daha önce "kur gerekmiyor, tetikleyicisi biri seyahatte başka para biriminde
+harcama yaparsa" diye yazılmıştı. **Grup/etkinlik kipi tam olarak o
+tetikleyici**: yurtdışı tatili. Grup kipi yapılacaksa kur da onunla gelir —
+ayrı bir madde değil, aynı maddenin parçası.
+
+### 4. Kalanlar
+
+- **Genele açma paketi** — çevrimdışı kuyruk, e-posta doğrulama, şifre
+  sıfırlama, rıza + gizlilik metni. (Karanlık tema Tur 13'te çıktı.)
+- **Elle giriş** — sadeleştirme DEĞİL, yalnızca boşluk düzeltmesi. Ölçüldü:
+  49 harcamanın 48'i fiş, 1'i elle. İki ayda bir kez açılan ekrana yeniden
+  tasarım yatırmak, en çok kullanılana yatırmamak demek.
+- **Test verisi üreticisi** — 4 kişilik ev, 6 ay.
+- **Dışa aktarma (CSV/PDF).**
 
 ---
 
