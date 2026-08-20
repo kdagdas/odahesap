@@ -1,4 +1,4 @@
-# Sıradaki tur — Tur 12
+# Sıradaki tur — Tur 14
 
 > Bu dosya yeni bir sohbet penceresine geçerken bağlamı taşımak için yazıldı.
 >
@@ -867,19 +867,94 @@ kullanışlılığı arttı. Ölçüt: *bu kart hangi cümleyi kurmamı sağlıy
 - **Elle giriş ekranı kalabalık** — etiket boşlukları düzensiz, çok soru
   soruyor. Ev sahibi paradoksu doğru koydu: analiz istiyorsak veriyi bir
   yerden almalıyız. Sıkıştırmadan düzeltilebilir mi, ölçülecek.
-- **Aramada bir harflik tolerans** — "sleepy" yazan "SLEPPY"i bulamıyor.
-  Kural gruplama için doğru, arama için fazla katı.
+- ~~Aramada bir harflik tolerans~~ — **Tur 13'te yapıldı.**
 - **Ürün sözlüğü sürekliliği** — yeni fişlerin genel adı geliyor ama
   tutarlılığı ölçülmedi (aynı ürün farklı aylarda farklı genel ad alabilir).
 
 ---
 
-## Tur 13 planı — öncelik sırasıyla
+## Tur 13 — BİTTİ (20 Ağustos 2026, APK v47 · sürüm 1.3.0)
 
-1. **Genele açma paketi** — çevrimdışı kuyruk, karanlık tema, e-posta
-   doğrulama, şifre sıfırlama, rıza + gizlilik metni.
+Beş madde. Üçü ev sahibinin isteği, ikisi ölçüm sonucu.
+
+**1. Tema seçici** (Ayarlar → Görünüm). Üç önizleme kutusu; "Sistem" ikiye
+bölünmüş kare olarak çiziliyor — "duruma göre biri ya da öteki" cümlesini
+kelimesiz kuruyor. Renkler bir sonraki açılışta değişiyor (Yol A).
+
+**Hata ve dersi:** seçim `temaTercihi` sabitinden okunuyordu, o da AÇILIŞTA
+bir kez okunan bir değer. "Koyu" seçip ekrandan çıkıp dönen kullanıcı
+seçimini eski hâlinde buluyordu; kayıt yapılmıştı, **anlatan yoktu.** Ders:
+gecikmeli uygulanan bir ayarda, kaydın kendisi kadar kaydın GÖRÜNÜRLÜĞÜ de
+işin parçası. Artık kayıtlı tercih ayrı okunuyor (`seciliTema`) ve seçim
+ekrandakinden farklıysa not seçimi ADIYLA tekrar ediyor: "Koyu tema
+kaydedildi."
+
+**2. Aramada bir harflik tolerans.** Yalnızca ARAMADA ve en son sırada (5).
+Gruplama kuralı değişmedi — *yanlış birleştirmek, birleştirmemekten pahalı*
+hâlâ geçerli; ama arama birleştirmiyor, **sıralıyor.** Üç sınırlayıcı:
+
+- ilk harf tutmak zorunda ("muzlu"/"tuzlu" gibi eşleşmeler peşinen elenir),
+- `BULANIK_ASGARI` (5) harften kısa sorgularda kapalı — "tuz"da bir harf,
+  kelimenin kendisi kadar büyük bir fark,
+- yer değiştirme ("sucku") bir harf sayılmıyor: iki konumu birden bozar.
+
+Ekrandaki **her şey** yaklaşıksa arama bunu söylüyor. Sessiz düzeltme,
+kullanıcıyı yanlış ürünü doğru sanmaya bırakır.
+
+**3. Elle giriş çipleri evin kendi marketlerinden** (`/merchants/frequent`).
+On bir Alman zinciri sabit yazılıydı. Ölçüldü: bu evin en sık gittiği ikinci
+yer **BIZIM GmbH (6 fiş)** ve sabit listede yoktu; listedeki OBI, IKEA,
+BAUHAUS ise hiç geçmiyordu. Üstelik sabit liste **ülkeye bağlıydı** —
+Alanya'daki ev için REWE diye bir şey yok. Evin kendi geçmişi çeviri dosyası
+olmadan yerelleşiyor.
+
+Sayım FİŞ sayısı (kalem değil), görünürlük yine `_visible_filter`'dan
+geçiyor: fiyat bir olgu ama "Ahmet kasaba gitti" bir kayıttır. Geçmiş boşsa
+şerit hiç çizilmiyor — yanlış çip, yazmaktan yavaş.
+
+**4. Avatarlar: sekiz Ionicon yerine on üç hayvan.** Renk ayırt ediyordu ama
+şekil bir şey anlatmıyordu; "roket olan" diye hatırlanan avatar hatırlanmıyor
+demektir. Hayvan hem renkle ayrışıyor hem siluetle tanınıyor, ve insan
+avatarının açtığı soruyu (ten rengi, cinsiyet, yaş) hiç açmıyor.
+
+**Kimlikler korundu:** yeni sıra eski sıranın RENGİNİ takip ediyor — sarı
+gülen yüz (1) → sarı zeminli inek, mavi roket (3) → mavi kurt, ve devamı.
+Kimse yeniden seçmek zorunda kalmadı. **0 hayvan değil:** hiç seçim
+yapmamış herkesin varsayılanı orası ve üç kişilik yeni bir evde üç aynı
+hayvan olurdu.
+
+Çizim kuralı (18–34 pikselde ayakta kalması için): tek dolgu gövde,
+kontursuz, iri beyaz göz + koyu bebek, ayırt eden tek uzuv. Göz TEK
+bileşende — on üç hayvanın aynı aileye benzemesi buna bağlı.
+
+**5. Logo: tarama vizörü + Poppins Bold.** Dört parçalı halka hiçbir şey
+söylemiyordu, süstü. Dört köşe parantezi öğrenilmiş bir simge (kamera odağı,
+QR okuyucu, belge tarama) ve uygulamanın çekirdek işi fiş taramak — ikon
+artık ne yaptığını söylüyor.
+
+Ölçüldü: normal kalınlıkta parantezler 48 pikselde inceliyor, kalın (56)
+duruyor. Ana ekranda ikon çoğunlukla 48–96 piksel; ölçünün ağırlığı orada,
+192'de değil. Köşe %22 → %17: %12 fazla kare kalıyor ve içerideki yuvarlak
+dirseklerle kavga ediyor. Font `frontend/assets/brand/` altında DEPODA —
+başka makinede üretilemeyen logo, logo değildir.
+
+### Tur 13'ten KALANLAR
+
+- **Elle giriş ekranı kalabalık** (Tur 12'den devrediyor, hâlâ açık).
+- **Ürün sözlüğü sürekliliği** ölçülmedi.
+
+---
+
+## Tur 14 planı — öncelik sırasıyla
+
+1. **Genele açma paketi** — çevrimdışı kuyruk, e-posta doğrulama, şifre
+   sıfırlama, rıza + gizlilik metni. (Karanlık tema Tur 13'te çıktı.)
 2. **Elle giriş sadeleştirmesi.**
-3. **Dışa aktarma (CSV/PDF)** · avatarlar.
+3. **Grup/etkinlik kipi** — giriş ekranının ev/grup diye ikiye bölünmesi.
+   Çoklu ev altyapısı ~%70 hazır; `join_household` içindeki tek satır
+   ("Zaten bir evdesiniz", `server.py:853`) engelliyor.
+4. **Test verisi üreticisi** — 4 kişilik ev, 6 ay.
+5. **Dışa aktarma (CSV/PDF).**
 
 ---
 
@@ -997,7 +1072,7 @@ elle değiştirilmemeli. Debug yavaştır — performans yargısı release'de ve
 ```
 D:\SettleUp\OdaHesap üzerinde çalışıyoruz. Önce şu üç dosyayı oku:
 SIRADAKI-TUR.md, PROJE-DOKUMANI.md, DEVAM.md.
-Tur 10 ve 11 bitti (APK v44 / sürüm 1.2.0). Tur 12'ye başla.
+Tur 10-13 bitti (APK v47 / sürüm 1.3.0). Tur 14'e başla.
 ```
 
 ### Yeni oturumun İLK yapması gerekenler
