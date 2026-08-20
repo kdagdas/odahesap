@@ -157,6 +157,43 @@ else:
     check("tazelik testi atlandi (ayin ilk gunleri)", True)
 
 print()
+print("== ETKI ESIGI: kucuk hareket MANSETE cikmiyor ==")
+# Ev sahibinin itirazi: "domatesi zaten almisim, %51 bilgisinin faydasi ne?"
+# Cevap hareketin ILERIYE donuk degeri -- ve o deger kac para tuttuguyla
+# olculuyor. Esik para birimine degil EVIN KENDI HARCAMASINA bagli (%0,5):
+# "2 EUR" yazmak Turkiye'de "2 TL" demek olurdu.
+es = yeni_ev("esik")
+# Ev harcamasi buyuk olsun ki esik yukselsin: 400 -> esik 2,00
+fis(es, f"{gecen_ay}-05", "REWE",
+    [{"name": "KIRA PAYI", "price": 400.0, "quantity": 1, "category": "diger"},
+     {"name": "DOMATES", "price": 1.00, "quantity": 0.5, "unit": "kg",
+      "category": "meyve_sebze"}], 400.5)
+fis(es, bugun.isoformat(), "REWE",
+    [{"name": "DOMATES", "price": 1.60, "quantity": 0.5, "unit": "kg",
+      "category": "meyve_sebze"}], 0.8)
+pr = c.get(f"{API}/stats/prices", headers=hdr(es)).json()
+ust = pr.get("up") or []
+check("hareket HESAPTA var", len(ust) == 1 and ust[0]["change_pct"] == 60,
+      str([(x["name"], x["change_pct"], x["impact"]) for x in ust]))
+check("etkisi kucuk (0,30)", ust and abs(ust[0]["impact"] - 0.30) < 0.02, str(ust))
+hs = (c.get(f"{API}/stats/highlight", headers=hdr(es)).json().get("highlights") or [])
+check("MANSETTE yok (esigin altinda)",
+      not any(x["kind"] in ("zam", "ucuz") for x in hs), str([x["kind"] for x in hs]))
+
+# Ayni ev, buyuk etkili hareket: esigi asiyor ve mansete cikiyor.
+bs = yeni_ev("buyuketki")
+fis(bs, f"{gecen_ay}-05", "REWE",
+    [{"name": "KIRA PAYI", "price": 400.0, "quantity": 1, "category": "diger"},
+     {"name": "KIYMA", "price": 11.90, "quantity": 4, "unit": "kg", "category": "et_balik"}],
+    400.0 + 4 * 11.90)
+fis(bs, bugun.isoformat(), "REWE",
+    [{"name": "KIYMA", "price": 13.10, "quantity": 4, "unit": "kg", "category": "et_balik"}],
+    4 * 13.10)
+hs = (c.get(f"{API}/stats/highlight", headers=hdr(bs)).json().get("highlights") or [])
+check("buyuk etkili hareket MANSETTE",
+      any(x["kind"] == "zam" for x in hs), str([x["kind"] for x in hs]))
+
+print()
 print("== SIRALAMA PARAYA gore, yuzdeye degil ==")
 # Sogan %50 zamli ama ayda 2 kg -> 0,60 EUR. Kiyma %10 zamli ama 4 kg -> 4,80.
 pa = yeni_ev("para")

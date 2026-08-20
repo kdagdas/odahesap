@@ -5179,6 +5179,33 @@ def _medyan(sayilar: List[float]) -> float:
 TAZELIK_GUN = 10       # fiyat hareketi manşette bu kadar gün durabilir
 ONE_CIKAN_TAVAN = 3    # dördüncü satırda lacivert alan ekranın yarısını geçiyor
 
+# Bir fiyat hareketinin manşete çıkması için gereken en küçük para etkisi —
+# **para birimi cinsinden değil, evin kendi harcamasının oranı olarak.**
+#
+# Neden sabit bir tutar değil: eşiği "2 €" diye yazmak Türkiye'deki bir evde
+# "2 TL" demek olurdu ve orada hiçbir şey ifade etmez. Kuru çevirmek de
+# çözmez — 2 €'nun karşılığı olan ~80 TL, Türkiye'de 2 €'nun Almanya'da
+# taşıdığı ağırlığı taşımıyor. **Kur ile alım gücü aynı şey değil.**
+#
+# Oran ikisini birden çözüyor ve üstelik enflasyonla kendiliğinden
+# güncelleniyor: ev daha çok harcadıkça eşik yükseliyor.
+#
+# %0,5 ölçüyle seçildi: bu evde (aylık ~358 €) 1,79 €'ya, Türkiye'de ayda
+# 30.000 TL harcayan bir evde 150 TL'ye denk geliyor — ev sahibinin "yüz elli
+# liranın altı değerli değil" dediği sayının kendisi.
+ONE_CIKAN_ETKI_ORANI = 0.005
+
+
+async def _ay_ev_toplami(household_id: str, month: str) -> float:
+    """Bir ayın EV harcaması toplamı. Kişisel harcamalar dışarıda."""
+    lo, hi = _month_bounds(month)
+    rows = await db.expenses.find(
+        {"household_id": household_id, "target_type": {"$in": ["household", "custom"]}},
+        {"_id": 0, "total": 1, "expense_date": 1, "created_at": 1},
+    ).to_list(5000)
+    return sum(float(e.get("total") or 0)
+               for e in rows if lo <= (_expense_day(e) or "") < hi)
+
 
 @api.get("/stats/highlight")
 async def highlight(user=Depends(get_current_user)):
@@ -5280,8 +5307,22 @@ async def highlight(user=Depends(get_current_user)):
             except ValueError:
                 return False
 
-        aday = next((x for x in (fh.get("up") or []) if taze(x)), None)
-        ucuz = next((x for x in (fh.get("down") or []) if taze(x)), None)
+        # ETKİ EŞİĞİ. Ev sahibi doğru soruyu sordu: "domatesi zaten almışım,
+        # %51 bilgisinin bana faydası ne?" Cevap, hareketin ileriye dönük
+        # değeri — ama o değer kaç para tuttuğuyla ölçülüyor. Ayda 0,37 €
+        # tutan bir hareket manşet değil; yüzdesi bağırsa bile.
+        #
+        # Payda GEÇEN AY ile BU AYIN büyüğü: ayın 3'ünde bu ayın toplamı
+        # küçüktür ve eşik saçma biçimde düşerdi.
+        taban = max(await _ay_ev_toplami(hh["household_id"], _prev_month(ay)),
+                    await _ay_ev_toplami(hh["household_id"], ay))
+        etki_esigi = taban * ONE_CIKAN_ETKI_ORANI
+
+        def yeterli(x: Optional[dict]) -> bool:
+            return bool(x) and abs(float(x.get("impact") or 0)) >= etki_esigi
+
+        aday = next((x for x in (fh.get("up") or []) if taze(x) and yeterli(x)), None)
+        ucuz = next((x for x in (fh.get("down") or []) if taze(x) and yeterli(x)), None)
         # Zam ucuzlamadan önce gelir: kötü haber eyleme daha yakın. Ama
         # ucuzlama da gösteriliyor — yalnızca zam göstermek insanı sürekli
         # kötü haberle karşılar (Tur 11'de verilmiş karar). Karşılaştırma
@@ -5989,6 +6030,7 @@ async def root():
         "push_detail": check.get("detail"),
         "commit": (os.environ.get("RENDER_GIT_COMMIT") or "yerel")[:8],
         "tazelik_gun": TAZELIK_GUN,
+        "etki_orani": ONE_CIKAN_ETKI_ORANI,
     }
 
 
