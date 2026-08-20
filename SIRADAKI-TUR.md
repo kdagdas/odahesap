@@ -1005,6 +1005,71 @@ biriminde harcama yapıp evin birimine yazmak isterse. O güne kadar canlı kur
 kaynağı, önbellek ve "kur eskidi" hata durumu eklemek, olmayan bir soruna
 bakım yükü almaktır.
 
+### AÇILIŞ SİHİRBAZI — ülke, para birimi, tema
+
+**Ölçüldü ve kusur ev sahibinin KENDİ evinde:** "Kadir ve Cariyeleri" evinin
+`country` ve `currency` alanları **boş** (`None`); ülke alanı eklenmeden önce
+kurulmuş. `country or "DE"` varsayılanına düşüyor ve tesadüfen doğru
+çalışıyor. Alanya evi ise doğru: `TR` / `TRY`, orada ₺ görünüyor.
+
+Yani sorun "Alanya yanlış kurulmuş" değil, **eski evlere hiç sorulmamış
+olması**.
+
+Sihirbaz ne sormalı, **sıkmadan**:
+1. Kimlerle kullanacaksın? (ev arkadaşı / eş-aile / etkinlik / yalnız)
+   → bu tek soru bölüşme kipini de belirliyor, bkz. "ÜÇ KİP"
+2. Ülke → para birimi ve saat dilimi buradan türüyor, ayrıca sorulmuyor
+3. Tema (açık / koyu / sistem)
+
+**Tema için engel var:** renkler açılışta bir kez okunuyor
+(`StyleSheet.create` modül yüklenirken çalışıyor), yani sihirbazda koyu seçen
+kullanıcı uygulamayı kapatıp açana kadar aydınlık görüyor. Canlı tema
+değişimi 22 dosyada ~1.234 satır stilin bileşen içine taşınması demek.
+Ev sahibinin kararı: **canlı tema yapıldığında sihirbaza eklenir.**
+
+**Şehir / posta kodu sorulmalı mı?** Rakipler soruyor. Ev sahibi bunu kendi
+analizi için değerli buluyor ve haklı — ama kural yazılı kalsın: **veri
+toplamanın gerekçesi ürünün kendisi olmalı.** Posta kodu bölge bazlı fiyat
+karşılaştırmasında gerçek bir işe yarar; "belki lazım olur" diye sorulan
+alan kullanıcıyı kurulumda kaybettirir. Hukuki taraf (rıza metni, saklama
+süresi, anonimleştirme) hukukçuyla çalışılacak.
+
+### Marka → genel ad sözlüğü — ucuz yarısı YAPILDI, kalıcısı bekliyor
+
+Ev sahibinin örneği: ev "NUGGR" marka dondurma alıyor, insan aramada
+"dondurma" yazıyor. Ölçüldü:
+
+- Fişten gelen genel ad kapsaması **%94** (206 kalemin 194'ü dolu, 12 boş).
+- Boş kalan 12'nin **hiçbiri ürün değil**: "LEBENSMITTEL div.",
+  "OBST/GEMÜSE Stk div.", "PFAND 0,15 EUR". Model doğru davranıp `null`
+  dönmüş.
+- Kalıcı bir bellek olsaydı bu 12'den **0'ı** kurtarılırdı.
+- 80 genel adın **38'inin birden çok ham adı var** ("muz" ← BANANE
+  BANDEROLE, Banane lose, BANANEN) — model zaten tutarlı.
+
+**Yapıldı (ucuz yarısı):** `/shopping/suggest` evin kendi fişlerinden ham ad
+→ genel ad eşlemesini okuyor; "nuggr" yazan "dondurma"yı buluyor. Yeni tablo
+gerekmedi, veri zaten harcamaların içindeydi. Bu bir TAHMİN değil BELLEK:
+modelin verdiği ve kullanıcının fiş ekranında gördüğü eşleşmeyi okuyoruz.
+
+**Bekliyor (kalıcı yarısı):** evler arası ortak sözlük — bir evin çözdüğü
+marka başka eve de yarasın. İki evle değersiz. `price_points` gibi kimliksiz
+tutulabilir (marka adı → genel ad; içinde fiyat da kişi de yok).
+**Tetikleyici:** ev sayısı anlamlı hale geldiğinde, ya da daha ucuz/zayıf
+bir modele geçilirse (kapsama düşerse bellek yastık olur).
+
+### Başlangıç ürün listesi ve eş anlamlılar — KÜRATÖRLÜK BEKLİYOR
+
+`TEMEL_URUNLER` (~110 madde) ve `ES_ANLAMLILAR` (~20 eşleme) `server.py`
+içinde duruyor ve **ev sahibi tarafından henüz gözden geçirilmedi.** Model
+üretti, insan onaylamadı — sözlük CSV'sinde yapılan işin yapılmamış hâli.
+
+Bakılırken sorulacak sorular: hangi madde bu iki evin dünyasına ait ama genel
+değil (sözlükte "quark" çıkmıştı — Almanya'da her markette var, Türkiye'de
+kimsenin aklına gelmez)? Hangi eş anlamlı yanlış? Hangi temel ürün eksik?
+
+Kural hatırlatması: **yanlış bir eş anlamlı, eksik olandan pahalı.**
+
 ### Ölçüm (analitik) — genele açmadan ÖNCE, sonra değil
 
 Analitik **geriye dönük çalışmaz**: lansmandan sonra "ilk hafta insanlar

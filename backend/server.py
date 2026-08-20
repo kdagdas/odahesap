@@ -2821,6 +2821,180 @@ class ShoppingMatchReq(BaseModel):
     expense_date: Optional[str] = None
 
 
+# ---------- Yazma yardımcısı: temel ürünler ve eş anlamlılar ----------
+#
+# Fiş tarafında genel adı model üretiyor ("Goldähren" -> "ekmek"). Yazma
+# tarafında model YOK ve olmamalı: öneri harf yazarken çıkmalı (gecikme),
+# her tuşta çağrı saçma (maliyet), ve en önemlisi model bazen "su" bazen
+# "damacana suyu" derse tam da gidermeye çalıştığımız tutarsızlığı geri
+# getirir. Doğru kalıp: **modele listeyi bir kez ürettir, insan küratörlük
+# yapsın** — sözlük CSV'sinde yapılan işin aynısı.
+#
+# Bu liste ev sahibi tarafından HENÜZ gözden geçirilmedi (bkz. SIRADAKI-TUR).
+#
+# Neden "hiç alınmamış" ürünler de var: buzdolabı poşeti, yağlı kâğıt,
+# streç film gibi şeyler her evde lazım olur ama nadiren alınır — yani
+# evin kendi geçmişinde hiç görünmezler. Yardımcının en çok işe yaradığı
+# an tam da o an: aklına gelmeyeni hatırlatmak.
+TEMEL_URUNLER = (
+    # temel gıda
+    "un", "şeker", "tuz", "pirinç", "bulgur", "makarna", "şehriye", "mercimek",
+    "nohut", "kuru fasulye", "salça", "sıvı yağ", "zeytinyağı", "sirke", "maya",
+    "kabartma tozu", "irmik", "nişasta", "bal", "reçel", "tahin", "pekmez",
+    "zeytin", "ton balığı", "karabiber", "pul biber", "kimyon", "kekik", "nane",
+    # süt ürünleri
+    "süt", "yoğurt", "ayran", "beyaz peynir", "kaşar peyniri", "tereyağı",
+    "krema", "yumurta", "labne",
+    # et ve şarküteri
+    "tavuk", "kıyma", "kuşbaşı", "sucuk", "salam", "sosis", "balık",
+    # meyve sebze
+    "domates", "salatalık", "biber", "patlıcan", "kabak", "soğan", "patates",
+    "sarımsak", "havuç", "marul", "maydanoz", "dereotu", "limon", "elma",
+    "muz", "portakal", "üzüm", "karpuz", "çilek", "avokado",
+    # fırın
+    "ekmek", "lavaş", "pide", "simit", "poğaça", "yufka", "galeta unu",
+    "bisküvi", "kek",
+    # içecek
+    "su", "çay", "kahve", "soda", "maden suyu", "meyve suyu", "kola",
+    # atıştırmalık
+    "çikolata", "cips", "fındık", "ceviz", "badem", "kuru üzüm", "dondurma",
+    "kraker",
+    # ev ürünleri — en çok unutulanlar burada
+    "bulaşık deterjanı", "çamaşır deterjanı", "yumuşatıcı", "çamaşır suyu",
+    "sabun", "şampuan", "duş jeli", "diş macunu", "diş fırçası",
+    "tuvalet kâğıdı", "kâğıt havlu", "peçete", "çöp poşeti", "buzdolabı poşeti",
+    "yağlı kâğıt", "streç film", "alüminyum folyo", "bulaşık süngeri",
+    "deodorant", "ıslak mendil", "yara bandı", "çamaşır yumuşatıcısı",
+)
+
+# Yazılan şey -> gitmesi gereken genel ad.
+#
+# Dizgi kuralı bunları ASLA bulamaz: "damacana" ile "su" arasında ortak harf
+# yok. Liste bilerek KISA tutuldu — yanlış bir eş anlamlı, eksik olandan
+# pahalı; bu projenin yazılı kuralı zaten bu.
+ES_ANLAMLILAR = {
+    "damacana": "su",
+    "pet su": "su",
+    "şişe su": "su",
+    "pişirme kâğıdı": "yağlı kâğıt",
+    "fırın kâğıdı": "yağlı kâğıt",
+    "streç": "streç film",
+    "folyo": "alüminyum folyo",
+    "ayçiçek yağı": "sıvı yağ",
+    "mısırözü yağı": "sıvı yağ",
+    "kaşar": "kaşar peyniri",
+    "beyazpeynir": "beyaz peynir",
+    "tuvalet kağıdı": "tuvalet kâğıdı",
+    "kağıt havlu": "kâğıt havlu",
+    "yağlı kağıt": "yağlı kâğıt",
+    "sünger": "bulaşık süngeri",
+    "çamaşır yumuşatıcı": "yumuşatıcı",
+    "bulaşık teli": "bulaşık süngeri",
+    "kuark": "quark",
+    "yeşillik": "maydanoz",
+    "gazoz": "soda",
+}
+
+
+@api.get("/shopping/suggest")
+async def shopping_suggest(q: str = "", limit: int = 6, user=Depends(get_current_user)):
+    """Alınacaklar ve elle girişte yazma yardımcısı.
+
+    ### Sıra: ÖNCE EVİN KENDİ GEÇMİŞİ
+
+    Hep "domates salçası" alan bir eve "domates" dayatmak, yardımcıyı
+    düzeltilmesi gereken bir şeye çevirir. Temel liste yalnızca boşluğu
+    dolduruyor.
+
+    ### Neden yalnızca kolaylık değil
+
+    Liste maddesi genel adla yazıldığında `/shopping/match` fişle çok daha
+    isabetli eşleşiyor: listede "dmts" yazıyorsa hiçbir fiş tutmaz, "domates"
+    yazıyorsa tutar. Yani bu uç bir yazma kısayolu değil, **veri kalitesi**
+    aracı — sözlük tutarlılığını girişte koruyor.
+
+    Boş sorguda evin en sık aldıkları dönüyor: alana dokunan ama daha ne
+    yazacağını bilmeyen kişiye "en çok unuttukların" gösteriliyor.
+    """
+    hh = await get_user_household(user["user_id"])
+    if not hh:
+        return {"suggestions": []}
+    anahtar = _arama_anahtari(q)
+
+    # 1) Evin kendi geçmişi
+    exps = await db.expenses.find(
+        {"household_id": hh["household_id"], **_visible_filter(user["user_id"])},
+        {"_id": 0, "items": 1},
+    ).to_list(3000)
+    sayim: Dict[str, int] = {}
+    # HAM ad -> genel ad. Evin kendi fişlerinden öğrenilen marka sözlüğü.
+    #
+    # Ev sahibinin örneği: ev "NUGGR" marka dondurma alıyor. Fişte "NUGGR
+    # KLASIK" yazıyor, genel adı model "dondurma" yapıyor. Sonra biri listeye
+    # "nuggr" yazmak istiyor — dizgi olarak "dondurma" ile ortak harfi yok,
+    # yani yalnızca genel adlara bakan bir yardımcı hiçbir şey bulamaz.
+    #
+    # Bu bir TAHMİN değil BELLEK: modelin zaten verdiği ve kullanıcının fiş
+    # ekranında gördüğü eşleşmeyi hatırlıyoruz. Projenin reddettiği şey
+    # benzerlikten yola çıkıp iki adı KENDİ BAŞINA birleştirmekti; burada
+    # birleştirmeyi biz yapmıyoruz, yapılmış olanı okuyoruz.
+    ham_genel: Dict[str, str] = {}
+    for e in exps:
+        for it in (e.get("items") or []):
+            ad = (it.get("generic") or "").strip().lower()
+            if ad and not ad.startswith("@"):
+                sayim[ad] = sayim.get(ad, 0) + 1
+                ham = (it.get("name") or "").strip()
+                if ham:
+                    ham_genel.setdefault(ham, ad)
+
+    sonuc: List[dict] = []
+    gorulen = set()
+
+    def ekle(ad: str, kaynak: str, sira: int) -> None:
+        k = ad.casefold()
+        if k in gorulen:
+            return
+        gorulen.add(k)
+        sonuc.append({"name": ad, "source": kaynak, "sira": sira})
+
+    if anahtar:
+        # 2) Eş anlamlı — en üstte, çünkü kullanıcıyı YAZDIĞINDAN BAŞKA bir
+        #    ada götürüyor ve bunu görmezse hiç bulamaz.
+        for yazilan, genel in ES_ANLAMLILAR.items():
+            if _eslesme_sirasi(_arama_anahtari(yazilan), anahtar) is None:
+                continue
+            # "Eş anlamlı" etiketi ancak kullanıcıyı YAZDIĞINDAN BAŞKA bir ada
+            # götürdüğünde doğru. "su" yazan zaten "su"yu bulur; onu vurgulu
+            # bir yönlendirme gibi göstermek, zayıf bir eşleşmeyi kendinden
+            # emin gösterir. Doğrudan bulunabilen adı sıradaki döngüler kendi
+            # kaynağıyla (geçmiş / temel) ekliyor.
+            if _eslesme_sirasi(_arama_anahtari(genel), anahtar) is not None:
+                continue
+            ekle(genel, "esanlamli", 0)
+        for ad, n in sorted(sayim.items(), key=lambda kv: -kv[1]):
+            s = _eslesme_sirasi(_arama_anahtari(ad), anahtar)
+            if s is not None:
+                ekle(ad, "gecmis", 1 + s)
+        # Marka adıyla yazan da bulsun: "nuggr" -> "dondurma".
+        for ham, genel in ham_genel.items():
+            if _eslesme_sirasi(_arama_anahtari(ham), anahtar) is not None:
+                ekle(genel, "gecmis", 4)
+        for ad in TEMEL_URUNLER:
+            s = _eslesme_sirasi(_arama_anahtari(ad), anahtar)
+            if s is not None:
+                ekle(ad, "temel", 6 + s)
+    else:
+        # Boş sorgu: en sık alınanlar, sonra temel liste.
+        for ad, _ in sorted(sayim.items(), key=lambda kv: -kv[1])[:limit]:
+            ekle(ad, "gecmis", 1)
+        for ad in TEMEL_URUNLER:
+            ekle(ad, "temel", 6)
+
+    sonuc.sort(key=lambda x: x["sira"])
+    return {"suggestions": sonuc[:max(1, min(limit, 12))]}
+
+
 @api.post("/shopping/match")
 async def match_shopping(body: ShoppingMatchReq, user=Depends(get_current_user)):
     """Fişteki kalemleri BEKLEYEN alınacaklar listesiyle eşleştirir.

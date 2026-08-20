@@ -414,7 +414,16 @@ const styles = StyleSheet.create({
 
      Kural artık iki sayı: alan grupları arası 16, etiket ile kendi
      kontrolü arası 4. Aradaki her şey bu ikisinden birini kullanıyor. */
-  form: { padding: spacing.lg, paddingTop: spacing.sm, gap: 0, paddingBottom: spacing.xxl },
+  /* BOŞLUKLARIN TEK KAYNAĞI GRUP BAŞLARI.
+     Formda `gap` yok ve bu bilerek: bir grup "etiket + girdi + (şerit)"
+     üçlüsü, yani gap grup İÇİNE de boşluk koyardı. Gruplar arası mesafeyi
+     grubun ilk öğesi taşıyor — etiketi olan grupta `label`, etiketi olmayan
+     grupta (kategori satırı, not düğmesi) kendi `marginTop`'u.
+
+     `paddingTop` KALDIRILDI: ilk etiketin `marginTop`'u zaten var, ikisi
+     üst üste binince ilk alan ötekilerden daha aşağıda başlıyordu ve
+     "boşluklar düzensiz" hissini üreten şey buydu. */
+  form: { padding: spacing.lg, paddingTop: 0, gap: 0, paddingBottom: spacing.xxl },
   label: { ...overline, marginTop: spacing.lg, marginBottom: spacing.xs },
   row2: { flexDirection: "row", gap: spacing.md },
   /* Girdiye AİT olan şerit: gruplar arası değil, grup içi boşluk. */
@@ -440,7 +449,8 @@ const styles = StyleSheet.create({
   },
   notEkle: {
     flexDirection: "row", alignItems: "center", gap: 5, alignSelf: "flex-start",
-    minHeight: 44, marginTop: spacing.sm,
+    /* Grup başı, grup içi değil: ötekilerle aynı mesafede dursun. */
+    minHeight: 44, marginTop: spacing.lg,
   },
   notEkleTxt: { ...T.bodySb, color: colors.accentDark },
   // Seçici bir girdi alanı gibi okunmalı: çevresindeki TextInput'larla aynı

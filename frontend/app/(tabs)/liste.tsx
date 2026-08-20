@@ -47,6 +47,10 @@ type Item = {
 };
 /** En son alışveriş — kapsama göre (Ev sekmesinde evin, Kendim'de senin). */
 type SonAlisveris = { day: string; merchant?: string | null } | null;
+/** Öneri kaynağı satırın rengini belirliyor — hangisinin nereden geldiği
+ *  görünmeli: "geçmiş" evin kendi verisi, "temel" hiç alınmamış ama her evde
+ *  lazım olan, "esanlamli" yazdığından BAŞKA bir ada götüren. */
+type Oneri = { name: string; source: "gecmis" | "temel" | "esanlamli" };
 
 export default function Liste() {
   // Sekme cubugunun ve telefonun gezinme cubugunun kapladigi yer.
@@ -163,6 +167,29 @@ export default function Liste() {
     }, 5000);
   };
 
+  /* YAZMA YARDIMCISI — çip şeridi.
+     Aşağı açılan bir panel DEĞİL: girdi alanının hemen altında liste var ve
+     onu örtmek, kullanıcıyı zaten ne yazdığını göremez hale getirirdi. Çip
+     şeridi listeyi bir satır aşağı itiyor, örtmüyor. Kalıp da yeni değil —
+     elle giriş ekranındaki market çipleriyle aynı.
+
+     Önerinin asıl kazancı kolaylık değil VERİ KALİTESİ: madde genel adla
+     kaydedilince `/shopping/match` fişle isabetli eşleşiyor. Listede "dmts"
+     yazıyorsa hiçbir fiş tutmaz. */
+  const [oneriler, setOneriler] = useState<Oneri[]>([]);
+  const [yaziyor, setYaziyor] = useState(false);
+  useEffect(() => {
+    if (!yaziyor) { setOneriler([]); return; }
+    const t = setTimeout(async () => {
+      try {
+        const r = await apiGet<{ suggestions: Oneri[] }>(
+          `/shopping/suggest?q=${encodeURIComponent(draft.trim())}&limit=6`);
+        setOneriler(r.suggestions || []);
+      } catch { setOneriler([]); }
+    }, draft.trim() ? 180 : 0);
+    return () => clearTimeout(t);
+  }, [draft, yaziyor]);
+
   const geriAl = () => {
     if (geriAlSayaci.current) { clearTimeout(geriAlSayaci.current); geriAlSayaci.current = null; }
     const geri = silinen;
@@ -252,6 +279,8 @@ export default function Liste() {
                 placeholder={scope === "household" ? "Eve ne lazım?" : "Sana ne lazım?"}
                 placeholderTextColor={colors.inkTertiary}
                 onSubmitEditing={add}
+                onFocus={() => setYaziyor(true)}
+                onBlur={() => setTimeout(() => setYaziyor(false), 150)}
                 returnKeyType="done"
                 blurOnSubmit={false}
                 testID="liste-input"
@@ -261,6 +290,28 @@ export default function Liste() {
                 <Ionicons name="add" size={24} color={colors.onBrand} />
               </Pressable>
             </View>
+
+            {oneriler.length > 0 && (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}
+                          keyboardShouldPersistTaps="always"
+                          style={styles.oneriSerit}
+                          contentContainerStyle={styles.oneriIc}>
+                {oneriler.map((o) => (
+                  <Pressable key={`${o.source}-${o.name}`}
+                             style={[styles.oneriCip,
+                                     o.source === "gecmis" && styles.oneriGecmis,
+                                     o.source === "esanlamli" && styles.oneriEs]}
+                             onPress={() => setDraft(o.name)}
+                             testID={`liste-oneri-${o.name}`}>
+                    <Text style={[styles.oneriTxt,
+                                  o.source === "gecmis" && styles.oneriTxtGecmis,
+                                  o.source === "esanlamli" && styles.oneriTxtEs]}>
+                      {o.name}
+                    </Text>
+                  </Pressable>
+                ))}
+              </ScrollView>
+            )}
 
             {error && <Text style={[styles.err, styles.mx]} testID="liste-error">{error}</Text>}
 
@@ -381,6 +432,19 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.dark },
   scroll: { backgroundColor: colors.bg, flexGrow: 1 },
   mx: { marginHorizontal: spacing.lg },
+  /* Şerit kartın dışında ve yatay kaydırılabilir: altı öneri dar telefonda
+     sığmıyor, alt satıra sarsaydı liste iki satır birden aşağı kayardı. */
+  oneriSerit: { marginTop: spacing.sm },
+  oneriIc: { paddingHorizontal: spacing.lg, gap: spacing.sm },
+  oneriCip: {
+    backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border,
+    borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: 6,
+  },
+  oneriGecmis: { backgroundColor: colors.accentSoft, borderColor: colors.accent },
+  oneriEs: { backgroundColor: colors.warningSoft, borderColor: colors.warning },
+  oneriTxt: { ...T.caption, color: colors.inkSecondary },
+  oneriTxtGecmis: { ...T.captionSb, color: colors.accentDark },
+  oneriTxtEs: { ...T.captionSb, color: colors.warning },
   addRow: { flexDirection: "row", gap: spacing.sm },
   addInput: {
     flex: 1, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border,

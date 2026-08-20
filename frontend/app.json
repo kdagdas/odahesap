@@ -24,7 +24,7 @@
       "edgeToEdgeEnabled": true,
       "googleServicesFile": "./google-services.json",
       "package": "com.odahesap.app",
-      "versionCode": 51,
+      "versionCode": 52,
       "intentFilters": [
         {
           "action": "VIEW",
