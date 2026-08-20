@@ -8,7 +8,17 @@ import { useAuth } from "@/src/auth";
 import { useHousehold } from "@/src/household";
 import { api, apiGet } from "@/src/api";
 import { Card, Divider, ScreenHeader, Sheet, Row, SelectRow, SelectOption, useScrollPad } from "@/src/ui";
-import { colors, spacing, type as T, metrics } from "@/src/theme";
+import {
+  colors, spacing, radius, type as T, metrics,
+  temaTercihi, temaKaydet, type TemaTercihi,
+} from "@/src/theme";
+
+/* Önizleme kutularının renkleri SABİT: her ikisi de gösterilmek zorunda, o
+   yüzden aktif temadan okunamazlar. `theme.ts` içindeki iki paletin karşılığı. */
+const AYDINLIK_BG = "#F6F8FB";
+const AYDINLIK_KOYU = "#0F1B33";
+const KARANLIK_BG = "#12161D";
+const KARANLIK_KOYU = "#0A1120";
 
 /**
  * Listeler bilerek uzun: gelmemiş seçenekler de görünüyor ama seçilemiyor.
@@ -48,6 +58,7 @@ const LOCK_REASON =
   "Farklı bir para birimi için yeni bir ev kurun.";
 
 export default function Ayarlar() {
+  const [tema, setTema] = useState<TemaTercihi>(temaTercihi);
   // Gezinme cubugu payi -- ic dolgu zaten var, buraya yalnizca cihazin payi.
   const altPay = useScrollPad({ extra: 0 });
   const router = useRouter();
@@ -123,6 +134,85 @@ export default function Ayarlar() {
             </Card>
             {error && <Text style={styles.error} testID="ayarlar-error">{error}</Text>}
 
+            {/* GÖRÜNÜM — üç ÖNİZLEME, üç kelime değil.
+                Ayarlar ekranındaki öteki kartlar `SelectRow` kullanıyor ve
+                tutarlılık gerçek bir gerekçe. Ama "Açık / Koyu / Sistem"
+                kelimeleri kullanıcıya bilmediği hiçbir şey söylemiyor; küçük
+                kareler ise BU uygulamanın koyu hâlini gösteriyor. Temanın
+                kelimenin resimden zayıf kaldığı tek ayar olması, istisnayı
+                haklı çıkarıyor.
+
+                "Sistem" ikiye bölünmüş bir kare: "duruma göre biri ya da
+                öteki" cümlesini kelimesiz kuruyor. */}
+            <Card title="Görünüm">
+              <View style={styles.temaSatir}>
+                {([
+                  { v: "acik" as const, ad: "Açık" },
+                  { v: "koyu" as const, ad: "Koyu" },
+                  { v: "sistem" as const, ad: "Sistem" },
+                ]).map((o) => {
+                  const secili = tema === o.v;
+                  return (
+                    <Pressable key={o.v} style={styles.temaKutu}
+                               onPress={() => { setTema(o.v); temaKaydet(o.v); }}
+                               testID={`tema-${o.v}`}>
+                      <View style={[styles.onizleme, secili && styles.onizlemeOn]}>
+                        {o.v === "sistem" ? (
+                          <View style={{ flexDirection: "row", flex: 1 }}>
+                            <View style={{ flex: 1, backgroundColor: AYDINLIK_BG }}>
+                              <View style={[styles.onizBaslik, { backgroundColor: AYDINLIK_KOYU }]} />
+                              <View style={styles.onizGovde}>
+                                <View style={[styles.onizCizgi, { backgroundColor: "#FFFFFF", borderColor: "#E9EEF4" }]} />
+                                <View style={[styles.onizCizgi, { backgroundColor: "#FFFFFF", borderColor: "#E9EEF4" }]} />
+                              </View>
+                            </View>
+                            <View style={{ flex: 1, backgroundColor: KARANLIK_BG }}>
+                              <View style={[styles.onizBaslik, { backgroundColor: KARANLIK_KOYU }]} />
+                              <View style={styles.onizGovde}>
+                                <View style={[styles.onizCizgi, { backgroundColor: "#161B22", borderColor: "#262C36" }]} />
+                                <View style={[styles.onizCizgi, { backgroundColor: "#161B22", borderColor: "#262C36" }]} />
+                              </View>
+                            </View>
+                          </View>
+                        ) : (
+                          <View style={{ flex: 1, backgroundColor: o.v === "acik" ? AYDINLIK_BG : KARANLIK_BG }}>
+                            <View style={[styles.onizBaslik, {
+                              backgroundColor: o.v === "acik" ? AYDINLIK_KOYU : KARANLIK_KOYU }]} />
+                            <View style={styles.onizGovde}>
+                              <View style={[styles.onizCizgi, o.v === "acik"
+                                ? { backgroundColor: "#FFFFFF", borderColor: "#E9EEF4" }
+                                : { backgroundColor: "#161B22", borderColor: "#262C36" }]} />
+                              <View style={[styles.onizCizgi, o.v === "acik"
+                                ? { backgroundColor: "#FFFFFF", borderColor: "#E9EEF4" }
+                                : { backgroundColor: "#161B22", borderColor: "#262C36" }]} />
+                            </View>
+                          </View>
+                        )}
+                      </View>
+                      <View style={styles.temaAdSatir}>
+                        {secili && (
+                          <Ionicons name="checkmark" size={13} color={colors.accentDark} />
+                        )}
+                        <Text style={[styles.temaAd, secili && styles.temaAdOn]}>{o.ad}</Text>
+                      </View>
+                    </Pressable>
+                  );
+                })}
+              </View>
+              <Divider inset={spacing.lg} />
+              {/* Not seçimin ALTINDA, dokunduktan SONRA çıkan bir uyarı değil.
+                  Sonradan çıkan uyarı kullanıcının yaptığı şeyi düzeltiyormuş
+                  gibi okunur ("olmadı, şunu da yap"); önceden duran bir not
+                  ise sözleşmenin parçasıdır. Cümle iki iş yapıyor: seçimin
+                  kaydedildiğini söylüyor ve ne zaman görüneceğini kuruyor. */}
+              <View style={styles.temaNot}>
+                <Ionicons name="information-circle-outline" size={14} color={colors.inkTertiary} />
+                <Text style={styles.temaNotTxt}>
+                  Seçim kaydedildi. Renkler uygulamayı bir sonraki açışınızda değişir.
+                </Text>
+              </View>
+            </Card>
+
             <Card title="Dil">
               <SelectRow
                 label="Uygulama dili"
@@ -144,6 +234,32 @@ export default function Ayarlar() {
 }
 
 const styles = StyleSheet.create({
+  temaSatir: {
+    flexDirection: "row", gap: spacing.md,
+    paddingHorizontal: spacing.lg, paddingTop: spacing.xs, paddingBottom: spacing.md,
+  },
+  temaKutu: { flex: 1 },
+  /* Kenarlık seçiliyken KALINLAŞIYOR, renk değiştirmiyor: önizlemenin kendisi
+     zaten renkli ve etrafına ikinci bir renk koymak paleti kirletiyordu. */
+  onizleme: {
+    height: 62, borderRadius: radius.md, overflow: "hidden",
+    borderWidth: 1, borderColor: colors.border,
+  },
+  onizlemeOn: { borderWidth: 2, borderColor: colors.ink },
+  onizBaslik: { height: 20 },
+  onizGovde: { padding: 5, gap: 4 },
+  onizCizgi: { height: 6, borderRadius: 2, borderWidth: 1 },
+  temaAdSatir: {
+    flexDirection: "row", alignItems: "center", justifyContent: "center",
+    gap: 3, marginTop: 6,
+  },
+  temaAd: { ...T.caption, color: colors.inkSecondary },
+  temaAdOn: { ...T.captionSb, color: colors.ink },
+  temaNot: {
+    flexDirection: "row", alignItems: "flex-start", gap: 6,
+    paddingHorizontal: spacing.lg, paddingVertical: spacing.md,
+  },
+  temaNotTxt: { ...T.caption, color: colors.inkTertiary, flex: 1, lineHeight: 17 },
   root: { flex: 1, backgroundColor: colors.dark },
   page: { backgroundColor: colors.bg, flexGrow: 1 },
   headBtn: {

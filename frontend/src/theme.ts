@@ -1,4 +1,5 @@
 import { Appearance } from "react-native";
+import * as SecureStore from "expo-secure-store";
 
 /**
  * KaSa tasarım jetonları.
@@ -139,12 +140,43 @@ const KARANLIK: typeof AYDINLIK = {
   borderStrong: "#3A4250",
 };
 
+export type TemaTercihi = "acik" | "koyu" | "sistem";
+const TEMA_ANAHTARI = "kasa_tema";
+
 /**
- * Tema ACILISTA bir kez okunuyor. `Appearance.getColorScheme()` senkron,
- * yani `StyleSheet.create` çalışmadan önce hazır.
+ * Tema ACILISTA bir kez okunuyor ve bu bir kısıt değil, yapının kendisi:
+ * her ekran `StyleSheet.create` ile modül yüklenirken stilini üretiyor, yani
+ * `colors` o an hazır olmak zorunda.
+ *
+ * Bu yüzden depolama da SENKRON olmalı. `SecureStore.getItem()` senkron —
+ * `AsyncStorage` olsaydı tercih stiller üretildikten sonra gelirdi ve ilk
+ * açılışta hep yanlış tema görünürdü.
+ *
+ * Canlı tema değiştirme (seçince anında dönmesi) bilerek YAPILMADI: 22
+ * dosyadaki ~1.234 satır stilin bileşen içine taşınması gerekir. Kazanç bir
+ * kereye mahsus bir bekleme; bedeli her ekranın yeniden yazılması.
  */
-export const isDark = Appearance.getColorScheme() === "dark";
+function temaOku(): TemaTercihi {
+  try {
+    const v = SecureStore.getItem(TEMA_ANAHTARI);
+    return v === "acik" || v === "koyu" ? v : "sistem";
+  } catch {
+    // Depolama okunamıyorsa sisteme uymak en az şaşırtıcı davranış.
+    return "sistem";
+  }
+}
+
+export const temaTercihi: TemaTercihi = temaOku();
+export const isDark =
+  temaTercihi === "koyu" ? true
+    : temaTercihi === "acik" ? false
+      : Appearance.getColorScheme() === "dark";
 export const colors = isDark ? KARANLIK : AYDINLIK;
+
+/** Tercihi kaydeder. Renkler bir sonraki açılışta değişir. */
+export function temaKaydet(t: TemaTercihi): void {
+  try { SecureStore.setItem(TEMA_ANAHTARI, t); } catch { /* sessizce geç */ }
+}
 
 
 export const spacing = {
