@@ -166,6 +166,7 @@ function temaOku(): TemaTercihi {
   }
 }
 
+/** AÇILIŞTAKİ tercih — ekrandaki renkleri bu üretti. Sabit; değişmiyor. */
 export const temaTercihi: TemaTercihi = temaOku();
 export const isDark =
   temaTercihi === "koyu" ? true
@@ -173,8 +174,30 @@ export const isDark =
       : Appearance.getColorScheme() === "dark";
 export const colors = isDark ? KARANLIK : AYDINLIK;
 
+/**
+ * KAYITLI tercih — `temaTercihi`den farklı olabilir ve fark önemli.
+ *
+ * Ayarlar ekranı seçimi `temaTercihi`den okuyordu; o açılışta donmuş bir
+ * sabit. Kullanıcı "Koyu" seçip ekrandan çıkıp geri geldiğinde seçim yine
+ * eski tercihte duruyordu ve tek görünen şey renklerin değişmemiş olmasıydı:
+ * ekran "kaydedilmedi" diyordu. Kayıt yapılmıştı — anlatan yoktu.
+ *
+ * Bellekte de tutuluyor çünkü `SecureStore.getItem` senkron ama bedava
+ * değil; ayarlar ekranı her odaklandığında diske gitmesinin sebebi yok.
+ */
+let kayitliTema: TemaTercihi = temaTercihi;
+export function seciliTema(): TemaTercihi {
+  return kayitliTema;
+}
+
+/** Seçim, açılıştaki temadan farklı mı? Yani yeniden açılış bekliyor mu? */
+export function temaBekliyor(): boolean {
+  return kayitliTema !== temaTercihi;
+}
+
 /** Tercihi kaydeder. Renkler bir sonraki açılışta değişir. */
 export function temaKaydet(t: TemaTercihi): void {
+  kayitliTema = t;
   try { SecureStore.setItem(TEMA_ANAHTARI, t); } catch { /* sessizce geç */ }
 }
 

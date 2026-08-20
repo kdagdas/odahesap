@@ -4757,6 +4757,21 @@ def _ay_araligi(exps: List[dict]) -> tuple:
     return (aylar[0], aylar[-1]) if aylar else (None, None)
 
 
+def _yaygin_yazim(yazimlar: Dict[str, int]) -> str:
+    """Aynı market birden çok yazımla girilmiş olabilir — hangisi gösterilsin?
+
+    `resolve_merchant` yazımları girişte birleştirmeye çalışıyor ama her zaman
+    beceremiyor: gerçek veride aynı kasap hem "Bizim Fleischer" hem "Bizim
+    Fleischer GmbH" olarak duruyor. Rastgele birini seçmek, çipin yazımını
+    fişlerin Mongo'dan dönüş sırasına bırakır — aynı ekran iki açılışta iki
+    farklı isim gösterebilir.
+
+    Kural: **en çok kullanılan yazım**, eşitlikte **en kısası** — çip dar bir
+    alan ve "GmbH" kimseye bir şey anlatmıyor.
+    """
+    return sorted(yazimlar.items(), key=lambda kv: (-kv[1], len(kv[0]), kv[0]))[0][0]
+
+
 @api.get("/merchants/frequent")
 async def frequent_merchants(limit: int = 6, user=Depends(get_current_user)):
     """Bu evin EN ÇOK ALIŞVERİŞ ETTİĞİ marketler — bütün geçmişte.
@@ -4789,7 +4804,7 @@ async def frequent_merchants(limit: int = 6, user=Depends(get_current_user)):
     if not hh:
         return {"merchants": []}
     sayim: Dict[str, int] = {}
-    adlar: Dict[str, str] = {}
+    yazimlar: Dict[str, Dict[str, int]] = {}
     async for e in db.expenses.find(
         {"household_id": hh["household_id"], **_visible_filter(user["user_id"])},
         {"_id": 0, "merchant": 1},
@@ -4799,11 +4814,12 @@ async def frequent_merchants(limit: int = 6, user=Depends(get_current_user)):
             continue
         k = normalize_merchant(ad) or ad.casefold()
         sayim[k] = sayim.get(k, 0) + 1
-        adlar.setdefault(k, ad)
-    sirali = sorted(sayim.items(), key=lambda kv: (-kv[1], adlar[kv[0]]))
+        yazimlar.setdefault(k, {})[ad] = yazimlar.setdefault(k, {}).get(ad, 0) + 1
+
+    sirali = sorted(sayim.items(), key=lambda kv: (-kv[1], _yaygin_yazim(yazimlar[kv[0]])))
     return {
         "merchants": [
-            {"key": k, "name": adlar[k], "count": n}
+            {"key": k, "name": _yaygin_yazim(yazimlar[k]), "count": n}
             for k, n in sirali[:max(1, min(limit, 12))]
         ]
     }

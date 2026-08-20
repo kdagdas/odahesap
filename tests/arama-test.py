@@ -161,6 +161,23 @@ kaufland = next((m for m in ml if "kaufland" in m["key"]), None)
 check("KAUFLAND ile 'Kaufland GmbH' tek satir", kaufland is not None, str(ml))
 check("sayim FIS sayisi (2)", kaufland and kaufland["count"] == 2, str(kaufland))
 check("REWE de listede", any("rewe" in m["key"] for m in ml), str(ml))
+# Ayni market iki yazimla girilmis olabilir (gercek veride var: "Bizim
+# Fleischer" / "Bizim Fleischer GmbH"). Gosterilen ad EN COK kullanilan yazim
+# olmali -- Mongo'nun donus sirasi degil. Birim testi: `resolve_merchant`
+# cogu yazimi girişte birlestirdigi icin ucundan uca kurmak guvenilmez.
+import os as _os  # noqa: E402
+sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "..", "backend"))
+try:
+    import server as _srv  # noqa: PLC0415
+except Exception as _e:  # noqa: BLE001
+    check("server modulu yuklendi (yazim)", False, str(_e))
+else:
+    yy = _srv._yaygin_yazim
+    check("en cok kullanilan yazim kazaniyor",
+          yy({"Bizim Fleischer": 1, "Bizim Fleischer GmbH": 2}) == "Bizim Fleischer GmbH")
+    check("esitlikte KISA olan kazaniyor",
+          yy({"Bizim Fleischer": 2, "Bizim Fleischer GmbH": 2}) == "Bizim Fleischer")
+    check("tek yazim varsa o", yy({"ALDI": 7}) == "ALDI")
 check("Bob'un KISISEL marketi Alice'te YOK",
       not any("gizli" in m["key"] for m in ml), str(ml))
 

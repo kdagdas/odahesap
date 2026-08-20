@@ -1,8 +1,8 @@
 /** Uygulama ayarları — ne bana ne eve, uygulamanın kendisine ait olanlar. */
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator } from "react-native";
 import Constants from "expo-constants";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@/src/auth";
 import { useHousehold } from "@/src/household";
@@ -10,7 +10,7 @@ import { api, apiGet } from "@/src/api";
 import { Card, Divider, ScreenHeader, Sheet, Row, SelectRow, SelectOption, useScrollPad } from "@/src/ui";
 import {
   colors, spacing, radius, type as T, metrics,
-  temaTercihi, temaKaydet, type TemaTercihi,
+  temaTercihi, seciliTema, temaKaydet, type TemaTercihi,
 } from "@/src/theme";
 
 /* Önizleme kutularının renkleri SABİT: her ikisi de gösterilmek zorunda, o
@@ -58,7 +58,16 @@ const LOCK_REASON =
   "Farklı bir para birimi için yeni bir ev kurun.";
 
 export default function Ayarlar() {
-  const [tema, setTema] = useState<TemaTercihi>(temaTercihi);
+  /* KAYITLI tercihten okunuyor, açılıştakinden değil. Önce `temaTercihi`
+     yazıyordu ve o açılışta donmuş bir sabit: "Koyu" seçip ekrandan çıkıp
+     geri gelen kullanıcı seçimini kaybolmuş buluyordu. Odaklanınca da
+     tazeleniyor — ekran arka planda kalmış olabilir. */
+  const [tema, setTema] = useState<TemaTercihi>(seciliTema());
+  useFocusEffect(useCallback(() => { setTema(seciliTema()); }, []));
+  const bekliyor = tema !== temaTercihi;
+  const TEMA_ADI: Record<TemaTercihi, string> = {
+    acik: "Açık", koyu: "Koyu", sistem: "Sistem",
+  };
   // Gezinme cubugu payi -- ic dolgu zaten var, buraya yalnizca cihazin payi.
   const altPay = useScrollPad({ extra: 0 });
   const router = useRouter();
@@ -205,10 +214,23 @@ export default function Ayarlar() {
                   gibi okunur ("olmadı, şunu da yap"); önceden duran bir not
                   ise sözleşmenin parçasıdır. Cümle iki iş yapıyor: seçimin
                   kaydedildiğini söylüyor ve ne zaman görüneceğini kuruyor. */}
-              <View style={styles.temaNot}>
-                <Ionicons name="information-circle-outline" size={14} color={colors.inkTertiary} />
-                <Text style={styles.temaNotTxt}>
-                  Seçim kaydedildi. Renkler uygulamayı bir sonraki açışınızda değişir.
+              {/* İki hâl, iki cümle. Renkler zaten seçilen temadaysa söylenecek
+                  bir şey yok — "kaydedildi" demek boşuna gürültü. Ama seçim
+                  ekrandakinden FARKLIYSA, kullanıcının gördüğü tek kanıt
+                  renklerin değişmemiş olması ve bu "kaydedilmedi" diye
+                  okunuyor. O yüzden bu hâlde not seçimi ADIYLA tekrar ediyor:
+                  "Koyu seçildi" cümlesi, kutudaki tikin söylemediği şeyi
+                  söylüyor — kayıt diske düştü. */}
+              <View style={[styles.temaNot, bekliyor && styles.temaNotBekleyen]}>
+                <Ionicons
+                  name={bekliyor ? "checkmark-circle" : "information-circle-outline"}
+                  size={14}
+                  color={bekliyor ? colors.accentDark : colors.inkTertiary}
+                />
+                <Text style={[styles.temaNotTxt, bekliyor && styles.temaNotTxtBekleyen]}>
+                  {bekliyor
+                    ? `${TEMA_ADI[tema]} tema kaydedildi. Uygulamayı kapatıp açtığınızda uygulanacak.`
+                    : "Renk değişikliği uygulamayı bir sonraki açışınızda görünür."}
                 </Text>
               </View>
             </Card>
@@ -260,6 +282,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg, paddingVertical: spacing.md,
   },
   temaNotTxt: { ...T.caption, color: colors.inkTertiary, flex: 1, lineHeight: 17 },
+  temaNotBekleyen: {
+    backgroundColor: colors.accentSoft, borderRadius: radius.md,
+    marginHorizontal: spacing.lg, marginBottom: spacing.md,
+    paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
+  },
+  temaNotTxtBekleyen: { color: colors.accentDark },
   root: { flex: 1, backgroundColor: colors.dark },
   page: { backgroundColor: colors.bg, flexGrow: 1 },
   headBtn: {
