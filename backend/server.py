@@ -4861,44 +4861,162 @@ def _medyan(sayilar: List[float]) -> float:
     return s[orta] if n % 2 else (s[orta - 1] + s[orta]) / 2
 
 
-@api.get("/stats/prices")
-async def price_moves(
-    month: Optional[str] = None,
-    user=Depends(get_current_user),
-):
-    """Zamlananlar ve ucuzlayanlar — **evin kendi sepetinin enflasyonu.**
+@api.get("/stats/highlight")
+async def highlight(user=Depends(get_current_user)):
+    """Anasayfa'daki tek cümle — **bu ay dikkat çeken şey.**
 
-    Resmî enflasyon herkesin sepetidir; bu, sizinki. Rakiplerin hiçbirinde
-    yok çünkü hiçbiri fişi kalem kalem okumuyor.
+    ### Neden var
 
-    ### Karşılaştırma AYNI MARKET içinde
+    Analiz sayfası dokuz karttı ve çoğu kullanıcı hiç açmıyor. Halka
+    BİLEŞİMİ gösteriyor, DEĞİŞİMİN SEBEBİNİ değil; oysa yüksek sesle sorulan
+    tek soru "bu ay neden daha pahalı?". Bu uç, kartların toplamından daha
+    çok okunacak tek satırı üretiyor.
 
-    Marketler arası karşılaştırma yapısal olarak sağlam değil: barkod
-    olmadan fiyat farkını değil *ürün farkını* ölçersiniz (süt her markette
-    kendi markası altında, aynı gramajlı biber birinde tepside ötekinde
-    açık). Aynı marketin içinde ise fiş metnini o marketin kasası üretir,
-    yani dizgi haftadan haftaya sabittir ve karşılaştırma anlamlıdır.
+    ### CÜMLE BURADA KURULMUYOR
 
-    ### Ayın son fiyatı değil MEDYANI
+    Sayı ve tür gönderiliyor, metni istemci yazıyor. Aksi hâlde uygulama
+    Almancaya çevrildiğinde sunucuda Türkçe cümleler kalırdı — bildirim
+    gövdelerinde bir kez yaşanan hatanın aynısı.
 
-    Kampanyalı bir hafta "ucuzladı" deyip ertesi ay "zamlandı" demesin diye.
+    ### Öncelik: PARA > FİYAT > ÜRÜN > DEĞİŞİM
 
-    ### Ambalaj sınıfı ayrı tutuluyor
+    Aynı gün birden çok aday varsa borç kazanır, çünkü borç bir EYLEM ister;
+    ötekiler bilgi verir. Fiyat ikinci, çünkü kullanıcıyı geri getiren şey
+    grafik değil "kahve %25 zamlanmış" cümlesidir.
 
-    `price_of_item` üç sınıf üretiyor — açık (tartılan), paketli, adet.
-    Açık ile paketliyi aynı seride toplamak "fiyat iki katına çıktı" gibi
-    yanlış uyarılar üretir: değişen fiyat değil ambalajdır.
+    ### BOŞ KALABİLİR ve bu bilerek
 
-    ### Kaynak `price_points` DEĞİL
-
-    O koleksiyon bilerek kimlik alanı taşımıyor, yani "bu evin fiyat
-    geçmişi" oradan çıkarılamaz. Kaynak evin kendi `expenses` kayıtları.
+    Kayda değer bir şey yoksa `null` dönüyor ve satır hiç çizilmiyor.
+    "Bu ay normal gidiyorsun" gibi bir dolgu yazılsaydı, kullanıcı bir hafta
+    içinde o satırın bazen bilgi taşıdığını bazen sadece orada durduğunu
+    öğrenir ve **öğrendiği andan itibaren hiç okumazdı.** Bir bildirim
+    alanının değerini, boş kalabilme cesareti korur.
     """
     hh = await get_user_household(user["user_id"])
-    bos = {"month": month, "up": [], "down": [], "threshold": 8}
     if not hh:
-        return bos
-    month = month if (month and len(month) == 7) else month_key(ev_bugun(hh))
+        return {"highlight": None}
+    bugun = ev_bugun(hh)
+    ay = month_key(bugun)
+    me = user["user_id"]
+
+    # ---------- 1. PARA: ödeşilmemiş borç ----------
+    #
+    # Eşik bilerek YÜKSEK (25 €) ve süreye bağlı: iki gün önceki 5 €'luk bir
+    # borç için Anasayfa'da uyarı çıkarmak sürtüşme üretir. "Ev arkadaşları
+    # arasındaki borç bankayla olan borç değil" kuralı burada da geçerli.
+    try:
+        period = await get_active_period(hh["household_id"])
+        if period:
+            net = await _compute_balances(hh["household_id"], period["period_id"])
+            benim = float(net.get(me, 0.0))
+            if benim < -25:
+                ilk = period.get("started_at") or period.get("created_at")
+                gun = (bugun - make_aware(ilk).date()).days if ilk else 0
+                if gun >= 14:
+                    return {"highlight": {
+                        "kind": "odesme", "amount": round(abs(benim), 2), "days": gun}}
+    except Exception:  # noqa: BLE001 — cümle uğruna Anasayfa'yı düşürmeyiz
+        logger.exception("one cikan: bakiye okunamadi")
+
+    # ---------- 2. FİYAT: zam / ucuzlama ----------
+    try:
+        fh = await _fiyat_hareketleri(hh, ay)
+        aday = (fh.get("up") or [None])[0]
+        ucuz = (fh.get("down") or [None])[0]
+        # Zam ucuzlamadan önce gelir: kötü haber eyleme daha yakın. Ama
+        # ucuzlama da gösteriliyor — yalnızca zam göstermek insanı sürekli
+        # kötü haberle karşılar (Tur 11'de verilmiş karar).
+        secilen = aday or ucuz
+        if aday and ucuz and abs(ucuz["change_pct"]) > abs(aday["change_pct"]) * 1.5:
+            secilen = ucuz
+        if secilen:
+            return {"highlight": {
+                "kind": "zam" if secilen["change_pct"] > 0 else "ucuz",
+                "name": secilen["name"], "pct": secilen["change_pct"],
+                "merchant": secilen["merchant"],
+                "now": secilen["now"], "unit": secilen["unit"]}}
+    except Exception:  # noqa: BLE001
+        logger.exception("one cikan: fiyat okunamadi")
+
+    # ---------- 3. ÜRÜN: aynı ürün, marketler arasında büyük fark ----------
+    #
+    # Ürün sayfasına girmeden görünmeyen ama en çarpıcı cümle bu:
+    # "Karpuzu ALDI'dan 4 €, LIDL'den 10,60 € almışsınız." Yalnızca ÖLÇÜLEBİLİR
+    # sınıflarda (kg/lt) — `adet` sınıfında iki farklı boy ürün kıyaslanabilir
+    # sanılıyor ve o hata Tur 11'de yaşandı.
+    try:
+        exps = await db.expenses.find(
+            {"household_id": hh["household_id"], **_visible_filter(me)},
+            {"_id": 0},
+        ).sort("expense_date", -1).to_list(2000)
+        son_uc = sorted({(_expense_day(e) or "")[:7] for e in exps if _expense_day(e)})[-3:]
+        kova: Dict[tuple, List[float]] = {}
+        adlar: Dict[str, str] = {}
+        for e in exps:
+            if (_expense_day(e) or "")[:7] not in son_uc:
+                continue
+            ham = (e.get("merchant") or "").strip()
+            if not ham:
+                continue
+            mkey = normalize_merchant(ham) or ham.casefold()
+            for it in e.get("items") or []:
+                p = price_of_item(it)
+                if not p or p["pack_type"] == "adet":
+                    continue
+                urun = _urun_anahtari(it)
+                if not urun:
+                    continue
+                kova.setdefault((urun, p["price_unit"], mkey), []).append(p["unit_price"])
+                adlar.setdefault(urun, (it.get("generic") or it.get("name") or "").strip())
+        # Ürün başına marketleri topla
+        urun_market: Dict[tuple, Dict[str, float]] = {}
+        for (urun, birim, mkey), fiyatlar in kova.items():
+            urun_market.setdefault((urun, birim), {})[mkey] = _medyan(fiyatlar)
+        en_iyi = None
+        for (urun, birim), marketler in urun_market.items():
+            if len(marketler) < 2:
+                continue
+            ucuz_m = min(marketler, key=marketler.get)
+            pahali_m = max(marketler, key=marketler.get)
+            uc, ph = marketler[ucuz_m], marketler[pahali_m]
+            if uc <= 0.0001:
+                continue
+            oran = (ph - uc) / uc * 100
+            # %25 eşiği: altındaki fark market farkı değil, ürün farkı olabilir.
+            if oran < 25:
+                continue
+            if en_iyi is None or oran > en_iyi["pct"]:
+                en_iyi = {"kind": "market_farki", "name": adlar.get(urun) or urun,
+                          "cheap": ucuz_m, "cheap_price": round(uc, 2),
+                          "expensive": pahali_m, "expensive_price": round(ph, 2),
+                          "unit": birim, "pct": round(oran)}
+        if en_iyi:
+            return {"highlight": en_iyi}
+    except Exception:  # noqa: BLE001
+        logger.exception("one cikan: market farki okunamadi")
+
+    # ---------- 4. DEĞİŞİM: bu ay geçen aya göre ----------
+    #
+    # En zayıf aday, o yüzden en sonda: "ne kadar" sorusuna cevap veriyor ama
+    # "neden"i ancak kategoriyle söyleyebiliyor.
+    try:
+        st = await monthly_stats(month=ay, scope="household", user=user)
+        oc = st.get("one_cikan")
+        if oc:
+            return {"highlight": {"kind": "degisim", **oc}}
+    except Exception:  # noqa: BLE001
+        logger.exception("one cikan: degisim okunamadi")
+
+    return {"highlight": None}
+
+
+async def _fiyat_hareketleri(hh: dict, month: str) -> dict:
+    """Zamlananlar ve ucuzlayanlar — hesabın kendisi.
+
+    `/stats/prices` ucundan AYRILDI çünkü Anasayfa'daki "bu ay dikkat çeken
+    şey" satırı da aynı sayıya ihtiyaç duyuyor. Kopyalansaydı iki ekran aynı
+    ürün için farklı yüzde gösterebilirdi.
+    """
     onceki = _prev_month(month)
 
     lo, _ = _month_bounds(onceki)
@@ -4978,6 +5096,46 @@ async def price_moves(
     asagi.sort(key=lambda x: x["change_pct"])
     return {"month": month, "prev_month": onceki,
             "up": yukari, "down": asagi, "threshold": ESIK}
+
+
+@api.get("/stats/prices")
+async def price_moves(
+    month: Optional[str] = None,
+    user=Depends(get_current_user),
+):
+    """Zamlananlar ve ucuzlayanlar — **evin kendi sepetinin enflasyonu.**
+
+    Resmî enflasyon herkesin sepetidir; bu, sizinki. Rakiplerin hiçbirinde
+    yok çünkü hiçbiri fişi kalem kalem okumuyor.
+
+    ### Karşılaştırma AYNI MARKET içinde
+
+    Marketler arası karşılaştırma yapısal olarak sağlam değil: barkod
+    olmadan fiyat farkını değil *ürün farkını* ölçersiniz (süt her markette
+    kendi markası altında, aynı gramajlı biber birinde tepside ötekinde
+    açık). Aynı marketin içinde ise fiş metnini o marketin kasası üretir,
+    yani dizgi haftadan haftaya sabittir ve karşılaştırma anlamlıdır.
+
+    ### Ayın son fiyatı değil MEDYANI
+
+    Kampanyalı bir hafta "ucuzladı" deyip ertesi ay "zamlandı" demesin diye.
+
+    ### Ambalaj sınıfı ayrı tutuluyor
+
+    `price_of_item` üç sınıf üretiyor — açık (tartılan), paketli, adet.
+    Açık ile paketliyi aynı seride toplamak "fiyat iki katına çıktı" gibi
+    yanlış uyarılar üretir: değişen fiyat değil ambalajdır.
+
+    ### Kaynak `price_points` DEĞİL
+
+    O koleksiyon bilerek kimlik alanı taşımıyor, yani "bu evin fiyat
+    geçmişi" oradan çıkarılamaz. Kaynak evin kendi `expenses` kayıtları.
+    """
+    hh = await get_user_household(user["user_id"])
+    if not hh:
+        return {"month": month, "up": [], "down": [], "threshold": 8}
+    month = month if (month and len(month) == 7) else month_key(ev_bugun(hh))
+    return await _fiyat_hareketleri(hh, month)
 
 
 @api.get("/stats/merchant")

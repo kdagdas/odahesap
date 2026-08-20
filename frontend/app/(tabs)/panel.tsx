@@ -40,12 +40,59 @@ type Stats = {
   my_share: number; my_personal: number;
   categories: { key: string; total: number }[];
   by_member: { user_id: string; total: number }[];
-  /** Bu ayki değişimin SEBEBİ — sunucu sayıyı gönderiyor, cümleyi burası
-   *  kuruyor. Kayda değer bir şey yoksa `null` ve satır hiç çizilmiyor. */
-  one_cikan?: { diff: number; category: string; cat_diff: number } | null;
   fixed?: number;
 };
+
+/**
+ * Anasayfa'daki tek cümle. Sunucu SAYIYI gönderiyor, metni burası yazıyor —
+ * aksi hâlde Almancaya çevrildiğinde veritabanında Türkçe cümleler kalırdı.
+ */
+type OneCikan =
+  | { kind: "odesme"; amount: number; days: number }
+  | { kind: "zam" | "ucuz"; name: string; pct: number; merchant: string; now: number; unit: string }
+  | { kind: "market_farki"; name: string; cheap: string; cheap_price: number;
+      expensive: string; expensive_price: number; unit: string; pct: number }
+  | { kind: "degisim"; diff: number; category: string; cat_diff: number };
 type ShopItem = { item_id: string; text: string; added_by: string; done: boolean };
+
+const ONE_CIKAN_IKON: Record<string, any> = {
+  odesme: "wallet-outline",
+  zam: "trending-up",
+  ucuz: "trending-down",
+  market_farki: "swap-horizontal",
+  degisim: "sparkles-outline",
+};
+
+/**
+ * Cümlenin metni — sunucudan gelen sayıdan burada kuruluyor.
+ *
+ * Beş kaynak var ve öncelik sırası sunucuda: para > fiyat > ürün > değişim.
+ * Borç kazanıyor çünkü bir EYLEM istiyor; ötekiler bilgi veriyor.
+ */
+function oneCikanMetni(o: OneCikan): string {
+  switch (o.kind) {
+    case "odesme": {
+      const hafta = Math.floor(o.days / 7);
+      const sure = hafta >= 2 ? `${hafta} haftadır` : `${o.days} gündür`;
+      return `${sure} ödeşilmedi · ${formatEUR(o.amount)} borcun var`;
+    }
+    case "zam":
+      return `${o.name} ${o.merchant.toLocaleUpperCase("tr-TR")}'de `
+        + `%${o.pct} zamlanmış · şimdi ${formatEUR(o.now)}/${o.unit}`;
+    case "ucuz":
+      return `${o.name} ${o.merchant.toLocaleUpperCase("tr-TR")}'de `
+        + `%${Math.abs(o.pct)} ucuzlamış · şimdi ${formatEUR(o.now)}/${o.unit}`;
+    case "market_farki":
+      return `${o.name}: ${o.cheap.toLocaleUpperCase("tr-TR")} `
+        + `${formatEUR(o.cheap_price)}/${o.unit}, `
+        + `${o.expensive.toLocaleUpperCase("tr-TR")} ${formatEUR(o.expensive_price)}`;
+    case "degisim":
+      return `Bu ay ${formatEUR(Math.abs(o.diff))} ${o.diff > 0 ? "fazla" : "az"}`
+        + ` · çoğu ${categoryLabel(o.category).toLocaleLowerCase("tr-TR")} harcamasında`;
+    default:
+      return "";
+  }
+}
 
 export default function Panel() {
   // Sekme cubugunun ve telefonun gezinme cubugunun kapladigi yer.
@@ -64,6 +111,7 @@ export default function Panel() {
   const [totalsPaid, setTotalsPaid] = useState<Record<string, number>>({});
   const [shopping, setShopping] = useState<ShopItem[]>([]);
   const [unread, setUnread] = useState(0);
+  const [oneCikan, setOneCikan] = useState<OneCikan | null>(null);
   const [due, setDue] = useState<Due[]>([]);
   const [confirming, setConfirming] = useState<Due | null>(null);
   // PulseDot her değiştiğinde yeniden atıyor; ekran odaklandıkça artıyor,
@@ -75,12 +123,13 @@ export default function Panel() {
 
   const load = useCallback(async () => {
     try {
-      const [st, exp, shop, ntf, rec] = await Promise.all([
+      const [st, exp, shop, ntf, rec, hl] = await Promise.all([
         apiGet<Stats>("/stats/monthly"),
         apiGet<{ expenses: Expense[] }>("/expenses"),
         apiGet<{ items: ShopItem[] }>("/shopping?scope=household"),
         apiGet<{ unread: number }>("/notifications"),
         apiGet<{ due: Due[] }>("/recurring"),
+        apiGet<{ highlight: OneCikan | null }>("/stats/highlight"),
         refreshHH(),
       ]);
       setStats(st);
@@ -91,6 +140,7 @@ export default function Panel() {
       setShopping((shop.items || []).filter((i) => !i.done));
       setUnread(ntf.unread || 0);
       setDue(rec.due || []);
+      setOneCikan(hl?.highlight ?? null);
     } catch (e) { console.log(e); }
     finally { setLoading(false); setRefreshing(false); }
   }, [refreshHH]);
@@ -166,35 +216,6 @@ export default function Panel() {
             </Pressable>
           )}
 
-          {/* BU AY DİKKAT ÇEKEN ŞEY — bir grafik değil bir CÜMLE.
-              Halka bileşimi gösteriyor, değişimin sebebini değil. Oysa
-              insanların yüksek sesle sorduğu tek soru "bu ay neden daha
-              pahalı?" ve bu satır ona bir cümleyle cevap veriyor.
-
-              Yeri Analiz sayfası DEĞİL Anasayfa, çünkü tam da Analiz'i hiç
-              açmayan kişi için yazılıyor. Dokuz kartın toplamından daha çok
-              okunacak olan bu.
-
-              Kayda değer bir şey yoksa çizilmiyor: eşiği sunucu koyuyor
-              (hem 20 €'yu hem geçen ayın %10'unu aşmalı). Dolgu metni yok —
-              "bu ay normal" demek, hiçbir şey dememektir. */}
-          {stats?.one_cikan && (
-            <Pressable style={styles.oneCikan} hitSlop={8} testID="one-cikan"
-                       onPress={() => router.push("/istatistik")}>
-              <Ionicons name="sparkles-outline" size={13} color={colors.accentOnDark} />
-              <Text style={styles.oneCikanTxt} numberOfLines={2}>
-                {stats.one_cikan.diff > 0 ? "Bu ay " : "Bu ay "}
-                <Text style={styles.oneCikanVurgu}>
-                  {formatEUR(Math.abs(stats.one_cikan.diff))}
-                </Text>
-                {stats.one_cikan.diff > 0 ? " fazla" : " az"}
-                {" · çoğu "}
-                {categoryLabel(stats.one_cikan.category).toLocaleLowerCase("tr-TR")}
-                {stats.one_cikan.diff > 0 ? " harcamasından" : " harcamasında"}
-              </Text>
-            </Pressable>
-          )}
-
           {/* ARAMA — lacivert alanın DİBİNDE, kahraman rakamın altında.
               Buraya konmasının sebebi: aramanın öne çıkma derecesi,
               uygulamanın ne kadarının "bulma işi" olduğuyla orantılı.
@@ -211,6 +232,33 @@ export default function Panel() {
               Yerinde arama Anasayfa'yı sonuç listesi barındırmaya zorlardı.
               Sahte arama çubuğu standart kalıptır (Spotify, Airbnb, App
               Store hepsi böyle yapar). */}
+          {/* BU AY DİKKAT ÇEKEN ŞEY — bir grafik değil bir CÜMLE.
+              Halka bileşimi gösteriyor, değişimin sebebini değil; oysa
+              yüksek sesle sorulan tek soru "bu ay neden daha pahalı?".
+
+              KONUMU trend satırından AYRI: ikisi farklı işler yapıyor (biri
+              "ne kadar", öteki "neden") ve yan yana durunca ikisi de
+              başlığın alt yazısı gibi okunuyordu. Şimdi üstte "rakam +
+              trend", altta "cümle + arama" diye iki blok var.
+
+              SOLA DAYALI kalıyor: uygulamanın her yerinde metin sola dayalı
+              ve ortalanmış tek satır afiş gibi durup okunmaz hale gelir.
+
+              Kayda değer bir şey yoksa çizilmiyor. Dolgu metni yazılsaydı
+              kullanıcı bir hafta içinde satırın bazen bilgi taşıdığını
+              bazen sadece orada durduğunu öğrenir ve bir daha hiç okumazdı. */}
+          {oneCikan && (
+            <Pressable style={styles.oneCikan} hitSlop={6} testID="one-cikan"
+                       onPress={() => router.push(
+                         oneCikan.kind === "odesme" ? "/(tabs)/denge" : "/istatistik")}>
+              <Ionicons name={ONE_CIKAN_IKON[oneCikan.kind]} size={14}
+                        color={colors.accentOnDark} style={{ marginTop: 2 }} />
+              <Text style={styles.oneCikanTxt} numberOfLines={3}>
+                {oneCikanMetni(oneCikan)}
+              </Text>
+            </Pressable>
+          )}
+
           <Pressable style={styles.araKutu} onPress={() => router.push("/arama")}
                      testID="open-search">
             <Ionicons name="search" size={16} color={colors.onDarkMuted} />
@@ -500,7 +548,6 @@ const styles = StyleSheet.create({
     flexDirection: "row", alignItems: "flex-start", gap: 6, marginTop: spacing.sm,
   },
   oneCikanTxt: { ...T.caption, color: colors.onDarkMuted, flex: 1, lineHeight: 18 },
-  oneCikanVurgu: { ...T.captionSb, color: colors.onDark },
   araKutu: {
     flexDirection: "row", alignItems: "center", gap: spacing.sm,
     backgroundColor: colors.darkSurface, borderRadius: radius.pill,
