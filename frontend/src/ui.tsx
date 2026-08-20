@@ -19,6 +19,7 @@ import {
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import Svg, { Circle } from "react-native-svg";
+import { AvatarCizim, getAvatar } from "./avatarlar";
 import { useSafeAreaInsets, type EdgeInsets } from "react-native-safe-area-context";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
@@ -28,7 +29,7 @@ import {
 
 import {
   colors, spacing, radius, type as T, overline, fontFamily, metrics, merchantTint,
-  CATEGORY_ICONS, CATEGORY_LABEL_TR, getAvatar,
+  CATEGORY_ICONS, CATEGORY_LABEL_TR,
 } from "./theme";
 
 /* ------------------------------------------------------------------ metin */
@@ -754,11 +755,9 @@ export function Avatar({
       />
     );
   }
-  return (
-    <View style={[styles.avatar, box, { backgroundColor: preset.color }]}>
-      <Ionicons name={preset.icon as any} size={Math.floor(size * 0.5)} color="#fff" />
-    </View>
-  );
+  /* Fotoğraf yoksa çizim. Eskiden burada beyaz bir Ionicon vardı ve avatar
+     "renkli daire + simge"ydi; artık dairenin kendisi resim. */
+  return <AvatarCizim id={avatarId} size={size} />;
 }
 
 /**

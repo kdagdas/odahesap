@@ -398,16 +398,5 @@ export function merchantTint(name?: string | null): { bg: string; fg: string } {
     : { bg: mixHex(base, "#FFFFFF", 0.86), fg: mixHex(base, "#000000", 0.38) };
 }
 
-/** 8 hazır avatar — fotoğraf yüklenmediğinde kullanılır. */
-export type AvatarPreset = { id: number; icon: string; color: string };
-export const AVATARS: AvatarPreset[] = [
-  { id: 0, icon: "person", color: "#0F1B33" },
-  { id: 1, icon: "happy",  color: "#F59E0B" },
-  { id: 2, icon: "pizza",  color: "#E14141" },
-  { id: 3, icon: "rocket", color: "#3B82F6" },
-  { id: 4, icon: "star",   color: "#8B5CF6" },
-  { id: 5, icon: "heart",  color: "#EC4899" },
-  { id: 6, icon: "leaf",   color: "#10B981" },
-  { id: 7, icon: "flame",  color: "#F97316" },
-];
-export const getAvatar = (id?: number | null): AvatarPreset => AVATARS[id ?? 0] || AVATARS[0];
+/* Avatarlar `src/avatarlar.tsx`e taşındı: artık Ionicon adı değil, çizim.
+   Tema dosyası renk ve ölçü tanımlıyor; hayvan çizmek onun işi değil. */

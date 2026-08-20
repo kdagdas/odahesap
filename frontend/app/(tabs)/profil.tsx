@@ -21,7 +21,8 @@ import {
   Avatar, Card, Divider, ScreenHeader, Sheet, IconPill, useScrollPad, useBasaSar,
 } from "@/src/ui";
 import { pickPhotoFromLibrary, takePhotoWithCamera, removePhoto } from "@/src/photo";
-import { colors, spacing, radius, type as T, metrics, AVATARS, fontFamily, overline } from "@/src/theme";
+import { colors, spacing, radius, type as T, metrics, fontFamily, overline } from "@/src/theme";
+import { AVATARS, AvatarCizim } from "@/src/avatarlar";
 
 export default function Profil() {
   // Sekme cubugunun ve telefonun gezinme cubugunun kapladigi yer.
@@ -177,10 +178,11 @@ export default function Profil() {
                       const active = (user?.avatar_id ?? 0) === a.id;
                       return (
                         <Pressable key={a.id} onPress={() => setAvatar(a.id)}
-                                   style={[styles.avatarChoice, { backgroundColor: a.color },
-                                           active && styles.avatarChoiceActive]}
+                                   style={[styles.avatarChoice, active && styles.avatarChoiceActive]}
                                    testID={`avatar-choice-${a.id}`} disabled={savingAvatar}>
-                          <Ionicons name={a.icon as any} size={24} color={colors.onDark} />
+                          {/* Zemin artık çizimin kendi içinde: hayvanın
+                              pastel karesi kutuyu dolduruyor. */}
+                          <AvatarCizim id={a.id} size={44} />
                           {active && (
                             <View style={styles.avatarCheck}>
                               <Ionicons name="checkmark" size={12} color={colors.ink} />
