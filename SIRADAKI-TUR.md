@@ -804,6 +804,77 @@ mi? Eve birini davet etmek istediğinde bulabilir mi?"*
 
 ---
 
+## Tur 12 — BİTTİ (20 Ağustos 2026, APK v45 · sürüm 1.3.0)
+
+Planlanan listeden **arama** ve **saat dilimi** yapıldı; **çevrimdışı kuyruk**
+ve **tema** ertelendi (gerekçe aşağıda). Turun ağırlığı cihaz denemesinden
+gelen düzeltmelere kaydı — ve o düzeltmeler planlanan işlerden değerli çıktı.
+
+### Gelenler
+
+**Bildirimler** silinebiliyor (kaydır · topluca temizle · 30 gün eskime) ve
+her biri ilgili ekranı açıyor (`src/bildirimYolu.ts`).
+**Arama** — ürün · market · kişi · uygulama ekranları, bütün geçmişte;
+Anasayfa'nın lacivert dibinde. Marka da aranıyor (`weidemilch` → Süt).
+**Ürün sayfası** — ne zaman · **neler** · nereden aldık.
+**Saat dilimi** evin ülkesinden (`ev_bugun`); UTC "bugün" ay sınırında koca
+bir ay kaydırıyordu.
+**Fiş ekranı yeniden kuruldu**: satır bölüşümü açıyor, düzenleme kenarda,
+silme geri alınabilir, bölüşüm kompakt menüde, genel ad görünür.
+**Elle giriş ve fiş düzenleme** aynı tasarıma geldi.
+**Genel ad sözlüğü** geçmişe uygulandı: 155 ham ad → 90 satır.
+**Analiz sayfası KÜÇÜLDÜ** — üç kart ve bir eksen çıktı.
+**Anasayfa'da tek cümle** (`/stats/highlight`), beş kaynaktan.
+
+### Neden çevrimdışı kuyruk ve tema ertelendi
+
+Ev sahibinin gerekçesi: *"internetimiz hep açık; zaten genele açarken
+yapacağız."* Karanlık tema da aynı sepette. İkisi de **genele açma paketine**
+taşındı.
+
+### Bu turun kalıcı dersleri
+
+**Cihaz turu her seferinde kazanıyor.** Bu turda testlerin yakalamadığı
+hatalar: iki kişilik bölüşümün kırılması, `TabSwitch`'in soru işareti
+çizmesi, "3 kez" kalem sayması, birimin iki kez yazılması, Kaydet'in klavye
+açılınca yanlış okunması, ✕'in silme demesi.
+
+**Yanlış sebeple yeşil bir test, kırmızı testten tehlikelidir.** Saat dilimi
+takımının ilk hâli sunucunun gerçek saatine bağlıydı ve eski kodla da
+geçiyordu; dondurulmuş saatle yeniden yazıldı.
+
+**Kural fazla geniş uygulanabilir.** "Bulanık eşleşme yok" kuralı gruplama
+için doğruydu; aramaya taşınınca gereksiz katılık üretti — yanlış birleştirme
+veriyi bozar, yanlış arama sonucu bir bakışa mal olur.
+
+**Çıkarmak eklemekten değerli.** Analiz sayfası dokuz karttan altıya indi ve
+kullanışlılığı arttı. Ölçüt: *bu kart hangi cümleyi kurmamı sağlıyor?*
+
+**Boş kalabilme cesareti.** Anasayfa'daki cümle kayda değer bir şey yoksa hiç
+çizilmiyor. Dolgu yazılsaydı kullanıcı satırın bazen bilgi taşıdığını
+öğrenir ve bir daha okumazdı.
+
+### Tur 12'den KALANLAR
+
+- **Elle giriş ekranı kalabalık** — etiket boşlukları düzensiz, çok soru
+  soruyor. Ev sahibi paradoksu doğru koydu: analiz istiyorsak veriyi bir
+  yerden almalıyız. Sıkıştırmadan düzeltilebilir mi, ölçülecek.
+- **Aramada bir harflik tolerans** — "sleepy" yazan "SLEPPY"i bulamıyor.
+  Kural gruplama için doğru, arama için fazla katı.
+- **Ürün sözlüğü sürekliliği** — yeni fişlerin genel adı geliyor ama
+  tutarlılığı ölçülmedi (aynı ürün farklı aylarda farklı genel ad alabilir).
+
+---
+
+## Tur 13 planı — öncelik sırasıyla
+
+1. **Genele açma paketi** — çevrimdışı kuyruk, karanlık tema, e-posta
+   doğrulama, şifre sıfırlama, rıza + gizlilik metni.
+2. **Elle giriş sadeleştirmesi.**
+3. **Dışa aktarma (CSV/PDF)** · avatarlar.
+
+---
+
 ## Tur 12 planı — öncelik sırasıyla
 
 1. **Arama** (market · ürün · kişi). 49 ürün oldu, bir yıl sonra 400 olacak;

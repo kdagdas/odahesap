@@ -391,6 +391,8 @@ Anasayfa · Alınacaklar · [Fiş Tara] · Kasa · Profil
 | `app/expense-edit.tsx` | Harcama düzenleme, kalem bazlı |
 | `app/member-detail.tsx` | Bir üyenin dönem içindeki harcama dökümü |
 | `app/(tabs)/aktivite.tsx` | Bildirim kaydı: her satır ilgili ekrana kapı, sola kaydır sil |
+| `app/(tabs)/arama.tsx` | Arama: ürün · market · kişi · uygulama ekranları |
+| `app/(tabs)/urun.tsx` | Bir ürünün bütün geçmişi — aramanın ve ürün listesinin varış yeri |
 
 Paylaşılan modüller `frontend/src/`: `api.ts` (istemci + yeniden deneme +
 uyanma sinyali), `auth.tsx`, `household.tsx`, `notifications.ts`, `photo.ts`,
@@ -398,7 +400,7 @@ uyanma sinyali), `auth.tsx`, `household.tsx`, `notifications.ts`, `photo.ts`,
 
 ---
 
-## 7. API (45 uç)
+## 7. API (49 uç)
 
 Tümü `/api` önekiyle. Sağlık ucu dışında hepsi `Authorization: Bearer <jeton>` ister.
 
@@ -423,6 +425,9 @@ Tümü `/api` önekiyle. Sağlık ucu dışında hepsi `Authorization: Bearer <j
 `GET /recurring` · `POST /recurring` · `PATCH /recurring/{id}` · `DELETE /recurring/{id}`
 `POST /recurring/{id}/confirm` · `POST /recurring/{id}/skip`
 `GET /stats/monthly` — takvim ayı bazlı, `?month=2026-08&scope=household|self`
+`GET /stats/product?key=` — bir ürünün bütün geçmişi (ne zaman · nereden · neler)
+`GET /stats/highlight` — Anasayfa'daki tek cümle; kayda değer bir şey yoksa `null`
+`GET /search?q=` — ürün · market · kişi, bütün geçmişte
 `GET /balances` · `GET /periods` · `POST /periods/close` · `POST /periods/reopen`
 `GET /settlements` · `POST /settlements` · `DELETE /settlements/{id}`
 
