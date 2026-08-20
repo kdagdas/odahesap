@@ -26,10 +26,10 @@ import { apiGet } from "@/src/api";
 import { useHousehold } from "@/src/household";
 import {
   ScreenHeader, HeaderSplit, HeaderPills, HeaderPill, Sheet, Card, Divider, Money,
-  TabSwitch, formatEUR, formatQty, ayAdi, buAy, sonAylar,
+  formatEUR, formatQty, ayAdi, buAy, sonAylar,
   useScrollPad, useGeriDon, useBasaSar, yenileme,
 } from "@/src/ui";
-import { colors, spacing, type as T, metrics, fontFamily } from "@/src/theme";
+import { colors, spacing, type as T, metrics } from "@/src/theme";
 
 type Urun = {
   key: string; name: string; total: number; count: number;
@@ -56,10 +56,10 @@ type Urun = {
  * doğru ve okunur (iki alışverişte üç paket). Bu yüzden miktar biliniyorsa
  * yazılıyor; bilinmiyorsa satır kısa kalıyor, uydurulmuyor.
  */
-const altSatir = (u: Urun, sira: "tutar" | "siklik") => {
+const altSatir = (u: Urun) => {
   const p: string[] = [];
   if (u.qty != null && u.unit) p.push(formatQty(u.qty, u.unit));
-  else if (sira === "tutar") p.push(`${u.count} kez`);
+  else p.push(`${u.count} kez`);
   if (u.market_count > 1) p.push(`${u.market_count} markette`);
   return p.join(" · ");
 };
@@ -71,27 +71,15 @@ export default function Urunler() {
   const router = useRouter();
   const geriDon = useGeriDon("/(tabs)/istatistik");
   const { household } = useHousehold();
-  const params = useLocalSearchParams<{ ay?: string; scope?: string; sira?: string }>();
+  const params = useLocalSearchParams<{ ay?: string; scope?: string }>();
   const kapsam = params.scope === "self" ? "self" : "household";
 
   const [ay, setAy] = useState<string>(
     typeof params.ay === "string" && params.ay.length === 7 ? params.ay : buAy());
   const [urunler, setUrunler] = useState<Urun[]>([]);
-  /**
-   * Sıralama ekseni — **iki ayrı soru.**
-   *
-   * *Tutar*: "paramız neye gidiyor". *Sıklık*: "en çok neyi alıyoruz".
-   * İkisi aynı şey değil ve karıştırılması kolay: kilosu 20 € olan etten
-   * 2 kilo ile kilosu 1 € olan undan 40 kilo aynı tutarı verir, ama biri
-   * ayda bir, öteki her hafta alınır.
-   *
-   * Miktara göre sıralama YOK: kilo ile adet toplanamaz, sıralanamaz da.
-   * "Kaç kez alındı" birim tanımaz ve her satırda karşılaştırılabilir.
-   */
-  /* Karttan hangi kiple girildiyse sayfa o kiple açılıyor: karttaki
-     anahtarı çevirip "Tüm ürünler"e basan kişi aynı sıralamayı bekliyor. */
-  const [sira, setSira] = useState<"tutar" | "siklik">(
-    params.sira === "siklik" ? "siklik" : "tutar");
+  /* SIKLIK EKSENİ KALDIRILDI — gerekçesi Analiz sayfasında yazılı: sıklık
+     ile miktar iki ayrı büyüklük ve tek sıralamaya sığmıyor. Liste tek
+     soruya cevap veriyor: "paramız neye gidiyor". */
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -108,9 +96,8 @@ export default function Urunler() {
   const toplam = urunler.reduce((s, u) => s + u.total, 0);
   // Sunucu tutara göre sıralı gönderiyor; sıklık istemcide sıralanıyor
   // (liste zaten elde, ikinci bir istek anlamsız).
-  const sirali = sira === "tutar"
-    ? urunler
-    : [...urunler].sort((a, b) => b.count - a.count || b.total - a.total);
+  /* Sunucu tutara göre sıralı gönderiyor. */
+  const sirali = urunler;
 
   return (
     <View style={styles.root} testID="urunler-screen">
@@ -155,25 +142,6 @@ export default function Urunler() {
               testID="urunler-ay"
             />
           </HeaderPills>
-          {/* Kendi üst boşluğunda: `HeaderPills` ile `TabSwitch` arka arkaya
-              gelince ikisi de kendi `marginTop`una güveniyor ve şerit hapın
-              üstüne biniyordu. İstatistik'teki `tabWrap` ile aynı kalıp. */}
-          <View style={styles.tabWrap}>
-          <TabSwitch
-            value={sira}
-            onChange={setSira}
-            onDark
-            options={[
-              /* İkon adı TABAN hâlinde veriliyor; `-outline` ekini bileşen
-                 kendisi koyuyor. Burada "cash-outline" yazılıydı ve seçili
-                 olmayan sekmede "cash-outline-outline" olup soru işaretine
-                 dönüyordu. */
-              { value: "tutar" as const, label: "Tutar", icon: "cash" },
-              { value: "siklik" as const, label: "Sıklık", icon: "repeat" },
-            ]}
-            testID="urun-sira"
-          />
-          </View>
         </ScreenHeader>
 
         <Sheet>
@@ -213,13 +181,11 @@ export default function Urunler() {
                       <Text style={styles.sira}>{i + 1}</Text>
                       <View style={{ flex: 1, minWidth: 0 }}>
                         <Text style={styles.ad} numberOfLines={1}>{u.name}</Text>
-                        <Text style={styles.alt} numberOfLines={1}>{altSatir(u, sira)}</Text>
+                        <Text style={styles.alt} numberOfLines={1}>{altSatir(u)}</Text>
                       </View>
                       {/* Sağdaki sayı SIRALANAN şey: sıklık kipinde tutarı
                           göstermek "neye göre sıralı" sorusunu bırakırdı. */}
-                      {sira === "tutar"
-                        ? <Money value={u.total} />
-                        : <Text style={styles.kez}>{u.count} kez</Text>}
+                      <Money value={u.total} />
                       <Ionicons name="chevron-forward" size={15}
                                 color={colors.onSurfaceTertiary}
                                 style={{ marginLeft: spacing.xs }} />
@@ -243,7 +209,6 @@ const styles = StyleSheet.create({
     width: 36, height: 36, borderRadius: 18, backgroundColor: colors.darkSurface,
     alignItems: "center", justifyContent: "center",
   },
-  tabWrap: { marginTop: spacing.lg },
   scroll: {
     padding: spacing.lg, paddingTop: spacing.sm,
     gap: metrics.cardGap, paddingBottom: spacing.xxxl,
@@ -257,7 +222,6 @@ const styles = StyleSheet.create({
     width: 18, textAlign: "right", fontVariant: ["tabular-nums"],
   },
   ad: { ...T.bodySb, color: colors.ink },
-  kez: { ...T.bodySb, color: colors.ink, fontVariant: ["tabular-nums"] },
   alt: { ...T.caption, fontSize: 11, color: colors.inkTertiary, marginTop: 1 },
   empty: { alignItems: "center", paddingVertical: spacing.xxxl, gap: spacing.md },
   emptyRing: {

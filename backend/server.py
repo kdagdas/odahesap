@@ -4208,6 +4208,7 @@ async def monthly_stats(
     empty = {
         "month": month, "scope": scope, "total": 0, "expense_count": 0,
         "prev_total": 0, "change_pct": None, "fixed": 0, "variable": 0,
+        "one_cikan": None,
         "categories": [], "merchants": [], "by_member": [],
         "cumulative": [], "prev_cumulative": [], "bills": [],
         "months": [], "son_aylar": [], "products": [], "products_frequent": [],
@@ -4280,8 +4281,24 @@ async def monthly_stats(
 
     members = uyeler if scope == "household" else [user["user_id"]]
 
-    bd = _breakdown(exps)
-    pbd = _breakdown(prev)
+    # DÜZENLİ GİDERLER DAĞILIMDAN ÇIKIYOR.
+    #
+    # Kira 1200 €, evin bütün market harcaması ~760 €. Kira halkaya girdiği an
+    # halka KİRANIN RESMİ olur ve her ay aynı şeyi söyler; her ay aynı şeyi
+    # söyleyen bir grafik bilgi taşımıyordur.
+    #
+    # Daha derin sebep: halkanın işi "neyi değiştirebilirim" sorusuna cevap
+    # vermek. Kira bir karar değil bir sabit; onu grafiğe koymak, üzerinde
+    # hiçbir etkisi olmayan bir şeyi kullanıcının her ay yüzüne tutmaktır.
+    #
+    # Toplam yine HER ŞEYİ içeriyor (ev o parayı gerçekten harcadı); halka ve
+    # ürün listesi yalnızca DEĞİŞKENİ gösteriyor ve `fixed` başlıkta tek satır
+    # olarak yazılıyor. İki sayı, iki ayrı soru, karışmıyorlar.
+    degisken = [e for e in exps if not e.get("recurring_id")]
+    prev_degisken = [e for e in prev if not e.get("recurring_id")]
+
+    bd = _breakdown(degisken)
+    pbd = _breakdown(prev_degisken)
     # Kategori ay-ay değişimi. Geçen ay hiç yoksa "yeni", vardı ve şimdi yoksa
     # listede görünmüyor -- olmayan bir şeyin yüzdesi yanıltıcı olur.
     # Rozet ISTISNA icindir. Gecen ay hic veri yoksa her kategori "yeni"
@@ -4342,7 +4359,40 @@ async def monthly_stats(
 
     son_aylar = await _aylik_seri(
         hh["household_id"], month, scope, user["user_id"], uyeler, 6)
-    urunler = _urunler(exps)
+    # Ürün listesi de değişkenden: "Kira" bir ürün değil ve listeye girdiğinde
+    # her ay birinci sırada oturur.
+    urunler = _urunler(degisken)
+
+    # ---- BU AY DİKKAT ÇEKEN ŞEY ----
+    #
+    # Halka BİLEŞİMİ gösteriyor, DEĞİŞİMİN SEBEBİNİ değil. Oysa insanların
+    # yüksek sesle sorduğu tek soru "bu ay neden daha pahalı?" ve cevabı
+    # elimizdeki iki kategori tablosunun farkında duruyor.
+    #
+    # CÜMLE BURADA KURULMUYOR, sayı gönderiliyor: metni istemci yazıyor. Aksi
+    # hâlde uygulama Almancaya çevrildiğinde sunucuda Türkçe cümleler kalırdı
+    # (bildirim gövdelerinde yaşanan sorunun aynısı).
+    #
+    # Eşik VAR: küçük oynamalar "dikkat çeken şey" değil. Fark hem 20 €'yu hem
+    # de geçen ayın %10'unu aşmalı — yoksa satır hiç çizilmiyor, dolgu metni
+    # üretilmiyor.
+    one_cikan = None
+    fark = round(sum(float(e["total"]) for e in degisken)
+                 - sum(float(e["total"]) for e in prev_degisken), 2)
+    if prev_total > 0.005 and abs(fark) >= 20 and abs(fark) >= prev_total * 0.10:
+        aday = None
+        for k in set(bd["cats"]) | set(pbd["cats"]):
+            d = bd["cats"].get(k, 0.0) - pbd["cats"].get(k, 0.0)
+            # Yönü farkla AYNI olan kategori aranıyor: harcama arttıysa artışı
+            # sürükleyen, azaldıysa azalışı sürükleyen.
+            if fark > 0 and d <= 0.005:
+                continue
+            if fark < 0 and d >= -0.005:
+                continue
+            if aday is None or abs(d) > abs(aday[1]):
+                aday = (k, d)
+        if aday and abs(aday[1]) >= abs(fark) * 0.30:
+            one_cikan = {"diff": fark, "category": aday[0], "cat_diff": round(aday[1], 2)}
 
     # Ev harcamalarında bu kişinin payı
     my_share = 0.0
@@ -4368,6 +4418,9 @@ async def monthly_stats(
         "elapsed_days": elapsed,
         "fixed": fixed,
         "variable": round(total - fixed, 2),
+        # Halkanın topladığı sayı: `total` değil bu. Grafik değişkeni
+        # gösteriyor, düzenli giderler başlıkta tek satır.
+        "one_cikan": one_cikan,
         "member_count": len(members),
         "per_person": round(total / max(len(members), 1), 2),
         "by_member": sorted(

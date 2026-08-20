@@ -26,14 +26,13 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import Svg, { Circle, Path, Line as SvgLine, Text as SvgText } from "react-native-svg";
 import { apiGet } from "@/src/api";
 import { useAuth } from "@/src/auth";
 import { useHousehold } from "@/src/household";
 import {
   ScreenHeader, Sheet, Card, Row, Divider, Avatar, Money, CategoryIcon,
   categoryLabel, MerchantBadge, Donut, TabSwitch,
-  formatEUR, formatEURShort, formatQty, AylikCubuk, IconSwitch,
+  formatEUR, formatEURShort, formatQty, AylikCubuk,
   useScrollPad, useGeriDon, useBasaSar, AySecici,
 } from "@/src/ui";
 import {
@@ -71,66 +70,6 @@ type FiyatHareket = {
   unit: string; now: number; prev: number; change_pct: number;
 };
 
-/**
- * Biriken harcama eğrisi — bu ay dolu, geçen ay kesikli gölge.
- *
- * Günlük çubukların yerine geçti: çubuklar az harcamada seyrek ve çirkin
- * duruyordu, biriken eğri tek harcamada bile düzgün. Daha iyi bir soruya da
- * cevap veriyor — "geçen ayın bu gününde neredeydik?"
- */
-function Curve({ now, prev, height = 132 }: {
-  now: { day: string; total: number }[];
-  prev: { day: string; total: number }[];
-  height?: number;
-}) {
-  const W = 300, H = height, padL = 40, padB = 18, padT = 8;
-  const max = Math.max(1, now.at(-1)?.total ?? 0, prev.at(-1)?.total ?? 0);
-  const plotW = W - padL - 8;
-  const plotH = H - padB - padT;
-  const path = (rows: { total: number }[], upto?: number) => {
-    const list = upto != null ? rows.slice(0, upto) : rows;
-    if (!list.length) return "";
-    return list.map((r, i) => {
-      const x = padL + (i / Math.max(rows.length - 1, 1)) * plotW;
-      const y = padT + plotH - (r.total / max) * plotH;
-      return `${i === 0 ? "M" : "L"}${x.toFixed(1)} ${y.toFixed(1)}`;
-    }).join(" ");
-  };
-  // Bu ay henüz bitmediyse eğri bugünde duruyor: ayın sonuna kadar düz bir
-  // çizgi çekmek "harcama durdu" demek olurdu, oysa gün gelmedi.
-  const today = new Date().toISOString().slice(0, 10);
-  const upto = now.findIndex((r) => r.day > today);
-  const shown = upto === -1 ? now.length : Math.max(upto, 1);
-  const last = now[shown - 1];
-  const lastX = padL + ((shown - 1) / Math.max(now.length - 1, 1)) * plotW;
-  const lastY = padT + plotH - ((last?.total ?? 0) / max) * plotH;
-
-  return (
-    <Svg width="100%" height={H} viewBox={`0 0 ${W} ${H}`}>
-      {[0, 0.5, 1].map((f) => (
-        <SvgLine key={f} x1={padL} y1={padT + plotH * f} x2={W - 8} y2={padT + plotH * f}
-                 stroke={colors.divider} strokeWidth={1} />
-      ))}
-      {[1, 0.5, 0].map((f) => (
-        <SvgText key={f} x={padL - 6} y={padT + plotH * (1 - f) + 4} textAnchor="end"
-                 fontSize={9} fill={colors.inkTertiary}>
-          {formatEURShort(max * f)}
-        </SvgText>
-      ))}
-      {prev.length > 1 && (
-        <Path d={path(prev)} fill="none" stroke={colors.inkTertiary}
-              strokeWidth={1.6} strokeDasharray="4 4" />
-      )}
-      <Path d={path(now, shown)} fill="none" stroke={colors.ink}
-            strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" />
-      {last && <Circle cx={lastX} cy={lastY} r={4} fill={colors.ink} />}
-      <SvgText x={padL} y={H - 4} fontSize={9} fill={colors.inkTertiary}>1</SvgText>
-      <SvgText x={W - 8} y={H - 4} textAnchor="end" fontSize={9} fill={colors.inkTertiary}>
-        {now.length}
-      </SvgText>
-    </Svg>
-  );
-}
 
 /** "14 lt · 3 markette" — miktar yalnızca birim tekse yazılıyor.
  *  2 kg un ile 3 paket unu toplamak anlamsız bir sayı üretir; sunucu
@@ -180,7 +119,12 @@ export default function Istatistik() {
    *  "en çok neyi alıyoruz". Kilosu 20 € olan etten 2 kilo ile kilosu 1 €
    *  olan undan 40 kilo aynı tutarı verir ama biri ayda bir, öteki her
    *  hafta alınır. */
-  const [urunSira, setUrunSira] = useState<"tutar" | "siklik">("tutar");
+  /* SIKLIK EKSENİ KALDIRILDI.
+     "Tek seferde çok alınan mı daha sık, her gidişte az alınan mı?" —
+     bu sorunun doğru cevabı yok, çünkü soru yanlış: sıklık ile miktar iki
+     ayrı büyüklük ve tek bir sıralamaya sığmıyor. Cevabı olmayan bir eksen
+     kullanıcıya çözemeyeceği bir bulmaca veriyordu; kart artık tek soruya
+     cevap veriyor — "paramız neye gidiyor". */
   /* Geri, geldiği yere. Sekme gezgininde `back()` Anasayfa'ya düşüyor. */
   const geriDon = useGeriDon();
 
@@ -353,39 +297,38 @@ export default function Istatistik() {
                   </Card>
                 )}
 
-                <Card title="Ay Boyunca" style={styles.mx} padded>
-                  <Curve now={data.cumulative} prev={data.prev_cumulative} />
-                  <View style={styles.curveLegend}>
-                    <View style={styles.legendItem}>
-                      <View style={[styles.legendLine, { backgroundColor: colors.ink }]} />
-                      <Text style={styles.legendLabel}>bu ay {formatEURShort(data.total)}</Text>
-                    </View>
-                    {data.prev_total > 0 && (
-                      <View style={styles.legendItem}>
-                        <View style={[styles.legendLine, styles.legendDashed]} />
-                        <Text style={styles.legendLabel}>
-                          geçen ay {formatEURShort(data.prev_total)}
-                        </Text>
-                      </View>
-                    )}
-                  </View>
-                </Card>
-
-                {/* Halka ve kategori dokumu TEK kartta. Listedeki renk noktasi
-                    halkanin dilimiyle eslesiyor, yani liste ayni zamanda
-                    aciklama gorevi goruyor -- ayri bir legend satirina gerek
-                    kalmiyor. Ay-ay degisim de ayni satirda: "neye gitti" ve
-                    "neresi degisti" ayni soru. */}
                 {data.categories.length > 0 && (
                   <Card title="Nereye Gitti" style={styles.mx}>
                     <View style={styles.donutWrap}>
                       <Donut parts={cats} size={148} stroke={13}>
                         <View style={{ alignItems: "center" }}>
-                          <Text style={styles.donutTotal}>{formatEURShort(data.total)}</Text>
-                          <Text style={styles.donutSub}>{data.expense_count} harcama</Text>
+                          {/* Halkanın ortasındaki sayı DEĞİŞKEN harcama, ev
+                              toplamı değil — dilimler de onu topluyor. İkisi
+                              farklı olduğunda alttaki satır farkı söylüyor;
+                              aksi hâlde "dilimler neden toplamı vermiyor"
+                              sorusu doğardı. */}
+                          <Text style={styles.donutTotal}>
+                            {formatEURShort(data.variable)}
+                          </Text>
+                          <Text style={styles.donutSub}>
+                            {data.fixed > 0.005 ? "değişken" : `${data.expense_count} harcama`}
+                          </Text>
                         </View>
                       </Donut>
                     </View>
+                    {/* DÜZENLİ GİDERLER halkanın dışında, tek satır.
+                        Kira 1200 €, evin bütün market harcaması ~760 €:
+                        halkaya girdiği an halka kiranın resmi olur ve her ay
+                        aynı şeyi söyler. Ayrıca halkanın işi "neyi
+                        değiştirebilirim" sorusuna cevap vermek; kira bir
+                        karar değil bir sabit. */}
+                    {data.fixed > 0.005 && (
+                      <View style={styles.sabitSatir}>
+                        <Ionicons name="repeat" size={14} color={colors.inkTertiary} />
+                        <Text style={styles.sabitTxt}>Düzenli giderler</Text>
+                        <Money value={data.fixed} style={styles.catValue} />
+                      </View>
+                    )}
                     {data.categories.map((cat, i) => (
                       <View key={cat.key}>
                         <Divider inset={i === 0 ? 0 : spacing.lg} />
@@ -459,23 +402,8 @@ export default function Istatistik() {
                     BEŞER satır: kart bir özet, tam liste bir dokunuş ötede.
                     Sekiz satır kartı sayfanın yarısı yapardı. */}
                 {(data.products || []).length > 0 && (
-                  <Card
-                    title={urunSira === "tutar" ? "En Çok Harcadıklarımız" : "En Sık Aldıklarımız"}
-                    style={styles.mx}
-                    headRight={
-                      <IconSwitch
-                        value={urunSira}
-                        onChange={setUrunSira}
-                        options={[
-                          { value: "tutar" as const, icon: "cash-outline", label: "Tutara göre" },
-                          { value: "siklik" as const, icon: "repeat-outline", label: "Sıklığa göre" },
-                        ]}
-                        testID="urun-eksen"
-                      />
-                    }
-                  >
-                    {(urunSira === "tutar" ? data.products : (data.products_frequent || []))
-                      .map((u, i) => (
+                  <Card title="En Çok Harcadıklarımız" style={styles.mx}>
+                    {data.products.map((u, i) => (
                       <View key={u.key}>
                         {i > 0 && <Divider inset={spacing.lg} />}
                         <View style={styles.urunRow}>
@@ -487,9 +415,7 @@ export default function Istatistik() {
                           </View>
                           {/* Sağdaki sayı SIRALANAN şey: sıklık kipinde tutar
                               göstermek "neye göre sıralı" sorusunu bırakırdı. */}
-                          {urunSira === "tutar"
-                            ? <Money value={u.total} />
-                            : <Text style={styles.urunKez}>{u.count} kez</Text>}
+                          <Money value={u.total} />
                         </View>
                       </View>
                     ))}
@@ -499,7 +425,7 @@ export default function Istatistik() {
                     <Pressable style={styles.urunKapi} testID="tum-urunler"
                                onPress={() => router.push({
                                  pathname: "/(tabs)/urunler",
-                                 params: { ay: data.month, scope, sira: urunSira,
+                                 params: { ay: data.month, scope,
                                            geri: "/(tabs)/istatistik" },
                                })}>
                       <Ionicons name="list" size={15} color={colors.accentDark} />
@@ -512,48 +438,6 @@ export default function Istatistik() {
                   </Card>
                 )}
 
-                {/* Duzenli giderlerin ay ay seyri. Kira aydan aya degismiyor
-                    ve zaten listede yok; asil merak edilen elektrik, su,
-                    dogalgaz gibi tutari degisen faturalar. Degismeyen satir
-                    her ay ayni seyi soyler ve asil degiseni gizler. */}
-                {data.bills.length > 0 && (
-                  <Card title="Faturalar" style={styles.mx}>
-                    {data.bills.map((b, i) => (
-                      <View key={b.recurring_id}>
-                        {i > 0 && <Divider inset={spacing.lg} />}
-                        <View style={styles.catRow}>
-                          <Ionicons name="repeat" size={16} color={colors.inkTertiary} />
-                          <Text style={styles.catName} numberOfLines={1}>{b.name}</Text>
-                          {b.change_pct !== null && (
-                            <View style={[styles.deltaTag, {
-                              backgroundColor: b.change_pct > 0 ? colors.negativeSoft : colors.accentSoft,
-                            }]}>
-                              <Text style={[styles.deltaTxt, {
-                                color: b.change_pct > 0 ? colors.negative : colors.accentDark,
-                              }]}>
-                                {b.change_pct > 0 ? "↑" : "↓"} %{Math.abs(b.change_pct)}
-                              </Text>
-                            </View>
-                          )}
-                          <View style={{ alignItems: "flex-end", minWidth: 84 }}>
-                            <Money value={b.total} />
-                            <Text style={styles.billPrev}>
-                              geçen ay {formatEURShort(b.prev_total)}
-                            </Text>
-                          </View>
-                        </View>
-                      </View>
-                    ))}
-                  </Card>
-                )}
-
-                {/* Marketler artık LİSTE, yığın değil: satır tıklanabilir
-                    olunca hedefin öngörülebilir yükseklikte olması gerekiyor
-                    ve geçen ay sütunu da hizalanacak bir yer istiyor.
-
-                    Geçen ay sütunu kategori kartındaki değişim rozetiyle aynı
-                    işi yapıyor — "buraya geçen aydan çok mu gidiyoruz" sorusu,
-                    kategoriler için sorulan sorunun aynısı. */}
                 {data.merchants.length > 0 && (
                   <Card title="Marketler" style={styles.mx}>
                     {data.merchants.map((mm, i) => (
@@ -586,34 +470,6 @@ export default function Istatistik() {
                         </Pressable>
                       </View>
                     ))}
-                  </Card>
-                )}
-
-                {/* Senin toplam cikisin: ev payin + kisiselin. Oran degil
-                    toplam -- "kisiselin evin yuzde 35'i" garip bir sayi,
-                    "bu ay toplam su kadar harcadin" gercek bir soruya cevap. */}
-                {scope === "household" && (
-                  <Card title="Senin Katkın" style={styles.mx} padded>
-                    <View style={styles.outRow}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.legendLabel}>Ev payın</Text>
-                        <Text style={styles.outValue}>{formatEUR(data.my_share)}</Text>
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.legendLabel}>Kişisel</Text>
-                        <Text style={styles.outValue}>{formatEUR(data.my_personal)}</Text>
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.legendLabel}>Toplam</Text>
-                        {/* Nötr, yeşil DEĞİL. Yeşil bu uygulamada tek bir şey
-                            demek: alacak. Senin toplam çıkışın bir alacak
-                            değil, harcadığın para. Renk anlamını bir yerde
-                            kaybederse her yerde kaybeder. */}
-                        <Text style={styles.outValue}>
-                          {formatEUR(data.my_share + data.my_personal)}
-                        </Text>
-                      </View>
-                    </View>
                   </Card>
                 )}
 
@@ -697,6 +553,12 @@ const styles = StyleSheet.create({
   donutWrap: { alignItems: "center", paddingVertical: spacing.lg },
   donutTotal: { ...T.emph, fontSize: 20, color: colors.ink },
   donutSub: { ...T.caption, color: colors.inkTertiary },
+  sabitSatir: {
+    flexDirection: "row", alignItems: "center", gap: spacing.md,
+    paddingHorizontal: spacing.lg, paddingVertical: spacing.md,
+    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.divider,
+  },
+  sabitTxt: { ...T.body, color: colors.inkSecondary, flex: 1 },
   catValue: { minWidth: 74, textAlign: "right" },
   deltaTag: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: radius.sm },
   deltaTxt: { fontSize: 11, lineHeight: 15, fontFamily: fontFamily.medium },

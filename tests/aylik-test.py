@@ -166,9 +166,27 @@ check("kalem kategorileri dokumde", near(cats.get("sut_urunleri"), 20.0), str(ca
 check("firin 30", near(cats.get("firin"), 30.0), str(cats))
 merch = {x["name"]: x["total"] for x in s["merchants"]}
 check("ALDI 50", near(merch.get("ALDI"), 50.0), str(merch))
-check("kategori toplami harcama toplamina esit",
-      near(sum(x["total"] for x in s["categories"]), s["total"]),
-      f'{sum(x["total"] for x in s["categories"])} vs {s["total"]}')
+# DUZENLI GIDERLER HALKADA YOK ve bu bilerek.
+#
+# Kira 900, degisken harcama 170: kira halkaya girseydi halka kiranin resmi
+# olur ve her ay ayni seyi soylerdi. Halkanin isi "neyi degistirebilirim"
+# sorusuna cevap vermek; kira bir karar degil bir sabit.
+#
+# Bu test once "kategori toplami == harcama toplami" diyordu ve kural
+# degisince kirmizi verdi -- fark tam olarak 900, yani kiranin kendisiydi.
+# Yeni degismez: kategoriler DEGISKENI topluyor.
+kat_toplam = sum(x["total"] for x in s["categories"])
+check("kategori toplami DEGISKENE esit",
+      near(kat_toplam, s["variable"]),
+      f'{kat_toplam} vs degisken {s["variable"]} (toplam {s["total"]})')
+check("kira halkada YOK",
+      near(s["total"] - kat_toplam, s["fixed"]),
+      f'fark {s["total"] - kat_toplam} vs sabit {s["fixed"]}')
+# Urun listesine de girmiyor: "Kira" bir urun degil ve girseydi her ay
+# birinci sirada otururdu.
+check("kira urun listesinde YOK",
+      all("kira" not in (u["name"] or "").lower() for u in s.get("products", [])),
+      str([u["name"] for u in s.get("products", [])]))
 
 
 print("\n-- 8. kumulatif egri ve ay listesi --")

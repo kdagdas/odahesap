@@ -40,6 +40,10 @@ type Stats = {
   my_share: number; my_personal: number;
   categories: { key: string; total: number }[];
   by_member: { user_id: string; total: number }[];
+  /** Bu ayki değişimin SEBEBİ — sunucu sayıyı gönderiyor, cümleyi burası
+   *  kuruyor. Kayda değer bir şey yoksa `null` ve satır hiç çizilmiyor. */
+  one_cikan?: { diff: number; category: string; cat_diff: number } | null;
+  fixed?: number;
 };
 type ShopItem = { item_id: string; text: string; added_by: string; done: boolean };
 
@@ -158,6 +162,35 @@ export default function Panel() {
               <Text style={styles.trendPct}>{degisimTxt(stats.change_pct)}</Text>
               <Text style={styles.trendPrev} numberOfLines={1}>
                 · geçen ay bugün {formatEURShort(stats.prev_same_day)}
+              </Text>
+            </Pressable>
+          )}
+
+          {/* BU AY DİKKAT ÇEKEN ŞEY — bir grafik değil bir CÜMLE.
+              Halka bileşimi gösteriyor, değişimin sebebini değil. Oysa
+              insanların yüksek sesle sorduğu tek soru "bu ay neden daha
+              pahalı?" ve bu satır ona bir cümleyle cevap veriyor.
+
+              Yeri Analiz sayfası DEĞİL Anasayfa, çünkü tam da Analiz'i hiç
+              açmayan kişi için yazılıyor. Dokuz kartın toplamından daha çok
+              okunacak olan bu.
+
+              Kayda değer bir şey yoksa çizilmiyor: eşiği sunucu koyuyor
+              (hem 20 €'yu hem geçen ayın %10'unu aşmalı). Dolgu metni yok —
+              "bu ay normal" demek, hiçbir şey dememektir. */}
+          {stats?.one_cikan && (
+            <Pressable style={styles.oneCikan} hitSlop={8} testID="one-cikan"
+                       onPress={() => router.push("/istatistik")}>
+              <Ionicons name="sparkles-outline" size={13} color={colors.accentOnDark} />
+              <Text style={styles.oneCikanTxt} numberOfLines={2}>
+                {stats.one_cikan.diff > 0 ? "Bu ay " : "Bu ay "}
+                <Text style={styles.oneCikanVurgu}>
+                  {formatEUR(Math.abs(stats.one_cikan.diff))}
+                </Text>
+                {stats.one_cikan.diff > 0 ? " fazla" : " az"}
+                {" · çoğu "}
+                {categoryLabel(stats.one_cikan.category).toLocaleLowerCase("tr-TR")}
+                {stats.one_cikan.diff > 0 ? " harcamasından" : " harcamasında"}
               </Text>
             </Pressable>
           )}
@@ -463,6 +496,11 @@ const styles = StyleSheet.create({
     borderColor: colors.borderStrong, alignItems: "center", justifyContent: "center",
   },
   hayaletTxt: { ...T.body, color: colors.inkSecondary },
+  oneCikan: {
+    flexDirection: "row", alignItems: "flex-start", gap: 6, marginTop: spacing.sm,
+  },
+  oneCikanTxt: { ...T.caption, color: colors.onDarkMuted, flex: 1, lineHeight: 18 },
+  oneCikanVurgu: { ...T.captionSb, color: colors.onDark },
   araKutu: {
     flexDirection: "row", alignItems: "center", gap: spacing.sm,
     backgroundColor: colors.darkSurface, borderRadius: radius.pill,
