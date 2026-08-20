@@ -450,9 +450,10 @@ export default function Review() {
               meId={meId}
               total={total}
               allowExact={false}
+              kompakt
               testID="bulk-split"
-              renderTrigger={(ac, ozet) => (
-                <Pressable style={styles.bulkRow} onPress={ac} testID="bulk-split">
+              renderTrigger={(ac, ozet, ref) => (
+                <Pressable ref={ref} style={styles.bulkRow} onPress={ac} testID="bulk-split">
                   <Text style={styles.bulkLabel}>TÜMÜ</Text>
                   <View style={styles.bulkHap}>
                     <Ionicons name="home" size={13} color={colors.inkSecondary} />
@@ -516,9 +517,10 @@ export default function Review() {
                     meId={meId}
                     total={rowTotal(r)}
                     allowExact={false}
+                    kompakt
                     testID={`item-${i}-split`}
-                    renderTrigger={(ac, ozet) => (
-                      <Pressable style={styles.satir} onPress={ac}
+                    renderTrigger={(ac, ozet, ref) => (
+                      <Pressable ref={ref} style={styles.satir} onPress={ac}
                                  android_ripple={{ color: colors.divider }}
                                  testID={`review-item-${i}`}>
                         <CategoryIcon category={r.category} size={30} />

@@ -923,6 +923,98 @@ export function KaydirmaIpucu({
   );
 }
 
+/* ------------------------------------------------ tutturulmuş menü */
+
+export type MenuTutamak = { x: number; y: number; width: number; height: number };
+
+/**
+ * Dokunulan öğenin ALTINDAN açılan kompakt menü.
+ *
+ * ### Neden alt sayfa değil
+ *
+ * Alt sayfa bir GÖREV penceresidir: "şunu yap, sonra geri dön". Bölüşüm
+ * seçmek ise tek dokunuşluk bir karar ve fiş ekranında en sık yapılan iş.
+ * Onu her seferinde tam ekran bir bağlam değişimine bağlamak, ucuz bir işi
+ * pahalı bir jestle ödetiyordu — beş kişilik evde alt sayfa ekranın neredeyse
+ * tamamını kaplıyor.
+ *
+ * Kalıp Android'in kendi taşma menüsüyle aynı, yani kullanıcıya yabancı değil.
+ *
+ * ### Kaydırma sorunu KENDİLİĞİNDEN çözülüyor
+ *
+ * Tutturulmuş bir menünün klasik kusuru şudur: liste kayarsa menü havada
+ * kalır ve yanlış satırı gösterir. Burada menü bir `Modal` içinde ve
+ * arkasındaki karartma bütün dokunuşları yutuyor — yani menü açıkken
+ * kaydırmak zaten mümkün değil. Ayrı bir "kaydırınca kapat" mantığı
+ * gerekmiyor.
+ *
+ * ### Ölçülmeden çizilmiyor
+ *
+ * Yukarı mı aşağı mı açılacağı menünün KENDİ yüksekliğine bağlı ve o ancak
+ * bir kez çizildikten sonra biliniyor. Ölçülene kadar görünmez duruyor;
+ * yoksa aşağı açılıp sonra yukarı zıplardı.
+ */
+export function AnchorMenu({
+  visible, tutamak, onClose, children, testID,
+}: {
+  visible: boolean;
+  tutamak: MenuTutamak | null;
+  onClose: () => void;
+  children: React.ReactNode;
+  testID?: string;
+}) {
+  const { width: ekranG, height: ekranY } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const [olcu, setOlcu] = React.useState({ w: 0, h: 0 });
+
+  React.useEffect(() => { if (!visible) setOlcu({ w: 0, h: 0 }); }, [visible]);
+
+  if (!tutamak) return null;
+  const GENIS = Math.min(300, ekranG - spacing.lg * 2);
+  const sol = Math.min(Math.max(tutamak.x + spacing.md, spacing.md),
+                       ekranG - GENIS - spacing.md);
+  const altBosluk = ekranY - insets.bottom - (tutamak.y + tutamak.height);
+  const yukari = olcu.h > 0 && altBosluk < olcu.h + spacing.md;
+  const ust = yukari
+    ? Math.max(tutamak.y - olcu.h - 6, insets.top + spacing.sm)
+    : tutamak.y + tutamak.height + 6;
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}
+           statusBarTranslucent navigationBarTranslucent>
+      <Pressable style={styles.menuScrim} onPress={onClose} testID={testID ? `${testID}-scrim` : undefined} />
+      <View
+        style={[styles.menuPanel, { width: GENIS, left: sol, top: ust },
+                olcu.h === 0 && { opacity: 0 }]}
+        onLayout={(e) => setOlcu({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}
+        testID={testID}
+      >
+        {children}
+      </View>
+    </Modal>
+  );
+}
+
+/** Kompakt menünün tek satırı. Yükseklik 46 — Apple 44 / Google 48 arası. */
+export function MenuSatir({
+  icon, label, secili, onPress, alt, chevron, testID,
+}: {
+  icon: string; label: string; secili?: boolean; onPress: () => void;
+  alt?: string; chevron?: boolean; testID?: string;
+}) {
+  return (
+    <Pressable style={[styles.menuRow, secili && styles.menuRowOn]} onPress={onPress}
+               android_ripple={{ color: colors.divider }} testID={testID}>
+      <Ionicons name={icon as any} size={16}
+                color={secili ? colors.accentDark : colors.inkSecondary} />
+      <Text style={[styles.menuTxt, secili && styles.menuTxtOn]} numberOfLines={1}>{label}</Text>
+      {alt ? <Text style={styles.menuAlt} numberOfLines={1}>{alt}</Text> : null}
+      {secili ? <Ionicons name="checkmark" size={16} color={colors.accentDark} /> : null}
+      {chevron ? <Ionicons name="chevron-forward" size={14} color={colors.inkTertiary} /> : null}
+    </Pressable>
+  );
+}
+
 /**
  * Seçim satırı + alttan açılan liste.
  *
@@ -1594,12 +1686,18 @@ export function splitSummary(split: Split, members: SplitMember[], meId?: string
  */
 export function SplitPicker({
   label = "BÖLÜŞÜM", value, onChange, members, meId, total, allowExact = true, testID,
-  renderTrigger,
+  renderTrigger, kompakt = false,
 }: {
   label?: string;
   /** Tetiği çağıran kendisi çizer — fiş satırının TAMAMI tetik olabilsin diye.
-   *  Verilmezse varsayılan seçim satırı çiziliyor. */
-  renderTrigger?: (ac: () => void, ozet: string) => React.ReactNode;
+   *  Verilmezse varsayılan seçim satırı çiziliyor. `ref` kompakt menünün
+   *  nereye tutturulacağını ölçmek için; tetiğin köküne bağlanmalı. */
+  renderTrigger?: (
+    ac: () => void, ozet: string, ref: React.RefObject<any>,
+  ) => React.ReactNode;
+  /** Alt sayfa yerine, tetiğin altından açılan KOMPAKT menü.
+   *  Çoklu seçim menüden "Birkaç kişi…" ile yine alt sayfaya iniyor. */
+  kompakt?: boolean;
   value: Split;
   onChange: (s: Split) => void;
   members: SplitMember[];
@@ -1610,6 +1708,9 @@ export function SplitPicker({
   testID?: string;
 }) {
   const [open, setOpen] = React.useState(false);
+  const [menuAcik, setMenuAcik] = React.useState(false);
+  const [tutamak, setTutamak] = React.useState<MenuTutamak | null>(null);
+  const tetikRef = React.useRef<any>(null);
   const [mode, setMode] = React.useState<Split["mode"]>(value.mode);
   const [picked, setPicked] = React.useState<string[]>(Object.keys(value.with || {}));
   const [amounts, setAmounts] = React.useState<Record<string, string>>({});
@@ -1632,6 +1733,17 @@ export function SplitPicker({
       )
     );
     setErr(null);
+    if (kompakt && renderTrigger) {
+      // Ölçüm PENCEREYE göre: menü bir Modal içinde çiziliyor ve o pencere
+      // kök pencereyle aynı geometride (`statusBarTranslucent`).
+      tetikRef.current?.measureInWindow?.(
+        (x: number, y: number, width: number, height: number) => {
+          setTutamak({ x, y, width, height });
+          setMenuAcik(true);
+        },
+      );
+      return;
+    }
     setOpen(true);
   };
 
@@ -1710,6 +1822,7 @@ export function SplitPicker({
     if (!allowExact && ids.length) {
       onChange({ mode: "equal", with: Object.fromEntries(ids.map((id) => [id, 1])) });
       setOpen(false);
+      setMenuAcik(false);
     }
   };
 
@@ -1729,7 +1842,7 @@ export function SplitPicker({
 
   return (
     <>
-      {renderTrigger ? renderTrigger(start, splitSummary(value, members, meId)) : (
+      {renderTrigger ? renderTrigger(start, splitSummary(value, members, meId), tetikRef) : (
         <Pressable style={styles.selectRow} onPress={start} testID={testID}>
           <View style={{ flex: 1 }}>
             <Text style={styles.selectLabel}>{label}</Text>
@@ -1738,6 +1851,39 @@ export function SplitPicker({
           <Ionicons name="chevron-down" size={18} color={colors.inkTertiary} />
         </Pressable>
       )}
+
+      {/* KOMPAKT MENÜ — yalnızca varış noktaları.
+          Çoklu seçim buraya konmadı ve bu bilerek: menünün değeri kısalığı.
+          "Birkaç kişi…" nadir olanı bir kat derine indiriyor, sık olan
+          yüzeyde kalıyor — kademeli açılım kuralının aynısı. */}
+      <AnchorMenu visible={menuAcik} tutamak={tutamak} onClose={() => setMenuAcik(false)}
+                  testID={testID ? `${testID}-menu` : undefined}>
+        <MenuSatir
+          icon="home" label="Tüm ev" secili={hepsiSecili}
+          alt={`${members.length} kişi`}
+          onPress={() => hedefSec(members.map((m) => m.user_id))}
+          testID={testID ? `${testID}-quick-all` : undefined}
+        />
+        <MenuSatir
+          icon="person" label="Sadece ben" secili={benSecili}
+          onPress={() => hedefSec(meId ? [meId] : [])}
+          testID={testID ? `${testID}-quick-me` : undefined}
+        />
+        {members.filter((m) => m.user_id !== meId).map((m) => (
+          <MenuSatir
+            key={`m-${m.user_id}`}
+            icon="person" label={`Sadece ${m.name.split(" ")[0]}`}
+            secili={tekSecili === m.user_id}
+            onPress={() => hedefSec([m.user_id])}
+            testID={testID ? `${testID}-quick-${m.user_id}` : undefined}
+          />
+        ))}
+        <MenuSatir
+          icon="people" label="Birkaç kişi…" chevron
+          onPress={() => { setMenuAcik(false); setOpen(true); }}
+          testID={testID ? `${testID}-coklu` : undefined}
+        />
+      </AnchorMenu>
 
       <BottomSheet visible={open} onClose={() => setOpen(false)}>
             <View style={styles.splitHead}>
@@ -2223,6 +2369,23 @@ const styles = StyleSheet.create({
   /* Satırın altındaki dekoru örtmesi için ZEMİNİ olmak zorunda; `Card` ile
      aynı renk, yani ekranda hiçbir fark yok. */
   ipucuOn: { backgroundColor: colors.surface },
+  menuScrim: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(12,22,38,0.35)" },
+  menuPanel: {
+    position: "absolute", backgroundColor: colors.surface,
+    borderRadius: radius.md, borderWidth: 1, borderColor: colors.border,
+    overflow: "hidden",
+    shadowColor: colors.black, shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.18, shadowRadius: 16, elevation: 12,
+  },
+  menuRow: {
+    flexDirection: "row", alignItems: "center", gap: spacing.md,
+    paddingHorizontal: spacing.md, minHeight: 46,
+    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.divider,
+  },
+  menuRowOn: { backgroundColor: colors.accentSoft },
+  menuTxt: { ...T.body, color: colors.ink, flex: 1 },
+  menuTxtOn: { color: colors.accentDark },
+  menuAlt: { ...T.caption, color: colors.inkTertiary },
   hint: {
     flexDirection: "row", alignItems: "center", gap: spacing.md,
     backgroundColor: colors.infoSoft, borderRadius: radius.md, padding: spacing.md,
