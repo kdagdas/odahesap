@@ -112,6 +112,8 @@ export default function TabsLayout() {
       <Tabs.Screen name="urunler" options={{ href: null }} />
       <Tabs.Screen name="kategori" options={{ href: null }} />
       <Tabs.Screen name="market" options={{ href: null }} />
+      <Tabs.Screen name="arama" options={{ href: null }} />
+      <Tabs.Screen name="urun" options={{ href: null }} />
     </Tabs>
   );
 }

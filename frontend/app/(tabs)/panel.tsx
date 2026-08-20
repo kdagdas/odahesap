@@ -161,6 +161,28 @@ export default function Panel() {
               </Text>
             </Pressable>
           )}
+
+          {/* ARAMA — lacivert alanın DİBİNDE, kahraman rakamın altında.
+              Buraya konmasının sebebi: aramanın öne çıkma derecesi,
+              uygulamanın ne kadarının "bulma işi" olduğuyla orantılı.
+              Spotify'da arama bir sekmedir çünkü bulmak işin kendisidir;
+              burada günlük iş fiş taramak, ama veri büyüdükçe bulma işi de
+              büyüyor. Kahraman rakamla yarışmıyor (altında ve sessiz), ama
+              GÖRÜNÜR — başlıktaki bir büyüteç aramanın var olduğunu
+              öğretmez, duran bir çubuk öğretir.
+
+              Placeholder bedava bir ders veriyor: uygulamanın neyi bildiğini
+              dört kelimeyle anlatıyor.
+
+              Klavye BURADA açılmıyor: dokununca arama ekranına gidiyor.
+              Yerinde arama Anasayfa'yı sonuç listesi barındırmaya zorlardı.
+              Sahte arama çubuğu standart kalıptır (Spotify, Airbnb, App
+              Store hepsi böyle yapar). */}
+          <Pressable style={styles.araKutu} onPress={() => router.push("/arama")}
+                     testID="open-search">
+            <Ionicons name="search" size={16} color={colors.onDarkMuted} />
+            <Text style={styles.araTxt}>Süt, REWE, Kemal…</Text>
+          </Pressable>
         </ScreenHeader>
 
         <Sheet>
@@ -441,6 +463,12 @@ const styles = StyleSheet.create({
     borderColor: colors.borderStrong, alignItems: "center", justifyContent: "center",
   },
   hayaletTxt: { ...T.body, color: colors.inkSecondary },
+  araKutu: {
+    flexDirection: "row", alignItems: "center", gap: spacing.sm,
+    backgroundColor: colors.darkSurface, borderRadius: radius.pill,
+    paddingHorizontal: spacing.lg, height: 42, marginTop: spacing.lg,
+  },
+  araTxt: { ...T.body, color: colors.onDarkMuted },
   serit: {
     flexDirection: "row", alignItems: "center", gap: spacing.sm,
     backgroundColor: colors.warningSoft, borderRadius: radius.md,
