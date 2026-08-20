@@ -479,6 +479,35 @@ export default function Review() {
                   </View>
                 </View>
                 <Text style={styles.catLabel}>{CATEGORY_LABEL_TR[r.category]}</Text>
+
+                {/* GENEL AD — ekrana ilk kez çıkıyor.
+                    Alan Tur 8'den beri var ve "En Çok Aldıklarımız", ürün
+                    sayfası, fiyat hareketleri, alınacaklar köprüsü — hepsi
+                    buna dayanıyor. Ama HİÇBİR YERDE GÖRÜNMÜYORDU: OCR
+                    üretiyor, kaydediliyor, kimse bakamıyor.
+
+                    Bunun iki bedeli vardı. Biri: alanın çalışıp çalışmadığı
+                    ölçülemiyordu (Tur 8'den 11'e kadar sessizce ölü kaldı ve
+                    kimse fark etmedi). İkincisi daha ağır: yanlış bir genel
+                    ad iki AYRI ürünü sessizce tek satırda toplar ve bu
+                    projede kural yazılı — yanlış birleştirmek,
+                    birleştirmemekten pahalı. Sessiz bir birleştirmenin insan
+                    denetimi olmalı.
+
+                    Kapalı satırda değil, açık satırda: çoğu kalemde
+                    düzeltilecek bir şey yok ve listeyi kalabalıklaştırmaz. */}
+                <View style={styles.genelKutu}>
+                  <Text style={styles.subLabel}>BU ÜRÜN ASLINDA NE?</Text>
+                  <TextInput
+                    style={styles.genelInput}
+                    value={r.generic || ""}
+                    onChangeText={(t) => updateRow(i, { generic: t || null })}
+                    placeholder="süt, sucuk, ekmek…"
+                    placeholderTextColor={colors.onSurfaceTertiary}
+                    autoCapitalize="none"
+                    testID={`review-item-${i}-generic`}
+                  />
+                </View>
                 {renderSplit(r.split, (sp) => updateRow(i, { split: sp }), "BÖLÜŞÜM", rowTotal(r), `item-${i}`)}
                 <Pressable onPress={() => setAcikSatir(null)} style={styles.kapatSatir}
                            testID={`review-item-${i}-close`}>
@@ -621,6 +650,14 @@ const styles = StyleSheet.create({
     ...T.body, color: colors.ink,
   },
   bulkWrap: { marginBottom: spacing.xs },
+  /* Genel ad kutusu: fiyat/miktar satırından AYRI durmalı — o satır fişin
+     yazdığını düzeltiyor, bu ise fişte hiç yazmayan bir şeyi söylüyor. */
+  genelKutu: {
+    backgroundColor: colors.surfaceSecondary, borderRadius: radius.md,
+    paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
+    marginTop: spacing.sm, gap: 2,
+  },
+  genelInput: { ...T.body, color: colors.ink, padding: 0, minHeight: 24 },
   splitBox: {
     borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface,
     borderRadius: radius.md, marginTop: spacing.sm, overflow: "hidden",
