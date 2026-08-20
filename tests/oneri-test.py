@@ -86,6 +86,26 @@ check("almadigi urun temel listeden geliyor",
       any(x["name"] == "su" and x["source"] == "temel" for x in d), str(d[:3]))
 
 print()
+print("== TAM ESLESME her seyin ONUNDE ==")
+# Gercek veride kirildi: ev sahibi "su" yazdi, "su" cikmadi. Sebebi siralamaydi
+# -- evin gecmisindeki "sut", "sucuk", "susam" (hepsi "su" ile basliyor) one
+# gecip alti kisilik listeyi dolduruyordu. Yazdiginin AYNISI listede varsa o
+# birinci olmali; nereden geldigi onemli degil.
+c.post(f"{API}/expenses", headers=alice, json={
+    "target_type": "household", "total": 9.0, "source": "receipt", "merchant": "BIM",
+    "items": [{"name": "SUT 1L", "price": 3.0, "quantity": 1, "generic": "süt"},
+              {"name": "SUCUK", "price": 3.0, "quantity": 1, "generic": "sucuk"},
+              {"name": "SUSAM", "price": 3.0, "quantity": 1, "generic": "susam"}]})
+d = oner(alice, "su")
+check("TAM eslesen 'su' ilk sirada", adlar(d)[:1] == ["su"], str(adlar(d)))
+check("gecmisten gelenler altinda ama listede",
+      "süt" in adlar(d) or "sucuk" in adlar(d), str(adlar(d)))
+
+# Ayni kural gecmis icin de: yazdiginin aynisi gecmiste varsa o birinci.
+d = oner(alice, "sucuk")
+check("gecmisteki tam eslesme de ilk sirada", adlar(d)[:1] == ["sucuk"], str(adlar(d)))
+
+print()
 print("== BOS sorgu: alana dokunan ne gorecek ==")
 d = oner(alice, "")
 check("bos sorguda da oneri var", len(d) > 0, str(adlar(d)[:4]))

@@ -2950,13 +2950,23 @@ async def shopping_suggest(q: str = "", limit: int = 6, user=Depends(get_current
 
     sonuc: List[dict] = []
     gorulen = set()
+    # Kaynak ağırlığı SIRALAMAYI BELİRLEMİYOR, yalnızca eşitliği bozuyor.
+    #
+    # Önce kaynak baskındı ve gerçek veride kırıldı: "su" yazan kullanıcıya
+    # evin geçmişindeki "süt", "sucuk", "susam" (hepsi "su" ile başlıyor)
+    # öne geçip listeyi dolduruyor, TAM EŞLEŞEN "su" altta kalıyordu.
+    # Yazdığının aynısı listede varsa o birinci olmalı — nereden geldiği
+    # önemli değil.
+    AGIRLIK = {"esanlamli": 0, "gecmis": 1, "temel": 2}
 
-    def ekle(ad: str, kaynak: str, sira: int) -> None:
+    def ekle(ad: str, kaynak: str, s: int) -> None:
         k = ad.casefold()
         if k in gorulen:
             return
         gorulen.add(k)
-        sonuc.append({"name": ad, "source": kaynak, "sira": sira})
+        tam = _arama_anahtari(ad) == anahtar
+        sonuc.append({"name": ad, "source": kaynak,
+                      "sira": (0 if tam else 10 + s * 10) + AGIRLIK[kaynak]})
 
     if anahtar:
         # 2) Eş anlamlı — en üstte, çünkü kullanıcıyı YAZDIĞINDAN BAŞKA bir
@@ -2971,25 +2981,28 @@ async def shopping_suggest(q: str = "", limit: int = 6, user=Depends(get_current
             # kaynağıyla (geçmiş / temel) ekliyor.
             if _eslesme_sirasi(_arama_anahtari(genel), anahtar) is not None:
                 continue
-            ekle(genel, "esanlamli", 0)
+            ekle(genel, "esanlamli",
+                 _eslesme_sirasi(_arama_anahtari(yazilan), anahtar) or 0)
         for ad, n in sorted(sayim.items(), key=lambda kv: -kv[1]):
             s = _eslesme_sirasi(_arama_anahtari(ad), anahtar)
             if s is not None:
-                ekle(ad, "gecmis", 1 + s)
+                ekle(ad, "gecmis", s)
         # Marka adıyla yazan da bulsun: "nuggr" -> "dondurma".
         for ham, genel in ham_genel.items():
             if _eslesme_sirasi(_arama_anahtari(ham), anahtar) is not None:
-                ekle(genel, "gecmis", 4)
+                # Marka üzerinden gelen eşleşme, genel adın kendi
+                # eşleşmesinden zayıf: `s=3` onu bir kademe geriye atıyor.
+                ekle(genel, "gecmis", 3)
         for ad in TEMEL_URUNLER:
             s = _eslesme_sirasi(_arama_anahtari(ad), anahtar)
             if s is not None:
-                ekle(ad, "temel", 6 + s)
+                ekle(ad, "temel", s)
     else:
         # Boş sorgu: en sık alınanlar, sonra temel liste.
         for ad, _ in sorted(sayim.items(), key=lambda kv: -kv[1])[:limit]:
-            ekle(ad, "gecmis", 1)
+            ekle(ad, "gecmis", 0)
         for ad in TEMEL_URUNLER:
-            ekle(ad, "temel", 6)
+            ekle(ad, "temel", 0)
 
     sonuc.sort(key=lambda x: x["sira"])
     return {"suggestions": sonuc[:max(1, min(limit, 12))]}
