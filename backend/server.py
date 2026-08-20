@@ -2588,6 +2588,44 @@ def _shopping_filter(user_id: str, household_id: Optional[str], scope: Optional[
 
 @api.get("/shopping")
 async def list_shopping(scope: Optional[str] = None, user=Depends(get_current_user)):
+    """Alınacaklar + **evin kendi geçmişinden fiyat ipucu.**
+
+    ### İki alan eklendi ve İKİSİ FARKLI KURALA TABİ
+
+    `last_price` — bu madde daha önce alındıysa son fiyatı ve marketi.
+    **Evin BÜTÜN harcamalarından besleniyor, kişisel olanlar dahil.**
+    `last_shopping` — en son ne zaman alışveriş yapıldığı. **Yalnızca
+    doğrulanabilir olandan:** Ev sekmesinde evin tamamının bölüştüğü son
+    alışveriş, Kendim'de kişinin kendi son alışverişi.
+
+    ### Neden fiyat kişiseli de sayıyor, "son alışveriş" saymıyor
+
+    Ayrım ne söylediklerinde. **Fiyat bir OLGU** — "süt 0,95 €" cümlesinde
+    kimse yok, tarih yok, alan yok. Ev sahibinin kararı ve gerekçesi:
+    *"ben onu Salih'in aldığını bilemeyeceğim; maksat verimizi beslemek ve
+    fiyat gösterimi herkesin çıkarına."* Ölçüldü: kişiseli de saymak bu evde
+    10 ürüne daha ipucu kazandırıyor (87 ↔ 77) ve eklenenler bisküvi,
+    deodorant, dondurma, kek gibi sıradan şeyler.
+
+    **"Son alışveriş" ise bir İDDİA** — "bugün alışveriş yapıldı" diyor ve
+    kullanıcı bunu doğrulamak için Harcamalar'a bakar. Görmediği bir kayda
+    dayanıyorsa cümle yalan gibi gelir; ev sahibinin sözü buydu. Olgu
+    paylaşılabilir, doğrulanamayan iddia paylaşılamaz.
+
+    ### Kalan tek risk, ve neden kabul edildi
+
+    Nadir bir ürünün fiyatının belirmesi, birinin onu aldığını sezdirebilir
+    (kişisel listeye yazılan mahrem bir ürün). Dar bir durum; ev arkadaşları
+    zaten birbirini tanıyor ve karar bilerek verildi. Endişe doğarsa çare tek
+    satır: havuzu `_visible_filter` ile daraltmak.
+
+    ### Fiyat SON alınan, ortalama değil
+
+    Medyan daha "doğru" görünürdü ama açıklama isterdi. "Geçen sefer 0,95"
+    doğrulanabilir bir cümle; kullanıcı fişine bakıp teyit edebilir. Bu
+    yüzden metin de "geçen sefer" diyor, "fiyatı" demiyor — söz, tutulabilecek
+    kadar dar.
+    """
     hh = await get_user_household(user["user_id"])
     hh_id = hh["household_id"] if hh else None
     q = _shopping_filter(user["user_id"], hh_id, scope)
@@ -2595,7 +2633,75 @@ async def list_shopping(scope: Optional[str] = None, user=Depends(get_current_us
     # Outstanding first, then newest — the point of the screen is what is
     # still missing, not a history of what was bought.
     items.sort(key=lambda i: (bool(i.get("done")), -(i.get("created_at").timestamp() if i.get("created_at") else 0)))
-    return {"items": items}
+
+    son_alisveris = None
+    if hh_id:
+        # FİYAT HAVUZU: evin tamamı. Gerekçe yukarıda.
+        exps = await db.expenses.find(
+            {"household_id": hh_id}, {"_id": 0}).to_list(3000)
+
+        # ---- FİYAT İPUCU ----
+        # Eşleştirme köprüyle AYNI makineyi kullanıyor (`_urunler` + genel ad
+        # + tam kelime kuralı); ayrışsalar aynı madde iki yerde iki farklı
+        # ürüne bağlanırdı.
+        son_fiyat: Dict[str, dict] = {}
+        for e in exps:
+            gun = _expense_day(e) or ""
+            ham_market = (e.get("merchant") or "").strip()
+            for it in (e.get("items") or []):
+                anahtar = _urun_anahtari(it)
+                if not anahtar:
+                    continue
+                fiyat = float(it.get("price", 0) or 0)
+                if fiyat <= 0:
+                    continue
+                onceki = son_fiyat.get(anahtar)
+                if onceki is None or gun >= onceki["day"]:
+                    son_fiyat[anahtar] = {
+                        "day": gun, "price": round(fiyat, 2),
+                        "merchant": ham_market or None,
+                        "unit": (it.get("unit") or "adet"),
+                    }
+
+        for it in items:
+            metin = (it.get("text") or "").strip()
+            m_anahtar = product_key(metin) or metin.casefold()
+            if not m_anahtar:
+                continue
+            bulunan = son_fiyat.get(m_anahtar)
+            if bulunan is None:
+                # Tam kelime içerme: listede "arpa şehriye 2 tane", üründe
+                # "şehriye". Alt dize değil kelime — "yağ" ile "yağlı kağıt"
+                # eşleşmesin. Üç harf eşiği: "su" her şeye eşleşir.
+                for anahtar, v in son_fiyat.items():
+                    kisa, uzun = sorted((anahtar, m_anahtar), key=len)
+                    if len(kisa) >= 3 and kisa in uzun.split():
+                        bulunan = v
+                        break
+            if bulunan:
+                it["last_price"] = bulunan["price"]
+                it["last_merchant"] = bulunan["merchant"]
+                it["last_day"] = bulunan["day"]
+
+        # ---- SON ALIŞVERİŞ ----
+        # SON ALIŞVERİŞ havuzu DAR: yalnızca kullanıcının doğrulayabileceği
+        # kayıtlar. Ev kapsamında evin tamamının bölüştüğü harcamalar (hepsi
+        # zaten görünür), Kendim kapsamında kişinin kendi kayıtları.
+        if scope == "self":
+            aday = [e for e in exps
+                    if e.get("target_type") == "self"
+                    and e.get("added_by") == user["user_id"]]
+        else:
+            aday = [e for e in exps if e.get("target_type") == "household"]
+        aday = [e for e in aday if _expense_day(e)]
+        if aday:
+            en_yeni = max(aday, key=lambda e: (_expense_day(e), e.get("created_at")))
+            son_alisveris = {
+                "day": _expense_day(en_yeni),
+                "merchant": (en_yeni.get("merchant") or "").strip() or None,
+            }
+
+    return {"items": items, "last_shopping": son_alisveris}
 
 
 @api.post("/shopping")

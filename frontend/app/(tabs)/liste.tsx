@@ -13,17 +13,41 @@ import { useAuth } from "@/src/auth";
 import { useHousehold } from "@/src/household";
 import {
   ScreenHeader, Sheet, Card, Row, Divider, Avatar, IconPill, Overline, TabSwitch,
-  animateNextLayout, useScrollPad, useBasaSar, yenileme,
+  animateNextLayout, useScrollPad, useBasaSar, yenileme, formatEUR,
   silAlani, KaydirmaIpucu, useKaydirmaIpucu,
 } from "@/src/ui";
 import { colors, spacing, radius, type as T, metrics } from "@/src/theme";
 
 type Scope = "household" | "self";
 
+/** `2026-08-18` → "bugün" · "dün" · "3 gün önce" · "18 Ağustos".
+ *  Yakın günler ADLARIYLA: "2 gün önce" bir tarihten daha hızlı okunuyor. */
+const AYLAR = ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran",
+               "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"];
+function gunFarki(iso: string): string {
+  const d = new Date(`${iso}T12:00:00`);
+  const bugun = new Date();
+  const fark = Math.round(
+    (new Date(bugun.getFullYear(), bugun.getMonth(), bugun.getDate()).getTime()
+      - new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()) / 86400000);
+  if (fark <= 0) return "bugün";
+  if (fark === 1) return "dün";
+  if (fark < 7) return `${fark} gün önce`;
+  return `${d.getDate()} ${AYLAR[d.getMonth()]}`;
+}
+
 type Item = {
   item_id: string; text: string; scope: Scope; added_by: string;
   done: boolean; done_by?: string | null;
+  /** Evin KENDİ geçmişinden fiyat ipucu — yalnızca bu madde daha önce
+   *  alındıysa gelir. Sunucu görünürlük süzgecinden geçiriyor: başkasının
+   *  kişisel harcamasından gelen bir fiyat, o harcamanın varlığını
+   *  sızdırırdı. */
+  last_price?: number | null;
+  last_merchant?: string | null;
 };
+/** En son alışveriş — kapsama göre (Ev sekmesinde evin, Kendim'de senin). */
+type SonAlisveris = { day: string; merchant?: string | null } | null;
 
 export default function Liste() {
   // Sekme cubugunun ve telefonun gezinme cubugunun kapladigi yer.
@@ -46,6 +70,7 @@ export default function Liste() {
     }, [istenen])
   );
   const [items, setItems] = useState<Item[]>([]);
+  const [sonAlisveris, setSonAlisveris] = useState<SonAlisveris>(null);
   const [draft, setDraft] = useState("");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -54,8 +79,10 @@ export default function Liste() {
 
   const load = useCallback(async () => {
     try {
-      const res = await apiGet<{ items: Item[] }>(`/shopping?scope=${scope}`);
+      const res = await apiGet<{ items: Item[]; last_shopping: SonAlisveris }>(
+        `/shopping?scope=${scope}`);
       setItems(res.items || []);
+      setSonAlisveris(res.last_shopping ?? null);
       setError(null);
     } catch (e: any) { setError(e?.message || "Liste yüklenemedi"); }
     finally { setLoading(false); setRefreshing(false); }
@@ -133,6 +160,24 @@ export default function Liste() {
             overline="ALINACAKLAR"
             title={pending.length > 0 ? `${pending.length} Ürün Bekliyor` : "Liste Temiz"}
           >
+            {/* SON ALIŞVERİŞ — paylaşılan listenin gerçek sorusu:
+                "biri gitti mi, aldı da işaretlemedi mi?"
+
+                Kapsama uyuyor ve GÖRÜNÜRLÜK süzgecinden geçiyor. Ev sahibinin
+                sözü: "harcamalarımda ben onu görememiş olsam yalan gibi
+                gelir." Görünmeyen bir harcamaya dayanarak "bugün alışveriş
+                yapıldı" demek, doğrulanamayan bir cümledir.
+
+                Küçük ve gri: bu ekranın kahramanı liste, tarih değil. */}
+            {sonAlisveris && (
+              <View style={styles.sonSatir}>
+                <Ionicons name="cart-outline" size={12} color={colors.onDarkMuted} />
+                <Text style={styles.sonTxt} numberOfLines={1}>
+                  Son alışveriş <Text style={styles.sonVurgu}>{gunFarki(sonAlisveris.day)}</Text>
+                  {sonAlisveris.merchant ? ` · ${sonAlisveris.merchant}` : ""}
+                </Text>
+              </View>
+            )}
             <TabSwitch
               value={scope}
               onChange={(v) => { setScope(v); setLoading(true); }}
@@ -203,6 +248,22 @@ export default function Liste() {
                             testID={`liste-item-${it.item_id}`}
                             leading={<View style={styles.check} />}
                             title={<Text style={styles.itemTxt}>{it.text}</Text>}
+                            /* FİYAT İPUCU — yalnızca daha önce alındıysa.
+                               Eşleşmeyen satırda alt yazı YOK; "fiyat
+                               bilinmiyor" yazmak bilgi değil gürültü.
+
+                               "Geçen sefer" diyor, "fiyatı" demiyor: son
+                               alınan fiyat, ortalama değil. Kullanıcı fişine
+                               bakıp doğrulayabilir — söz tutulabilecek kadar
+                               dar. Markete de yazıyor çünkü tek başına tutar
+                               yarım bilgi; markete giderken karar verdiren
+                               şey ikisi birden. */
+                            subtitle={it.last_price != null ? (
+                              <Text style={styles.ipucu} numberOfLines={1}>
+                                geçen sefer {formatEUR(it.last_price)}
+                                {it.last_merchant ? ` · ${it.last_merchant}` : ""}
+                              </Text>
+                            ) : undefined}
                             right={
                               scope === "household" ? (
                                 <Avatar name={first(it.added_by)} size={24}
@@ -273,6 +334,12 @@ const styles = StyleSheet.create({
   },
   check: { width: 21, height: 21, borderRadius: 11, borderWidth: 1.5, borderColor: colors.borderStrong },
   itemTxt: { ...T.body, color: colors.ink },
+  ipucu: { ...T.caption, fontSize: 11, color: colors.inkTertiary, marginTop: 2 },
+  sonSatir: {
+    flexDirection: "row", alignItems: "center", gap: 5, marginTop: spacing.sm,
+  },
+  sonTxt: { ...T.caption, color: colors.onDarkMuted, flex: 1 },
+  sonVurgu: { ...T.captionSb, color: colors.onDark },
   itemDone: { ...T.body, color: colors.inkTertiary, textDecorationLine: "line-through" },
   itemRight: { flexDirection: "row", alignItems: "center", gap: spacing.md },
   itemWho: { ...T.caption, color: colors.inkTertiary },
