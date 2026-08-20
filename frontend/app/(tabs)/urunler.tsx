@@ -19,7 +19,7 @@ import { useCallback, useRef, useState } from "react";
 import {
   View, Text, StyleSheet, ScrollView, ActivityIndicator, Pressable, RefreshControl,
 } from "react-native";
-import { useFocusEffect, useLocalSearchParams } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
 import { apiGet } from "@/src/api";
@@ -56,6 +56,7 @@ export default function Urunler() {
   const altPay = useScrollPad({ tabs: true, extra: 0 });
   const scrollRef = useRef<ScrollView>(null);
   useBasaSar(scrollRef);
+  const router = useRouter();
   const geriDon = useGeriDon("/(tabs)/istatistik");
   const { household } = useHousehold();
   const params = useLocalSearchParams<{ ay?: string; scope?: string; sira?: string }>();
@@ -178,6 +179,18 @@ export default function Urunler() {
                 {sirali.map((u, i) => (
                   <View key={u.key}>
                     {i > 0 && <Divider inset={spacing.lg} />}
+                    {/* Satırlar artık BİR KAPI. Önceden ölü uçtu: 40 ürün
+                        listeleniyor ama hiçbirinin geçmişine bakılamıyordu.
+                        Ürün sayfası tam bu boşluğu dolduruyor — ve o sayfa
+                        aya değil bütün geçmişe bakıyor. */}
+                    <Pressable
+                      onPress={() => router.push({
+                        pathname: "/(tabs)/urun",
+                        params: { key: u.key, ad: u.name, geri: "/(tabs)/urunler" },
+                      } as any)}
+                      android_ripple={{ color: colors.divider }}
+                      testID={`urun-satir-${u.key}`}
+                    >
                     <View style={styles.row}>
                       {/* Sıra numarası: 40 satırlık listede "kaçıncı sırada"
                           gözle sayılmıyor ve asıl merak edilen o. */}
@@ -191,7 +204,11 @@ export default function Urunler() {
                       {sira === "tutar"
                         ? <Money value={u.total} />
                         : <Text style={styles.kez}>{u.count} kez</Text>}
+                      <Ionicons name="chevron-forward" size={15}
+                                color={colors.onSurfaceTertiary}
+                                style={{ marginLeft: spacing.xs }} />
                     </View>
+                    </Pressable>
                   </View>
                 ))}
               </Card>

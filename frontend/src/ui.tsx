@@ -385,11 +385,19 @@ export function yenileme(refreshing: boolean, onRefresh: () => void) {
 const ETIKET_BOSLUK = 4;
 
 export function AylikCubuk({
-  aylar, buAy, onSec,
+  aylar, buAy, onSec, ortLabel,
 }: {
   aylar: { month: string; total: number }[];
   buAy: string;
-  onSec: (m: string) => void;
+  /** Verilmezse çubuklar DOKUNULAMAZ olur.
+   *
+   *  Ürün sayfasında bir aya dokunmanın karşılığı yok — o ayın "sütleri"
+   *  diye süzülmüş bir liste ekranı yok ve genel harcama listesine atmak
+   *  soruyu değiştirmek olurdu. Dokunulabilir görünüp hiçbir yere gitmeyen
+   *  bir çubuk, olmayan bir kapıdır. */
+  onSec?: (m: string) => void;
+  /** Alt satırın etiketi; ürün sayfasında "aylık ortalama" daha doğru. */
+  ortLabel?: string;
 }) {
   const enYuksek = Math.max(...aylar.map((a) => a.total), 0.01);
   const ortalama = aylar.reduce((s, a) => s + a.total, 0) / Math.max(aylar.length, 1);
@@ -436,9 +444,11 @@ export function AylikCubuk({
         )}
         {slotGen > 0 && aylar.map((a) => {
           const bu = a.month === buAy;
+          const Kap: any = onSec ? Pressable : View;
           return (
-            <Pressable key={a.month} style={[styles.cubukKap, { width: slotGen }]}
-                       onPress={() => onSec(a.month)} testID={`cubuk-${a.month}`}>
+            <Kap key={a.month} style={[styles.cubukKap, { width: slotGen }]}
+                 onPress={onSec ? () => onSec(a.month) : undefined}
+                 testID={`cubuk-${a.month}`}>
               <Text style={[styles.cubukTutar, bu && styles.cubukTutarBu]} numberOfLines={1}>
                 {formatEURShort(a.total)}
               </Text>
@@ -454,13 +464,13 @@ export function AylikCubuk({
                     }}>
                 {AYLAR[parseInt(a.month.slice(5, 7), 10)]?.slice(0, 3)}
               </Text>
-            </Pressable>
+            </Kap>
           );
         })}
       </View>
       <Divider inset={0} />
       <View style={styles.ortSatir}>
-        <Text style={styles.ortLabel}>{aylar.length} ay ortalaması</Text>
+        <Text style={styles.ortLabel}>{ortLabel || `${aylar.length} ay ortalaması`}</Text>
         <Money value={ortalama} color={colors.ink} />
       </View>
     </>
