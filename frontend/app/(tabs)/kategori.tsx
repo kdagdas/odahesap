@@ -140,7 +140,10 @@ export default function KategoriDetay() {
         </ScreenHeader>
 
         <Sheet>
-          <View style={{ gap: metrics.cardGap }}>
+          {/* Dikey nefes payı: kartlar yatayda `mx` ile boşluk alıyordu ama
+              dikeyde hiç dolgu yoktu ve son kart sayfanın dibine yapışıyordu.
+              Ürün ve market sayfalarındaki `govde` ile aynı ritim. */}
+          <View style={styles.govde}>
             {loading ? (
               <ActivityIndicator color={colors.ink} style={{ marginTop: spacing.xxl }} />
             ) : !veri || veri.expense_count === 0 ? (
@@ -213,6 +216,7 @@ const styles = StyleSheet.create({
     alignItems: "center", justifyContent: "center",
   },
   mx: { marginHorizontal: spacing.lg },
+  govde: { gap: metrics.cardGap, paddingTop: spacing.sm, paddingBottom: spacing.xxl },
   heroRow: {
     flexDirection: "row", alignItems: "center",
     gap: spacing.md, marginTop: spacing.sm,

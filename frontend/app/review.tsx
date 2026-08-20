@@ -229,13 +229,21 @@ export default function Review() {
 
   const bulEslesme = async (): Promise<Eslesme[]> => {
     try {
-      const adlar = rows.map((r) => r.name.trim()).filter(Boolean);
+      /* Ham ad ile GENEL AD birlikte gidiyor, aynı sırada.
+         Eşleştirmenin çoğunu artık genel ad yapıyor: listede "arpa şehriye
+         2 tane" yazıyor, fişte "ANKARA ARPA SEHRIYE" — iki ham ad birbirini
+         tutmuyor ama kalemin genel adı "şehriye" ve listedeki metnin içinde
+         tam kelime olarak geçiyor. */
+      const dolu = rows.filter((r) => r.name.trim());
+      const adlar = dolu.map((r) => r.name.trim());
+      const genels = dolu.map((r) => (r.generic || "").trim() || null);
       if (!adlar.length) return [];
       // Fişin ÜSTÜNDEKİ tarih gidiyor: fişten eski olmayan maddeler
       // eşleşebilir. Bir hafta önceki fişi bugün taratınca dün yazılmış
       // "Süt" aday çıkıyordu — o sütü almadın, madde daha ortada yoktu.
       const res = await apiPost<{ matches: Eslesme[] }>("/shopping/match", {
-        names: adlar, expense_date: fromDDMMYYYY(dateInput) || todayISO(),
+        names: adlar, generics: genels,
+        expense_date: fromDDMMYYYY(dateInput) || todayISO(),
       });
       const m = res.matches || [];
       // Emin olunmayan eslesme ISARETSIZ geliyor: yanlis dusurmek,

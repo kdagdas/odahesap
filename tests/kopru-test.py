@@ -165,6 +165,48 @@ check("evsiz kullanici da dusurmuyor",
              json={"names": ["Krema"]}).json()["matches"] == [])
 
 
+print()
+print("-- GENEL AD ile eslesme (Tur 12) --")
+# Ham adlar birbirini TUTMUYOR: listede not var ("2 tane"), fiste marka var
+# ("ANKARA"). Eskiden bu esleme imkansizdi. Kalemin genel adi "sehriye" ve
+# listedeki metnin icinde tam kelime olarak geciyor.
+r = c.post(f"{API}/shopping", headers=hdr(alice),
+           json={"text": "arpa sehriye 2 tane", "scope": "household"})
+r.raise_for_status()
+sehriye_id = r.json()["item"]["item_id"]
+
+r = c.post(f"{API}/shopping/match", headers=hdr(alice), json={
+    "names": ["ANKARA ARPA SEHRIYE"],
+    "generics": ["sehriye"],
+    "expense_date": bugun,
+})
+m = r.json()["matches"]
+check("genel ad ile eslesti", any(x["item_id"] == sehriye_id for x in m), str(m))
+check("emin DEGIL (iceren esleme)",
+      all(not x["sure"] for x in m if x["item_id"] == sehriye_id), str(m))
+
+# GENEL AD OLMADAN ayni istek eslesmiyor -- eskinin davranisi korunuyor,
+# yani eski APK'lar bozulmuyor, sadece daha az buluyor.
+r = c.post(f"{API}/shopping/match", headers=hdr(alice), json={
+    "names": ["ANKARA ARPA SEHRIYE"],
+    "expense_date": bugun,
+})
+check("genel ad yokken eslesmiyor",
+      not any(x["item_id"] == sehriye_id for x in r.json()["matches"]),
+      str(r.json()["matches"]))
+
+# YANLIS genel ad yanlis esleme uretmemeli.
+r = c.post(f"{API}/shopping", headers=hdr(alice),
+           json={"text": "yogurt", "scope": "household"})
+yogurt_id = r.json()["item"]["item_id"]
+r = c.post(f"{API}/shopping/match", headers=hdr(alice), json={
+    "names": ["ANKARA ARPA SEHRIYE"], "generics": ["sehriye"],
+    "expense_date": bugun,
+})
+check("alakasiz madde eslesmedi",
+      not any(x["item_id"] == yogurt_id for x in r.json()["matches"]),
+      str(r.json()["matches"]))
+
 print("\n-- temizlik --")
 for tok in (bob, alice):
     c.post(f"{API}/households/leave", headers=hdr(tok))

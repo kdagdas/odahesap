@@ -2623,6 +2623,9 @@ async def add_shopping(body: ShoppingItemCreate, user=Depends(get_current_user))
 class ShoppingMatchReq(BaseModel):
     """Fişten çıkan kalem adları ve fişin tarihi."""
     names: List[str] = Field(default_factory=list)
+    # `names` ile AYNI SIRADA genel adlar. Eski APK'lar göndermiyor ve
+    # göndermediğinde eşleştirme eskisi gibi yalnızca ham adla çalışıyor.
+    generics: List[Optional[str]] = Field(default_factory=list)
     # Fişin ÜSTÜNDEKİ tarih (YYYY-MM-DD), kaydedildiği an değil.
     expense_date: Optional[str] = None
 
@@ -2676,12 +2679,29 @@ async def match_shopping(body: ShoppingMatchReq, user=Depends(get_current_user))
         if not bekleyen:
             return {"matches": []}
 
+    # Her fiş kalemi için ARANACAK ANAHTARLAR: ham addan üretilen ve varsa
+    # genel addan üretilen.
+    #
+    # Genel ad buraya Tur 12'de girdi ve eşleştirmenin çoğunu o yapıyor.
+    # Somut örnek: listede "arpa şehriye 2 tane", fişte "ANKARA ARPA
+    # SEHRIYE". İki ham ad birbirini tutmuyor — biri marka, öteki not. Ama
+    # kalemin genel adı "şehriye" ve o, listedeki metnin içinde tam kelime
+    # olarak geçiyor. Ham adla imkânsız olan eşleşme genel adla kendiliğinden
+    # oluyor.
     fis = []
-    for ham in body.names:
+    for idx, ham in enumerate(body.names):
         ad = str(ham or "").strip()
         if not ad:
             continue
-        fis.append((ad, product_key(ad) or ad.casefold()))
+        anahtarlar = [product_key(ad) or ad.casefold()]
+        genel = ""
+        if idx < len(body.generics):
+            genel = str(body.generics[idx] or "").strip()
+        if genel:
+            gk = product_key(genel) or genel.casefold()
+            if gk and gk not in anahtarlar:
+                anahtarlar.append(gk)
+        fis.append((ad, [a for a in anahtarlar if a]))
 
     kullanilan: set = set()
     out = []
@@ -2689,10 +2709,10 @@ async def match_shopping(body: ShoppingMatchReq, user=Depends(get_current_user))
         anahtar = product_key(it["text"]) or it["text"].casefold()
         if not anahtar:
             continue
-        for ad, fanahtar in fis:
-            if ad in kullanilan or not fanahtar:
+        for ad, fanahtarlar in fis:
+            if ad in kullanilan or not fanahtarlar:
                 continue
-            if fanahtar == anahtar:
+            if anahtar in fanahtarlar:
                 out.append({"item_id": it["item_id"], "text": it["text"],
                             "receipt_name": ad, "sure": True})
                 kullanilan.add(ad)
@@ -2702,8 +2722,13 @@ async def match_shopping(body: ShoppingMatchReq, user=Depends(get_current_user))
             # TAM KELIME araniyor, alt dize degil. Alt dize olsaydi "yag"
             # "yagli kagit"a eslesirdi; kelime sinirinda aranınca eslesmiyor.
             # Uc harf esigi de gerekli: "su" tek basina her seye eslesir.
-            kisa, uzun = sorted((anahtar, fanahtar), key=len)
-            if len(kisa) >= 3 and kisa in uzun.split():
+            eslesti = False
+            for fanahtar in fanahtarlar:
+                kisa, uzun = sorted((anahtar, fanahtar), key=len)
+                if len(kisa) >= 3 and kisa in uzun.split():
+                    eslesti = True
+                    break
+            if eslesti:
                 out.append({"item_id": it["item_id"], "text": it["text"],
                             "receipt_name": ad, "sure": False})
                 kullanilan.add(ad)

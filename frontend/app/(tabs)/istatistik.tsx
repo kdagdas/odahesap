@@ -406,17 +406,34 @@ export default function Istatistik() {
                     {data.products.map((u, i) => (
                       <View key={u.key}>
                         {i > 0 && <Divider inset={spacing.lg} />}
-                        <View style={styles.urunRow}>
-                          <View style={{ flex: 1, minWidth: 0 }}>
-                            <Text style={styles.urunAd} numberOfLines={1}>{u.name}</Text>
-                            <Text style={styles.urunAlt} numberOfLines={1}>
-                              {urunAlt(u)}
-                            </Text>
+                        {/* Karttaki satırlar da DOĞRUDAN ürün sayfasını
+                            açıyor. Önce yalnızca "Tüm ürünler"den sonra
+                            tıklanabiliyorlardı: aynı ada iki kez dokunmak
+                            gerekiyordu ve ilk dokunuş hiçbir şey yapmıyordu.
+                            Dokunulabilir görünen ama dokunulmayan satır,
+                            listedeki en sinsi ölü uçtur. */}
+                        <Pressable
+                          onPress={() => router.push({
+                            pathname: "/(tabs)/urun",
+                            params: { key: u.key, ad: u.name,
+                                      geri: "/(tabs)/istatistik" },
+                          } as any)}
+                          android_ripple={{ color: colors.divider }}
+                          testID={`stat-urun-${u.key}`}
+                        >
+                          <View style={styles.urunRow}>
+                            <View style={{ flex: 1, minWidth: 0 }}>
+                              <Text style={styles.urunAd} numberOfLines={1}>{u.name}</Text>
+                              <Text style={styles.urunAlt} numberOfLines={1}>
+                                {urunAlt(u)}
+                              </Text>
+                            </View>
+                            <Money value={u.total} />
+                            <Ionicons name="chevron-forward" size={14}
+                                      color={colors.onSurfaceTertiary}
+                                      style={{ marginLeft: spacing.xs }} />
                           </View>
-                          {/* Sağdaki sayı SIRALANAN şey: sıklık kipinde tutar
-                              göstermek "neye göre sıralı" sorusunu bırakırdı. */}
-                          <Money value={u.total} />
-                        </View>
+                        </Pressable>
                       </View>
                     ))}
                     {/* Kapı DİBE indi: başlıktaki yeri anahtar aldı. Anasayfa'daki

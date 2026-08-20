@@ -135,7 +135,9 @@ export default function MarketDetay() {
         </ScreenHeader>
 
         <Sheet>
-          <View style={{ gap: metrics.cardGap }}>
+          {/* Kategori sayfasındaki aynı eksik: dikey dolgu yoktu ve son kart
+              sayfanın dibine yapışıyordu. */}
+          <View style={styles.govde}>
             {loading ? (
               <ActivityIndicator color={colors.ink} style={{ marginTop: spacing.xxl }} />
             ) : !veri || veri.expense_count === 0 ? (
@@ -254,6 +256,7 @@ const styles = StyleSheet.create({
     alignItems: "center", justifyContent: "center",
   },
   mx: { marginHorizontal: spacing.lg },
+  govde: { gap: metrics.cardGap, paddingTop: spacing.sm, paddingBottom: spacing.xxl },
   satir: {
     flexDirection: "row", alignItems: "center", gap: spacing.md,
     paddingHorizontal: spacing.lg, paddingVertical: spacing.md, minHeight: 46,
