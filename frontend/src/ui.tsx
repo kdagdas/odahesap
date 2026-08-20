@@ -1594,8 +1594,12 @@ export function splitSummary(split: Split, members: SplitMember[], meId?: string
  */
 export function SplitPicker({
   label = "BÖLÜŞÜM", value, onChange, members, meId, total, allowExact = true, testID,
+  renderTrigger,
 }: {
   label?: string;
+  /** Tetiği çağıran kendisi çizer — fiş satırının TAMAMI tetik olabilsin diye.
+   *  Verilmezse varsayılan seçim satırı çiziliyor. */
+  renderTrigger?: (ac: () => void, ozet: string) => React.ReactNode;
   value: Split;
   onChange: (s: Split) => void;
   members: SplitMember[];
@@ -1668,6 +1672,8 @@ export function SplitPicker({
 
   const hepsiSecili = picked.length === members.length && members.length > 0;
   const benSecili = picked.length === 1 && picked[0] === meId;
+  /** Tek kişiye yazılmış olma hâli — "Sadece ben" artık tek örnek değil. */
+  const tekSecili = picked.length === 1 ? picked[0] : null;
   /**
    * Kisayol etkinken kisi kutulari BOS durur.
    *
@@ -1677,7 +1683,7 @@ export function SplitPicker({
    * kullaniyor -- biri kisayol, oteki elle secim. Artik listeye ilk dokunus
    * kisayolu birakip yalnizca o kisiyi seciyor.
    */
-  const kisayolAktif = hepsiSecili || benSecili;
+  const kisayolAktif = hepsiSecili || !!tekSecili;
 
   /**
    * Varis noktasi secimi. `allowExact` kapaliysa (fis kalemi) sayfa kapanir --
@@ -1713,13 +1719,15 @@ export function SplitPicker({
 
   return (
     <>
-      <Pressable style={styles.selectRow} onPress={start} testID={testID}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.selectLabel}>{label}</Text>
-          <Text style={styles.selectValue}>{splitSummary(value, members, meId)}</Text>
-        </View>
-        <Ionicons name="chevron-down" size={18} color={colors.inkTertiary} />
-      </Pressable>
+      {renderTrigger ? renderTrigger(start, splitSummary(value, members, meId)) : (
+        <Pressable style={styles.selectRow} onPress={start} testID={testID}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.selectLabel}>{label}</Text>
+            <Text style={styles.selectValue}>{splitSummary(value, members, meId)}</Text>
+          </View>
+          <Ionicons name="chevron-down" size={18} color={colors.inkTertiary} />
+        </Pressable>
+      )}
 
       <BottomSheet visible={open} onClose={() => setOpen(false)}>
             <View style={styles.splitHead}>
@@ -1771,6 +1779,42 @@ export function SplitPicker({
               </View>
               {benSecili && <Ionicons name="checkmark" size={20} color={colors.accentDark} />}
             </Pressable>
+
+            {/* HER EV ARKADASI icin bir varis noktasi.
+                Onceden yalnizca "Tum ev" ve "Sadece ben" tek dokunusta
+                kapatiyordu; bir kalemi Kemal'e vermek listeden secip "Tamam"
+                demeyi gerektiriyordu -- dort kalemlik bir fiste dort fazladan
+                dokunus. Olculdu: tek kisilik bolusum, ikili bolusumden 5:1
+                daha sik, yani bu satirlar gercek isi kapsiyor. Coklu secim
+                yine asagidaki listede duruyor.
+
+                Ev buyudukce liste uzuyor ama BOZULMUYOR -- gozlemleyebildigin
+                durum icin tasarla, otekini kirma. */}
+            {members.filter((m) => m.user_id !== meId).map((m) => {
+              const secili = tekSecili === m.user_id;
+              return (
+                <React.Fragment key={`dest-${m.user_id}`}>
+                  <View style={[styles.divider, { marginLeft: spacing.lg }]} />
+                  <Pressable
+                    style={[styles.destRow, secili && styles.destRowOn]}
+                    onPress={() => hedefSec([m.user_id])}
+                    testID={testID ? `${testID}-quick-${m.user_id}` : undefined}
+                  >
+                    <View style={[styles.destIcon, secili && styles.destIconOn]}>
+                      <Ionicons name="person" size={17}
+                                color={secili ? colors.onBrand : colors.inkSecondary} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.destTitle}>Sadece {m.name.split(" ")[0]}</Text>
+                      <Text style={[styles.destSub, secili && { color: colors.accentDark }]}>
+                        {formatEUR(total)} · tamamı ona
+                      </Text>
+                    </View>
+                    {secili && <Ionicons name="checkmark" size={20} color={colors.accentDark} />}
+                  </Pressable>
+                </React.Fragment>
+              );
+            })}
 
             {/* "Hicbiri" bir DURUM degil bir ARAC -- ev sahibi de onu zaten
                 "temizle" diye kullaniyordu. Digerleriyle ayni boyda durmasi
