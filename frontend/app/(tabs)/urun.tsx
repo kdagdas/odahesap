@@ -108,7 +108,7 @@ export default function Urun() {
               items={[
                 { label: "TOPLAM", value: formatEUR(d?.total ?? 0), accent: true },
                 ...(d?.qty && d?.unit
-                  ? [{ label: "MİKTAR", value: `${formatQty(d.qty)} ${d.unit}` }]
+                  ? [{ label: "MİKTAR", value: formatQty(d.qty, d.unit) }]
                   : [{ label: "ALIŞ", value: `${d?.count ?? 0} kez` }]),
                 ...(d?.unit_price && d?.price_unit
                   ? [{ label: `${d.price_unit.toUpperCase()} FİYATI`, value: formatEUR(d.unit_price) }]
@@ -157,6 +157,43 @@ export default function Urun() {
                   <View style={{ marginTop: -spacing.md }} />
                 </Card>
 
+                {/* NELER ALDIK — "Nereden aldık"tan ÖNCE.
+                    Ev sahibinin sırası: bir ürüne girenin ilk sorusu "neyi
+                    almışım", ikinci sorusu "nereden". Marketi önce koymak,
+                    cevabı ikinci sıraya itiyordu.
+
+                    Gruplamanın tersi: fişte "karpuz" yazmıyor,
+                    "WASSERMELONEN FASHION" yazıyor ve insanın hatırladığı o.
+                    Genel ad özelden genele indirdi, bu liste özeli geri
+                    veriyor: hangi adla, hangi marketten, hangi tarihte, kaça.
+
+                    Değişken ürünlerde asıl değerli olan bu — iki karpuz aynı
+                    ürün değil ve ikisinin fiyatını yan yana görmek, halka ya
+                    da çubuk grafiğin veremeyeceği bir cevap. */}
+                {d!.purchases.length > 0 && (
+                  <Card title="Neler aldık">
+                    {d!.purchases.map((a, i) => (
+                      <View key={`${a.day}-${i}`}>
+                        {i > 0 && <Divider inset={spacing.lg} />}
+                        <Row
+                          minHeight={52}
+                          title={<Text style={styles.alimAd} numberOfLines={1}>{a.name}</Text>}
+                          subtitle={`${a.merchant} · ${kisaTarih(a.day)}`}
+                          right={
+                            <View style={styles.sag}>
+                              {a.qty !== 1 ? (
+                                <Text style={styles.miktar}>{formatQty(a.qty, a.unit)}</Text>
+                              ) : null}
+                              <Money value={a.total} />
+                            </View>
+                          }
+                          testID={`urun-alim-${i}`}
+                        />
+                      </View>
+                    ))}
+                  </Card>
+                )}
+
                 {/* NEREDEN ALDIK — özet, ve DOKUNULAMAZ.
                     Önce her satır market sayfasına gidiyordu; ev sahibi haklı
                     olarak istemedi: ürün sayfasından markete, oradan başka
@@ -176,7 +213,7 @@ export default function Urun() {
                         right={
                           <View style={styles.sag}>
                             {d!.unit && m.qty ? (
-                              <Text style={styles.miktar}>{formatQty(m.qty)} {d!.unit}</Text>
+                              <Text style={styles.miktar}>{formatQty(m.qty, d!.unit)}</Text>
                             ) : null}
                             <Money value={m.total} />
                           </View>
@@ -186,39 +223,6 @@ export default function Urun() {
                     </View>
                   ))}
                 </Card>
-
-                {/* NELER ALDIK — gruplamanın tersi.
-                    Fişte "karpuz" yazmıyor; "WASSERMELONEN FASHION" yazıyor ve
-                    insanın hatırladığı o. Genel ad özelden genele indirdi, bu
-                    liste özeli geri veriyor: hangi adla, hangi marketten,
-                    hangi tarihte, kaça.
-
-                    Değişken ürünlerde asıl değerli olan bu — iki karpuz aynı
-                    ürün değil ve ikisinin fiyatını yan yana görmek, halka ya
-                    da çubuk grafiğin veremeyeceği bir cevap. */}
-                {d!.purchases.length > 0 && (
-                  <Card title="Neler aldık">
-                    {d!.purchases.map((a, i) => (
-                      <View key={`${a.day}-${i}`}>
-                        {i > 0 && <Divider inset={spacing.lg} />}
-                        <Row
-                          minHeight={52}
-                          title={<Text style={styles.alimAd} numberOfLines={1}>{a.name}</Text>}
-                          subtitle={`${a.merchant} · ${kisaTarih(a.day)}`}
-                          right={
-                            <View style={styles.sag}>
-                              {a.qty !== 1 ? (
-                                <Text style={styles.miktar}>{formatQty(a.qty)} {a.unit}</Text>
-                              ) : null}
-                              <Money value={a.total} />
-                            </View>
-                          }
-                          testID={`urun-alim-${i}`}
-                        />
-                      </View>
-                    ))}
-                  </Card>
-                )}
 
                 <Text style={styles.dipnot}>
                   Aylık ortalama {formatEUR(aylikOrt)} · toplam {d!.count} alış

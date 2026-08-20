@@ -4130,7 +4130,11 @@ def _urunler(exps: List[dict]) -> List[dict]:
             tutar = satir / item_sum * toplam if item_sum else satir
             k = kova.setdefault(anahtar, {
                 "key": anahtar, "name": genel or ad, "generic": bool(genel),
-                "total": 0.0, "count": 0,
+                # `count` KAÇ KEZ ALINDI demek ve bu ALIŞVERİŞ sayısıdır,
+                # kalem sayısı değil. Kalem sayarken "Rossmann'dan 3 kez yara
+                # bandı aldık" çıkıyordu; oysa tek alışverişte üç farklı yara
+                # bandı alınmıştı. Sayım fiş kimliğiyle yapılıyor.
+                "total": 0.0, "fisler": set(),
                 "markets": set(), "units": {}, "qty": 0.0, "bozuk_birim": False,
             })
             # Genel ad varsa ekranda O yazılıyor ("Süt"), market markası değil.
@@ -4141,7 +4145,7 @@ def _urunler(exps: List[dict]) -> List[dict]:
             elif not k["generic"] and len(ad) < len(k["name"]):
                 k["name"] = ad
             k["total"] += tutar
-            k["count"] += 1
+            k["fisler"].add(e.get("expense_id") or id(e))
             k["markets"].add(market)
             birim = (i.get("unit") or "adet").strip() or "adet"
             miktar = float(i.get("quantity", 1) or 1)
@@ -4167,7 +4171,7 @@ def _urunler(exps: List[dict]) -> List[dict]:
             # Genel ad küçük harfle geliyor ("süt"); ekranda satır başı büyük.
             "name": k["name"][:1].upper() + k["name"][1:] if k["name"] else "?",
             "total": round(k["total"], 2),
-            "count": k["count"],
+            "count": len(k["fisler"]),
             "market_count": len(k["markets"]),
             "qty": None if karisik else round(k["qty"], 2),
             "unit": None if karisik else baskin,
@@ -4587,12 +4591,34 @@ async def search(q: str = "", user=Depends(get_current_user)):
         {"_id": 0},
     ).sort("expense_date", -1).to_list(3000)
 
+    # Ürün anahtarı → o ürünün altına düşen HAM adlar.
+    #
+    # Arama yalnızca genel ada bakıyordu ve tersi çalışmıyordu: "sleepy"
+    # yazan biri "yüzey temizlik mendili"ni bulamıyordu — oysa fişte yazan
+    # kelime o. Gruplama özelden genele indiriyor; aramanın her iki yönü de
+    # tanıması gerekiyor, çünkü insan bazen ürünü, bazen markayı hatırlıyor.
+    ham_adlar: Dict[str, set] = {}
+    for e in exps:
+        for i in (e.get("items") or []):
+            k = _urun_anahtari(i)
+            ad_ham = (i.get("name") or "").strip()
+            if k and ad_ham:
+                ham_adlar.setdefault(k, set()).add(ad_ham)
+
     # --- Ürünler ---
     urunler = []
     for u in _urunler(exps):
         sira = _eslesme_sirasi(_arama_anahtari(u["name"]), anahtar)
         if sira is None:
             sira = _eslesme_sirasi(u["key"], anahtar)
+        if sira is None:
+            # HAM adlardan eşleşme: markayla arayan da bulsun. Sırası daha
+            # geride (4) çünkü genel adla eşleşen her zaman daha iyi bir
+            # cevaptır — "süt" arayan önce Süt'ü görmeli.
+            for ham in ham_adlar.get(u["key"], ()):
+                if _eslesme_sirasi(_arama_anahtari(ham), anahtar) is not None:
+                    sira = 4
+                    break
         if sira is None:
             continue
         ilgili = [
@@ -4696,7 +4722,8 @@ async def product_detail(key: str, user=Depends(get_current_user)):
     # özeli geri veriyor — fişte "karpuz" yazmıyor, "WASSERMELONEN
     # FASHION" yazıyor ve insanın hatırladığı o.
     alimlar: List[dict] = []
-    ad, toplam, adet, miktar = None, 0.0, 0, 0.0
+    ad, toplam, miktar = None, 0.0, 0.0
+    fisler: set = set()
     birimler: Dict[str, int] = {}
     aylar: Dict[str, dict] = {}
     marketler: Dict[str, dict] = {}
@@ -4734,20 +4761,23 @@ async def product_detail(key: str, user=Depends(get_current_user)):
                 ad = ham
 
             toplam += tutar
-            adet += 1
+            fisler.add(e.get("expense_id") or "")
             mik = float(i.get("quantity", 1) or 1)
             miktar += mik
             birim = (i.get("unit") or "adet").strip() or "adet"
             birimler[birim] = birimler.get(birim, 0) + 1
 
-            a = aylar.setdefault(ay, {"month": ay, "total": 0.0, "qty": 0.0, "count": 0})
-            a["total"] += tutar; a["qty"] += mik; a["count"] += 1
+            a = aylar.setdefault(ay, {"month": ay, "total": 0.0, "qty": 0.0,
+                                      "fisler": set()})
+            a["total"] += tutar; a["qty"] += mik
+            a["fisler"].add(e.get("expense_id") or "")
 
             m = marketler.setdefault(mkey, {"key": mkey, "name": ham_market,
-                                            "total": 0.0, "qty": 0.0, "count": 0})
+                                            "total": 0.0, "qty": 0.0, "fisler": set()})
             if len(ham_market) < len(m["name"]):
                 m["name"] = ham_market
-            m["total"] += tutar; m["qty"] += mik; m["count"] += 1
+            m["total"] += tutar; m["qty"] += mik
+            m["fisler"].add(e.get("expense_id") or "")
 
             p = price_of_item(i)
             if p and p.get("unit_price") and p.get("price_unit") in ("kg", "lt"):
@@ -4783,7 +4813,7 @@ async def product_detail(key: str, user=Depends(get_current_user)):
         dizi.append({"month": k,
                      "total": round(v["total"], 2) if v else 0.0,
                      "qty": round(v["qty"], 2) if v else 0.0,
-                     "count": v["count"] if v else 0})
+                     "count": len(v["fisler"]) if v else 0})
         imleç = (imleç.replace(day=28) + timedelta(days=8)).replace(day=1)
 
     karisik = len(birimler) > 1
@@ -4792,7 +4822,7 @@ async def product_detail(key: str, user=Depends(get_current_user)):
         "key": key,
         "name": (ad[:1].upper() + ad[1:]) if ad else "?",
         "total": round(toplam, 2),
-        "count": adet,
+        "count": len(fisler),
         "qty": None if karisik else round(miktar, 2),
         "unit": None if karisik else baskin,
         # Yalnızca TEK bir fiyat birimi varsa gösteriliyor. Bir ürün hem kilo
@@ -4805,7 +4835,8 @@ async def product_detail(key: str, user=Depends(get_current_user)):
         "last_month": son,
         "months": dizi,
         "merchants": sorted(
-            [{**m, "total": round(m["total"], 2), "qty": round(m["qty"], 2)}
+            [{"key": m["key"], "name": m["name"], "total": round(m["total"], 2),
+              "qty": round(m["qty"], 2), "count": len(m["fisler"])}
              for m in marketler.values()],
             key=lambda x: -x["total"]),
         # Yeniden eskiye. Tavan 40: bir ürünün kırk alışı zaten bir sayfayı
