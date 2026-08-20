@@ -5176,7 +5176,7 @@ def _medyan(sayilar: List[float]) -> float:
     return s[orta] if n % 2 else (s[orta - 1] + s[orta]) / 2
 
 
-TAZELIK_GUN = 7        # fiyat hareketi manşette bu kadar gün durabilir
+TAZELIK_GUN = 10       # fiyat hareketi manşette bu kadar gün durabilir
 ONE_CIKAN_TAVAN = 3    # dördüncü satırda lacivert alan ekranın yarısını geçiyor
 
 
@@ -5215,11 +5215,19 @@ async def highlight(user=Depends(get_current_user)):
     dönüşür ve okunmaz — tam da "boş kalabilme cesareti" kararının önlemeye
     çalıştığı şey.
 
-    Pencere evin kendi ritminden: bu evde iki alışveriş arası ortanca 3 gün,
-    ortalama 4,8. Yedi gün, normal bir haftanın mutlaka bir alışveriş
-    içermesi demek (günlerin %82'si). Beş gün haftayı ortasından keser,
-    on gün bir SONRAKİ alışverişin ötesine sarkar — yeniden alışveriş
-    yaptıysan eski kıyas artık en taze şey değildir.
+    Pencere ON GÜN. İlk ölçüm evin kendi ritminden yediyi işaret ediyordu
+    (iki alışveriş arası ortanca 3 gün, ortalama 4,8; yedi gün günlerin
+    %82'sini, on gün %89'unu kapsıyor) — ama o ölçü YANLIŞ KİŞİYE göreydi.
+
+    Ev sahibi uygulamayı günde defalarca açıyor, çünkü onu geliştiriyor;
+    tipik kullanıcı haftada bir iki kez açıyor. Günde defalarca bakan için
+    yedi gün "aynı cümle çok duruyor" demek, haftada iki kez bakan için ise
+    "çoğu girişte boş" demek. İkincisi daha pahalı: boş bulunan bir alan
+    bir daha okunmaz, tekrar eden bir cümle en kötü ihtimalle atlanır.
+
+    Karar bu yüzden on. Kullanım sıklığı ölçülünce (bkz. SIRADAKI-TUR.md,
+    "Ölçüm") sayı veriyle yeniden konuşulacak — şu an elde o veri YOK ve
+    olmadığını bilmek, varmış gibi davranmaktan iyidir.
 
     Pencere kapanınca bilgi kaybolmuyor: hareket `/stats/prices` içinde
     duruyor, yalnızca manşetten iniyor.

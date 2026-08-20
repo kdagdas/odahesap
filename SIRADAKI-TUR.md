@@ -873,9 +873,11 @@ kullanışlılığı arttı. Ölçüt: *bu kart hangi cümleyi kurmamı sağlıy
 
 ---
 
-## Tur 13 — BİTTİ (20 Ağustos 2026, APK v47 · sürüm 1.3.0)
+## Tur 13 — BİTTİ (20 Ağustos 2026, APK v49 · sürüm 1.3.0)
 
-Beş madde. Üçü ev sahibinin isteği, ikisi ölçüm sonucu.
+Sekiz madde. **v47 ve v48 dağıtıldı ama v49 geçerli olan** — v47 iki farklı
+dosya olarak çıktı (ilkinde ikon eskiydi), v48 onu düzeltti, v49 Anasayfa ve
+jest işlerini getirdi.
 
 **1. Tema seçici** (Ayarlar → Görünüm). Üç önizleme kutusu; "Sistem" ikiye
 bölünmüş kare olarak çiziliyor — "duruma göre biri ya da öteki" cümlesini
@@ -942,6 +944,46 @@ başka makinede üretilemeyen logo, logo değildir.
 
 - **Elle giriş ekranı kalabalık** (Tur 12'den devrediyor, hâlâ açık).
 - **Ürün sözlüğü sürekliliği** ölçülmedi.
+- **Aynı ay içindeki iki alışveriş hiç karşılaştırılmıyor.** Kural "hem bu ay
+  hem geçen ay alınmış olmalı" diyor. Ev sahibi haklı olarak sordu: iki hafta
+  arayla alınan aynı ürünün fiyatı değiştiyse bu da bir hareket. ÖLÇÜLDÜ ve
+  şimdilik yapılmadı: iki aylık veride aynı market + aynı üründen ardışık 12
+  çift var, arasında ≥7 gün olan 4, bunların aynı ay içinde olanı **1** —
+  ve o da %0 değişimli. Hangi eşikte (%15–30) bakılırsa bakılsın tek sonuç
+  domates, onu da ay kuralı zaten yakalıyor. Riski var: **"ayın MEDYANI"**
+  kuralı tam olarak tek kampanyalı alışverişin yalan söylemesini engellemek
+  için konmuştu; alıştan alışa kıyas o gürültüyü geri getirir. Veri
+  büyüyünce sayıya yeniden bakılacak.
+- **Tazelik penceresi 7 gün, ama bu SAHİBİNİN ritmine göre ölçüldü.** Ev
+  sahibi kendisi günde defalarca giriyor; tipik kullanıcı haftada iki kez
+  girerse 7 gün "çoğu girişte boş" demek olabilir. Kapsama verisi gelince
+  yeniden konuşulacak (aşağıdaki ölçüm maddesi).
+
+### Ölçüm (analitik) — genele açmadan ÖNCE, sonra değil
+
+Analitik **geriye dönük çalışmaz**: lansmandan sonra "ilk hafta insanlar
+nerede düştü" diye sorunca cevap yoktur ve bir daha olmaz.
+
+Ama **şimdi de eklenmemeli**: kullanıcı üç kişi. Analitik, tek tek
+konuşamayacağın kadar çok kullanıcın olunca değer üretir; n=3'te bir sohbet
+her panodan iyidir.
+
+Sıra:
+
+1. **Şimdi — sunucudan say.** Her API çağrısı zaten bir sinyal. Küçük bir
+   `usage_events` (kullanıcı, ekran, eylem, zaman) soruların %80'ini üçüncü
+   tarafa tek bayt göndermeden cevaplar. Asıl metrik DAU değil **KAPSAMA**:
+   "yapılan alışverişlerin kaçı girildi" — çünkü eksik veri bölüşmeyi de
+   analizi de yalan yapar.
+2. **Genele açarken — istemci SDK'sı.** Sunucunun göremediği şeyler için:
+   ölü dokunuş (dokunulamayana dokunmak = "bunu düğme sandı"), öfke
+   dokunuşu, hızlı geri dönüş (<2 sn), sonuçsuz arama, terk noktası,
+   göreve süre. PostHog (kendi sunucuna kurulabilir) ya da Firebase
+   Analytics (FCM zaten var, ama huni için BigQuery gerekiyor).
+3. **Gizlilik pazarlık konusu değil.** Olay ve ekran adları evet; **içerik
+   asla** — ürün adı, tutar, market adı, e-posta yok. Almanya'da TDDDG
+   analitik için cihazda tanımlayıcı saklamayı **rızaya** bağlıyor. Yani
+   analitik, "rıza + gizlilik metni" maddesinin İÇİNDE.
 
 ---
 
@@ -1072,7 +1114,7 @@ elle değiştirilmemeli. Debug yavaştır — performans yargısı release'de ve
 ```
 D:\SettleUp\OdaHesap üzerinde çalışıyoruz. Önce şu üç dosyayı oku:
 SIRADAKI-TUR.md, PROJE-DOKUMANI.md, DEVAM.md.
-Tur 10-13 bitti (APK v47 / sürüm 1.3.0). Tur 14'e başla.
+Tur 10-13 bitti (APK v49 / sürüm 1.3.0). Tur 14'e başla.
 ```
 
 ### Yeni oturumun İLK yapması gerekenler

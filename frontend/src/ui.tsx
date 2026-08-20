@@ -840,12 +840,19 @@ export function KaydirSil({
   onSil, testID, children,
 }: { onSil: () => void; testID?: string; children: React.ReactNode }) {
   const ref = React.useRef<any>(null);
-  /* Eşiğin geçilip geçilmediği REF'te tutuluyor, state'te değil: bırakma
-     anında `onSwipeableWillOpen` bu değeri okuyor ve state güncellemesi o
-     ana yetişmeyebilir. State yalnızca ÇİZİM için (ikon/yazı). */
-  const esikte = React.useRef(false);
+  /* Sürüklenme değeri REF'te tutuluyor ve **bırakma anında okunuyor.**
+
+     İlk sürüm `dragX.addListener` kullanıyordu ve cihazda hiç çalışmadı:
+     `dragX` bir `AnimatedInterpolation`, yani hesaplanmış bir düğüm —
+     dinleyicisi `AnimatedValue`'nunki gibi güvenilir tetiklenmiyor. Sonuç
+     sessizdi ve kusuru tam olarak sessizliği yaptı: satır ekranın sonuna
+     kadar kayıyor, bırakıyorsun, hiçbir şey olmuyor. Hata da yok.
+
+     `__getValue()` özel bir API ama kararlı ve senkron. `onSwipeableWillOpen`
+     bırakma anında, geri dönüş animasyonu başlamadan çağrılıyor; okunan
+     değer parmağın bıraktığı yer. */
+  const dragRef = React.useRef<any>(null);
   const silindi = React.useRef(false);
-  const [gorselEsik, setGorselEsik] = React.useState(false);
   const { width } = useWindowDimensions();
   /* Ekranın %42'si, ama en az 150 px. Oran tek başına küçük telefonda çok
      kolay, tablette çok zor bir eşik üretiyor. */
@@ -863,19 +870,15 @@ export function KaydirSil({
       overshootRight
       overshootFriction={1}
       rightThreshold={44}
-      onSwipeableWillOpen={() => { if (esikte.current) sil(); }}
-      onSwipeableWillClose={() => { esikte.current = false; setGorselEsik(false); }}
-      renderRightActions={(progress: any, dragX: any) => (
-        <SilPaneli
-          progress={progress}
-          dragX={dragX}
-          esik={esik}
-          gecti={gorselEsik}
-          onEsik={(v: boolean) => { esikte.current = v; setGorselEsik(v); }}
-          onSil={sil}
-          testID={testID}
-        />
-      )}
+      onSwipeableWillOpen={() => {
+        const v = dragRef.current?.__getValue?.();
+        if (typeof v === "number" && v < -esik) sil();
+      }}
+      renderRightActions={(progress: any, dragX: any) => {
+        dragRef.current = dragX;
+        return <SilPaneli progress={progress} dragX={dragX} esik={esik}
+                          onSil={sil} testID={testID} />;
+      }}
     >
       {children}
     </Swipeable>
@@ -890,44 +893,60 @@ export function KaydirSil({
  * tam boyutta bir anda basılıyordu ("hop beliriyor"). `progress` ile
  * kaydığında alan **kaydırıldığı kadar** açılıyor; yazı da soluyor, çünkü
  * yarı yolda okunamayan bir kelime titreşim gibi görünüyor.
+ *
+ * Eşik göstergesi ("Sil" -> "Bırak") tamamen ANIMATED: iki metin üst üste
+ * duruyor ve opaklıkları `dragX`ten türüyor. React state'iyle yapılsaydı
+ * yine dinleyici gerekirdi — çalışmayan yol oydu. Böylece hiçbir JS geri
+ * çağrısına bağlı değil.
  */
 function SilPaneli({
-  progress, dragX, esik, gecti, onEsik, onSil, testID,
+  progress, dragX, esik, onSil, testID,
 }: {
   progress: Animated.AnimatedInterpolation<number>;
   dragX: Animated.AnimatedInterpolation<number>;
-  esik: number; gecti: boolean;
-  onEsik: (v: boolean) => void; onSil: () => void; testID?: string;
+  esik: number; onSil: () => void; testID?: string;
 }) {
-  React.useEffect(() => {
-    const id = (dragX as any).addListener?.(({ value }: { value: number }) => {
-      onEsik(value < -esik);
-    });
-    return () => { if (id != null) (dragX as any).removeListener?.(id); };
-  }, [dragX, esik, onEsik]);
+  const kaydir = progress.interpolate({
+    inputRange: [0, 1], outputRange: [SIL_GENIS, 0], extrapolate: "clamp",
+  });
+  const yaziOpak = progress.interpolate({
+    inputRange: [0.45, 1], outputRange: [0, 1], extrapolate: "clamp",
+  });
+  /* 20 pikselik rampa: sert bir sıçrama yerine eşiğe yaklaşırken beliriyor,
+     yani "az kaldı" da görünüyor. */
+  const birakOpak = dragX.interpolate({
+    inputRange: [-esik, -esik + 20], outputRange: [1, 0], extrapolate: "clamp",
+  });
+  const silOpak = dragX.interpolate({
+    inputRange: [-esik, -esik + 20], outputRange: [0, 1], extrapolate: "clamp",
+  });
 
   return (
     <View style={styles.silKap}>
-      <Animated.View
-        style={{
-          transform: [{
-            translateX: progress.interpolate({
-              inputRange: [0, 1], outputRange: [SIL_GENIS, 0], extrapolate: "clamp",
-            }),
-          }],
-        }}
-      >
+      <Animated.View style={{ transform: [{ translateX: kaydir }] }}>
         <Pressable style={styles.silAlan} onPress={onSil} testID={testID}>
-          <Ionicons name={gecti ? "trash" : "trash-outline"} size={19} color={colors.onBrand} />
-          <Animated.Text
-            style={[styles.silTxt, {
-              opacity: progress.interpolate({
-                inputRange: [0.45, 1], outputRange: [0, 1], extrapolate: "clamp",
-              }),
-            }]}
-          >
-            {gecti ? "Bırak" : "Sil"}
-          </Animated.Text>
+          <View style={styles.silIkon}>
+            <Animated.View style={{ opacity: silOpak }}>
+              <Ionicons name="trash-outline" size={19} color={colors.onBrand} />
+            </Animated.View>
+            <Animated.View style={[StyleSheet.absoluteFill, styles.silIkonUst,
+                                   { opacity: birakOpak }]}>
+              <Ionicons name="trash" size={19} color={colors.onBrand} />
+            </Animated.View>
+          </View>
+          {/* İki yazı üst üste: alttaki "Sil", üstteki "Bırak". Kap
+              "Bırak" genişliğinde sabit, yoksa geçiş sırasında düğme
+              enini değiştirip titriyor. */}
+          <View style={styles.silYaziKap}>
+            <Animated.Text style={[styles.silTxt, styles.silYazi,
+                                   { opacity: Animated.multiply(yaziOpak, silOpak) }]}>
+              Sil
+            </Animated.Text>
+            <Animated.Text style={[styles.silTxt, styles.silYazi,
+                                   { opacity: Animated.multiply(yaziOpak, birakOpak) }]}>
+              Bırak
+            </Animated.Text>
+          </View>
         </Pressable>
       </Animated.View>
     </View>
@@ -2675,6 +2694,12 @@ const styles = StyleSheet.create({
     width: SIL_GENIS, height: "100%", gap: 3,
   },
   silTxt: { ...T.caption, color: colors.onBrand },
+  silIkon: { width: 19, height: 19, alignItems: "center", justifyContent: "center" },
+  silIkonUst: { alignItems: "center", justifyContent: "center" },
+  /* Yükseklik yazının satır yüksekliği; iki yazı da mutlak konumlandığı
+     için kabın kendi ölçüsü olmalı. */
+  silYaziKap: { height: 17, width: 40, alignItems: "center", justifyContent: "center" },
+  silYazi: { position: "absolute" },
   ipucuKap: { overflow: "hidden" },
   /* Yarım genişlik: ipucu satırı bu kadar kaydırıyor, yani kırmızı alan tam
      doluyor — açıkta kalan bir şerit "yarım boyanmış" görünürdü. */

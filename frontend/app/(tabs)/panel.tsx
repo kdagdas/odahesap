@@ -81,13 +81,24 @@ const ONE_CIKAN_IKON: Record<string, any> = {
  * Nabız TEK bir yerde: ödeşme satırında, çünkü senden gerçekten bir şey
  * isteyen tek satır o. O nabız da sonsuz değil — odaklanınca üç kez atıp
  * duruyor (`PulseDot`), yani "buraya bir kez bak" diyor.
+ *
+ * ### Nötr satırlar GRİ değil YEŞİL
+ *
+ * Önce gri denendi ("renk anlam taşır, süs olarak harcanmamalı") ama cihazda
+ * sönük kaldı. Sebebi şu: lacivert alanda yeşil zaten SEMANTİK DEĞİL —
+ * hemen üstteki trend satırı da yeşil ve orada gösterdiği şey bir ARTIŞ.
+ * Yani bu blokta yeşil "iyi haber" demiyor, uygulamanın vurgu rengi demek.
+ *
+ * Kural buna göre kuruldu: **yalnızca istisnalar renkli.** Amber "senden bir
+ * şey isteniyor", kiremit "para ters yöne gidiyor", yeşil geri kalan her şey.
+ * İki yüksek sesli renk anlam taşıyor; üçüncüsü zemin.
  */
 const ONE_CIKAN_RENK: Record<string, string> = {
   odesme: colors.attention,        // amber — senden bir şey bekliyor
   zam: colors.negativeOnDark,      // para ters yöne gidiyor
-  ucuz: colors.accentOnDark,       // lehine
-  market_farki: colors.onDarkMuted,
-  degisim: colors.onDarkMuted,
+  ucuz: colors.accentOnDark,
+  market_farki: colors.accentOnDark,
+  degisim: colors.accentOnDark,
 };
 
 /* Kıyas ayının -e hâli. Elle yazıldı çünkü Türkçede ek ünlü uyumuna ve
