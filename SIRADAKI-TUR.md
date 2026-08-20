@@ -825,6 +825,14 @@ silme geri alınabilir, bölüşüm kompakt menüde, genel ad görünür.
 **Genel ad sözlüğü** geçmişe uygulandı: 155 ham ad → 90 satır.
 **Analiz sayfası KÜÇÜLDÜ** — üç kart ve bir eksen çıktı.
 **Anasayfa'da tek cümle** (`/stats/highlight`), beş kaynaktan.
+**Alınacaklar zenginleşti:** satırda son fiyat + market, başlıkta son
+alışveriş. Fiyat evin BÜTÜN harcamalarından (olgu, kimse yok içinde); "son
+alışveriş" yalnızca doğrulanabilir kayıtlardan (iddia, Harcamalar'da
+görülebilmeli).
+**Elle giriş sadeleşti** — yedi etiket dörde, tek boşluk ritmi, kategori
+kompakt menüde, öneriye dokunmak kategoriyi de dolduruyor.
+**Kalan ay süzgeçleri ızgaraya** geçti; Ürünler'deki çift ay kalktı.
+**Köprü genel adı tanıyor** ("arpa şehriye 2 tane" ↔ "ANKARA ARPA SEHRIYE").
 
 ### Neden çevrimdışı kuyruk ve tema ertelendi
 

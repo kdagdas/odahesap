@@ -335,8 +335,13 @@ const styles = StyleSheet.create({
   check: { width: 21, height: 21, borderRadius: 11, borderWidth: 1.5, borderColor: colors.borderStrong },
   itemTxt: { ...T.body, color: colors.ink },
   ipucu: { ...T.caption, fontSize: 11, color: colors.inkTertiary, marginTop: 2 },
+  /* Başlık ile sekme anahtarının TAM ORTASINDA.
+     Önce yalnızca üstten 8 piksel vardı ve altında hiç boşluk yoktu; satır
+     anahtara yapışıp onun alt yazısı gibi okunuyordu. Başlık bloğu zaten
+     altına 16 bırakıyor, buraya da 16 eklenince ikisi eşitleniyor. */
   sonSatir: {
-    flexDirection: "row", alignItems: "center", gap: 5, marginTop: spacing.sm,
+    flexDirection: "row", alignItems: "center", gap: 5,
+    marginBottom: spacing.lg,
   },
   sonTxt: { ...T.caption, color: colors.onDarkMuted, flex: 1 },
   sonVurgu: { ...T.captionSb, color: colors.onDark },
