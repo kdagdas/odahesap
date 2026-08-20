@@ -1617,7 +1617,14 @@ export function TabSwitch<T extends string>({
           >
             {o.icon ? (
               <Ionicons
-                name={(on ? o.icon : `${o.icon}-outline`) as any}
+                /* `-outline` EKLENMEDEN ÖNCE SÖKÜLÜYOR.
+                   Çağıran zaten "cash-outline" verdiğinde sonuç
+                   "cash-outline-outline" oluyor, Ionicons öyle bir ikon
+                   bulamayınca sessizce SORU İŞARETİ çiziyordu — seçili
+                   olmayan sekme her zaman "?" görünüyordu. Sessiz bozulma
+                   olduğu için de kimse fark etmemişti. */
+                name={(on ? o.icon!.replace(/-outline$/, "")
+                          : `${o.icon!.replace(/-outline$/, "")}-outline`) as any}
                 size={15} color={renk}
               />
             ) : null}

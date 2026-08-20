@@ -44,10 +44,22 @@ type Urun = {
  *  "Tek markette" beklenen durum; her satırda yazınca kart yazı yığınına
  *  dönüyordu. Bilgi olan şey aynı ürünü birkaç yerden almış olmak — o da
  *  istisna, yani yazılmayı hak eden taraf o. */
-const altSatir = (u: Urun) => {
+/**
+ * Satırın alt yazısı — sağdaki sayıyı TEKRAR ETMEZ.
+ *
+ * Cihazda "Yara bandı · 3 kez … 3 kez" diye okundu: sıklık kipinde sağda
+ * zaten "3 kez" yazıyor ve miktar bilinmediğinde alt yazı da aynı şeye
+ * düşüyordu. Aynı sayıyı iki kez göstermek bilgi vermez, hata olduğunu
+ * düşündürür.
+ *
+ * MİKTAR ile SIKLIK farklı şeyler ve ikisi de değerli: "3 adet · 2 kez"
+ * doğru ve okunur (iki alışverişte üç paket). Bu yüzden miktar biliniyorsa
+ * yazılıyor; bilinmiyorsa satır kısa kalıyor, uydurulmuyor.
+ */
+const altSatir = (u: Urun, sira: "tutar" | "siklik") => {
   const p: string[] = [];
   if (u.qty != null && u.unit) p.push(formatQty(u.qty, u.unit));
-  else p.push(`${u.count} kez`);
+  else if (sira === "tutar") p.push(`${u.count} kez`);
   if (u.market_count > 1) p.push(`${u.market_count} markette`);
   return p.join(" · ");
 };
@@ -152,8 +164,12 @@ export default function Urunler() {
             onChange={setSira}
             onDark
             options={[
-              { value: "tutar" as const, label: "Tutar", icon: "cash-outline" },
-              { value: "siklik" as const, label: "Sıklık", icon: "repeat-outline" },
+              /* İkon adı TABAN hâlinde veriliyor; `-outline` ekini bileşen
+                 kendisi koyuyor. Burada "cash-outline" yazılıydı ve seçili
+                 olmayan sekmede "cash-outline-outline" olup soru işaretine
+                 dönüyordu. */
+              { value: "tutar" as const, label: "Tutar", icon: "cash" },
+              { value: "siklik" as const, label: "Sıklık", icon: "repeat" },
             ]}
             testID="urun-sira"
           />
@@ -197,7 +213,7 @@ export default function Urunler() {
                       <Text style={styles.sira}>{i + 1}</Text>
                       <View style={{ flex: 1, minWidth: 0 }}>
                         <Text style={styles.ad} numberOfLines={1}>{u.name}</Text>
-                        <Text style={styles.alt} numberOfLines={1}>{altSatir(u)}</Text>
+                        <Text style={styles.alt} numberOfLines={1}>{altSatir(u, sira)}</Text>
                       </View>
                       {/* Sağdaki sayı SIRALANAN şey: sıklık kipinde tutarı
                           göstermek "neye göre sıralı" sorusunu bırakırdı. */}

@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import {
   View, Text, StyleSheet, ScrollView, TextInput, Pressable,
-  KeyboardAvoidingView, Platform, ActivityIndicator,
+  KeyboardAvoidingView, Platform, ActivityIndicator, Keyboard,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
@@ -68,12 +68,19 @@ export default function Manual() {
      ve aynı kaynaktan beslenmek iki listenin ayrışmasını imkânsız kılıyor.
      250 ms bekleme, her harfte istek atmamak için. */
   useEffect(() => {
-    const k = title.trim();
-    if (k.length < 3 || generic) { setOneriler([]); return; }
+    /* BAŞLIĞIN TAMAMI DEĞİL, İÇİNDEKİ EN UZUN KELİME aranıyor.
+       İlk sürüm başlığı olduğu gibi gönderiyordu ve hiç sonuç vermiyordu:
+       başlıklar cümle ("Ekim ayı elektrik faturası"), ürün adları ise kelime
+       ("süt"). Cümleyi ürün adıyla karşılaştırmak hiçbir zaman tutmuyor. */
+    const kelime = title.trim().split(/\s+/)
+      .filter((w) => w.length >= 3)
+      .sort((a, b) => a.length - b.length)
+      .pop();
+    if (!kelime || generic) { setOneriler([]); return; }
     const t = setTimeout(async () => {
       try {
         const r = await apiGet<{ products: { name: string }[] }>(
-          `/search?q=${encodeURIComponent(k)}`);
+          `/search?q=${encodeURIComponent(kelime)}`);
         setOneriler((r.products || []).slice(0, 4).map((p) => p.name));
       } catch { setOneriler([]); }
     }, 250);
@@ -82,6 +89,16 @@ export default function Manual() {
   const [notes, setNotes] = useState("");
   const [split, setSplit] = useState<Split>({ mode: "equal", with: {} });
   const [saving, setSaving] = useState(false);
+  /* Klavye açıkken KAYDET çubuğu gizleniyor — fiş ekranındaki kuralın
+     aynısı. Orada "Kaydet" düzenlenen alanın altına gelip "bu düzeltmeyi
+     kaydet" gibi okunuyordu; burada da aynı yakınlık aynı yanlış okumayı
+     üretiyor. */
+  const [klavyeAcik, setKlavyeAcik] = useState(false);
+  useEffect(() => {
+    const ac = Keyboard.addListener("keyboardDidShow", () => setKlavyeAcik(true));
+    const kapa = Keyboard.addListener("keyboardDidHide", () => setKlavyeAcik(false));
+    return () => { ac.remove(); kapa.remove(); };
+  }, []);
   const [error, setError] = useState<string | null>(null);
 
   const parsedAmount = parseFloat(amount.replace(",", ".")) || 0;
@@ -136,7 +153,12 @@ export default function Manual() {
 
   return (
     <View style={styles.root} testID="manual-screen">
-      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
+      {/* Android'de telafi YOK: `adjustResize` zaten pencereyi yeniden
+          boyutlandırıyor, `behavior="height"` aynı işi bir kez daha yapıyor ve
+          kenardan kenara çizimde ikisi üst üste binip altta boş bir şerit
+          bırakıyordu. Fiş ekranında da aynı sebeple kaldırıldı. */}
+      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined}
+                            style={{ flex: 1 }}>
         {/* Başlık kaydırma alanının içinde; alttaki Kaydet çubuğu sabit kalıyor.
             Tutar koyu alanda: ekranın tek büyük rakamı, kart içinde değil. */}
         <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.page}
@@ -288,6 +310,7 @@ export default function Manual() {
         </Sheet>
         </ScrollView>
 
+        {!klavyeAcik && (
         <View style={[styles.footer, { paddingBottom: spacing.lg + insets.bottom }]}>
             <Pressable style={[styles.saveBtn, saving && { opacity: 0.6 }]} onPress={save} disabled={saving} testID="manual-save-btn">
               {saving ? <ActivityIndicator color={colors.onBrand} /> : (
@@ -298,6 +321,7 @@ export default function Manual() {
               )}
             </Pressable>
         </View>
+        )}
       </KeyboardAvoidingView>
     </View>
   );

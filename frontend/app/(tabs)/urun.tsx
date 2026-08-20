@@ -24,14 +24,27 @@ import {
 } from "@/src/ui";
 import { colors, spacing, type as T, metrics } from "@/src/theme";
 
+const AY_UZUN = ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran",
+                 "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"];
+/** `2026-08-03` → "3 Ağu". Alım satırında yıl yazılmıyor: aralık zaten
+ *  başlıkta duruyor ve her satırda tekrar etmesi satırı şişiriyor. */
+const kisaTarih = (iso: string) => {
+  const d = new Date(iso);
+  return `${d.getDate()} ${AY_UZUN[d.getMonth()]?.slice(0, 3)}`;
+};
+
 type Ay = { month: string; total: number; qty: number; count: number };
 type Market = { key: string; name: string; total: number; qty: number; count: number };
+type Alim = {
+  name: string; merchant: string; day: string; qty: number; unit: string;
+  price: number; total: number; unit_price?: number | null; price_unit?: string | null;
+};
 type Detay = {
   key: string; name: string | null; total: number; count: number;
   qty?: number | null; unit?: string | null;
   unit_price?: number | null; price_unit?: string | null;
   first_month?: string | null; last_month?: string | null;
-  months: Ay[]; merchants: Market[];
+  months: Ay[]; merchants: Market[]; purchases: Alim[];
 };
 
 export default function Urun() {
@@ -144,15 +157,21 @@ export default function Urun() {
                   <View style={{ marginTop: -spacing.md }} />
                 </Card>
 
-                {/* NEREDEN ALDIK. Aynı ürünü nereden kaça aldığın, evin
-                    kendi verisinden çıkan tek gerçek karşılaştırma. */}
+                {/* NEREDEN ALDIK — özet, ve DOKUNULAMAZ.
+                    Önce her satır market sayfasına gidiyordu; ev sahibi haklı
+                    olarak istemedi: ürün sayfasından markete, oradan başka
+                    ürünlere dallanmak insanı sorusundan uzaklaştırıyor. Burası
+                    "hangi markete ne kadar" sorusunun cevabı ve orada bitiyor.
+
+                    Market adı BİR KEZ yazıyor. Önce hem rozet hem başlık
+                    olarak iki kez duruyordu ve satır dar telefonda alt
+                    satırlara kayıyordu. */}
                 <Card title="Nereden aldık">
                   {d!.merchants.map((m, i) => (
                     <View key={m.key}>
-                      {i > 0 && <Divider />}
+                      {i > 0 && <Divider inset={spacing.lg} />}
                       <Row
-                        leading={<MerchantBadge name={m.name} />}
-                        title={m.name}
+                        title={<MerchantBadge name={m.name} />}
                         subtitle={`${m.count} kez`}
                         right={
                           <View style={styles.sag}>
@@ -162,17 +181,44 @@ export default function Urun() {
                             <Money value={m.total} />
                           </View>
                         }
-                        chevron
-                        onPress={() => router.push({
-                          pathname: "/(tabs)/market",
-                          params: { key: m.key, ad: m.name, ay: d!.last_month || buAy(),
-                                    geri: "/(tabs)/urun" },
-                        } as any)}
                         testID={`urun-market-${m.key}`}
                       />
                     </View>
                   ))}
                 </Card>
+
+                {/* NELER ALDIK — gruplamanın tersi.
+                    Fişte "karpuz" yazmıyor; "WASSERMELONEN FASHION" yazıyor ve
+                    insanın hatırladığı o. Genel ad özelden genele indirdi, bu
+                    liste özeli geri veriyor: hangi adla, hangi marketten,
+                    hangi tarihte, kaça.
+
+                    Değişken ürünlerde asıl değerli olan bu — iki karpuz aynı
+                    ürün değil ve ikisinin fiyatını yan yana görmek, halka ya
+                    da çubuk grafiğin veremeyeceği bir cevap. */}
+                {d!.purchases.length > 0 && (
+                  <Card title="Neler aldık">
+                    {d!.purchases.map((a, i) => (
+                      <View key={`${a.day}-${i}`}>
+                        {i > 0 && <Divider inset={spacing.lg} />}
+                        <Row
+                          minHeight={52}
+                          title={<Text style={styles.alimAd} numberOfLines={1}>{a.name}</Text>}
+                          subtitle={`${a.merchant} · ${kisaTarih(a.day)}`}
+                          right={
+                            <View style={styles.sag}>
+                              {a.qty !== 1 ? (
+                                <Text style={styles.miktar}>{formatQty(a.qty)} {a.unit}</Text>
+                              ) : null}
+                              <Money value={a.total} />
+                            </View>
+                          }
+                          testID={`urun-alim-${i}`}
+                        />
+                      </View>
+                    ))}
+                  </Card>
+                )}
 
                 <Text style={styles.dipnot}>
                   Aylık ortalama {formatEUR(aylikOrt)} · toplam {d!.count} alış
@@ -196,6 +242,7 @@ const styles = StyleSheet.create({
   aralik: { ...T.caption, color: colors.onDarkMuted, marginTop: spacing.md },
   govde: { padding: spacing.lg, gap: metrics.cardGap },
   sag: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  alimAd: { ...T.body, color: colors.ink },
   miktar: { ...T.caption, color: colors.inkTertiary },
   dipnot: { ...T.caption, color: colors.inkTertiary, textAlign: "center" },
   bos: { alignItems: "center", paddingVertical: spacing.xxl, gap: spacing.md },

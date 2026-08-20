@@ -4637,6 +4637,12 @@ async def product_detail(key: str, user=Depends(get_current_user)):
         {"_id": 0},
     ).sort("expense_date", -1).to_list(3000)
 
+    # HER BİR ALIŞ ayrı ayrı. Ürün sayfasının asıl sorusu bu:
+    # "karpuz" diye etiketlediğimiz şeyi gerçekte hangi adla, hangi
+    # marketten, kaça almışız. Gruplama genelden özele indi; bu liste
+    # özeli geri veriyor — fişte "karpuz" yazmıyor, "WASSERMELONEN
+    # FASHION" yazıyor ve insanın hatırladığı o.
+    alimlar: List[dict] = []
     ad, toplam, adet, miktar = None, 0.0, 0, 0.0
     birimler: Dict[str, int] = {}
     aylar: Dict[str, dict] = {}
@@ -4694,6 +4700,23 @@ async def product_detail(key: str, user=Depends(get_current_user)):
             if p and p.get("unit_price") and p.get("price_unit") in ("kg", "lt"):
                 birim_fiyatlar.setdefault(p["price_unit"], []).append(float(p["unit_price"]))
 
+            alimlar.append({
+                "name": ham,
+                "merchant": ham_market,
+                "day": gun,
+                "qty": round(mik, 3),
+                "unit": birim,
+                "price": round(float(i.get("price", 0)), 2),
+                "total": round(tutar, 2),
+                # Birim fiyat yalnızca ÖLÇÜLEBİLDİĞİNDE. "adet" sınıfında
+                # boyut bilinmiyor ve iki farklı boy karpuzu kıyaslanabilir
+                # sanmak Tur 11'de yanlış "zam" satırları üretmişti.
+                "unit_price": (round(float(p["unit_price"]), 2)
+                               if p and p.get("price_unit") in ("kg", "lt") else None),
+                "price_unit": (p or {}).get("price_unit")
+                if (p or {}).get("price_unit") in ("kg", "lt") else None,
+            })
+
     if not aylar:
         return {"key": key, "name": None, "months": [], "merchants": []}
 
@@ -4732,6 +4755,9 @@ async def product_detail(key: str, user=Depends(get_current_user)):
             [{**m, "total": round(m["total"], 2), "qty": round(m["qty"], 2)}
              for m in marketler.values()],
             key=lambda x: -x["total"]),
+        # Yeniden eskiye. Tavan 40: bir ürünün kırk alışı zaten bir sayfayı
+        # dolduruyor ve altındaki hiçbir satır yeni bir şey söylemiyor.
+        "purchases": sorted(alimlar, key=lambda a: a["day"], reverse=True)[:40],
     }
 
 
