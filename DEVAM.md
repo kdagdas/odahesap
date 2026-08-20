@@ -141,12 +141,27 @@ dosyalarını PowerShell ile düzenlerken BOM'suz yazın:
 [System.IO.File]::WriteAllText($p, $t, (New-Object System.Text.UTF8Encoding($false)))
 ```
 
-### versionCode `app.json`'dan gelir
+### versionCode `app.json`'dan gelir — AMA prebuild çalıştırmazsanız gelmez
 
-`android/app/build.gradle` içindeki `versionCode`'u elle değiştirmek işe
-yaramaz — bir sonraki `expo prebuild` onu `app.json`'daki değerden yeniden
-yazar. Her yeni APK'da `frontend/app.json` → `expo.android.versionCode`
-artırın, sonra prebuild çalıştırın.
+`android/app/build.gradle` içindeki `versionCode`'u elle değiştirmek kalıcı
+değil: bir sonraki `expo prebuild` onu `app.json`'daki değerden yeniden yazar.
+Her yeni APK'da `frontend/app.json` → `expo.android.versionCode` artırın,
+sonra prebuild çalıştırın.
+
+**v47'de yaşandı:** `app.json` 47'ye çıkarıldı, prebuild ATLANDI, derleme
+başarıyla bitti ve APK **46 numarayla** çıktı. Hata vermiyor, uyarmıyor —
+`build.gradle` neyse o gidiyor. Bu sessiz, çünkü Gradle'ın `app.json`'dan
+haberi yok.
+
+Derledikten sonra numarayı APK'nın kendisine sorun, dosya adına değil:
+
+```powershell
+& $aapt2 dump badging $apk | Select-String "^package:"
+```
+
+`versionCode` beklediğiniz sayı değilse ya prebuild çalıştırın ya da
+`android/app/build.gradle` içindeki satırı elle düzeltip yeniden derleyin
+(bu durumda `app.json` ile aynı sayıda olduklarından emin olun).
 
 ### prebuild neyi korur, neyi korumaz
 
