@@ -959,6 +959,52 @@ başka makinede üretilemeyen logo, logo değildir.
   girerse 7 gün "çoğu girişte boş" demek olabilir. Kapsama verisi gelince
   yeniden konuşulacak (aşağıdaki ölçüm maddesi).
 
+### Fiyat bilgisinin ASIL yeri: karar ÖNCESİ
+
+Ev sahibi Anasayfa'daki zam cümlesini sorguladı ve haklıydı: "domatesi zaten
+almışım, %51 bilgisinin bana faydası ne?" Bilgi ya **karar öncesi** ya
+**karar sonrası** olur; zam cümlesi o alışveriş için karar sonrasıdır.
+
+İki cevap verildi:
+
+1. **Etki eşiği** (yapıldı). Hareketin ileriye dönük değeri var — ev ürünleri
+   tekrar eden alışverişler — ama o değer kaç para tuttuğuyla ölçülür.
+   Eşik: evin aylık harcamasının **%0,5'i**. Para birimine bağlanmadı;
+   gerekçesi aşağıdaki kur maddesinde.
+2. **Karar öncesi bilginin doğru yeri Anasayfa değil, ALINACAKLAR.** Markete
+   gitmeden önce açılan ekran orası ve satırlarda zaten "geçen sefer 0,95 € ·
+   ALDI" var. Doğal devamı: satır başına **"en ucuz gördüğün market"**.
+   YAPILMADI, çünkü ölçüldü: 149 üründen yalnızca **5'i** iki farklı markette
+   görülmüş. Tek bir ev az sayıda markete gidiyor; kendi geçmişinden "nerede
+   ucuz" sorusunun cevabı yok.
+
+**"Şu an X markette daha ucuz" ASLA denemez.** Uygulamanın canlı fiyat
+kaynağı yok; yalnızca ödenen fiyatı biliyor. Söylenebilecek şey "en son
+aldığında" — kural yazılı: *olgu paylaşılabilir, doğrulanamayan iddia
+paylaşılamaz.* "Şu an" deyip yanılmak, bir fiyat uygulamasının kaybedeceği
+tek şeyi kaybettirir.
+
+**TOPLULUK FİYAT HAVUZU — yarısı zaten kurulu.** `price_points` tablosunda
+215 anonim kayıt var ve doğrulandı: içinde `household_id`, `user_id`,
+`expense_id` **yok** — sonradan silinmiş değil, hiç yazılmamış. Yeterince ev
+olduğunda "bu hafta bu ürünü en ucuz gören market" cevaplanabilir hale gelir
+ve **o bilgi karar öncesidir.** Rakiplerin hiçbiri yapamaz: hiçbiri fişi
+kalem kalem okumuyor.
+
+### Kur dönüşümü — GEREKMİYOR, tetikleyicisi belli
+
+Eşik neden para birimine bağlanmadı: **kur ile alım gücü aynı şey değil.**
+2 € bugün ~80 TL ama 80 TL, bir Türkiye evinin bütçesinde 2 €'nun Almanya'da
+taşıdığı ağırlığı taşımıyor. Doğru kur bile yanlış cevap verir. Oran ikisini
+birden çözüyor ve enflasyonla kendiliğinden güncelleniyor — TRY için kritik,
+çünkü sabit sayı altı ayda eskir ve kimse güncellemeyi hatırlamaz.
+
+Bugünkü yapıda kur hiç gerekmiyor: her evin tek bir para birimi var ve o evin
+bütün harcamaları o birimde. **Tetikleyici:** biri seyahatteyken başka para
+biriminde harcama yapıp evin birimine yazmak isterse. O güne kadar canlı kur
+kaynağı, önbellek ve "kur eskidi" hata durumu eklemek, olmayan bir soruna
+bakım yükü almaktır.
+
 ### Ölçüm (analitik) — genele açmadan ÖNCE, sonra değil
 
 Analitik **geriye dönük çalışmaz**: lansmandan sonra "ilk hafta insanlar
