@@ -159,9 +159,38 @@ Derledikten sonra numarayı APK'nın kendisine sorun, dosya adına değil:
 & $aapt2 dump badging $apk | Select-String "^package:"
 ```
 
-`versionCode` beklediğiniz sayı değilse ya prebuild çalıştırın ya da
-`android/app/build.gradle` içindeki satırı elle düzeltip yeniden derleyin
-(bu durumda `app.json` ile aynı sayıda olduklarından emin olun).
+`versionCode` beklediğiniz sayı değilse **prebuild çalıştırın.**
+`build.gradle`'daki satırı elle düzeltmek derlemeyi kurtarır ama asıl sorunu
+gizler — bkz. aşağıdaki madde.
+
+### Prebuild'i atlamak İKONU da eskide bırakır
+
+`versionCode` bunun yalnızca ilk belirtisi. Launcher ikonu ve açılış ekranı
+`assets/images/icon.png`'den DEĞİL, `android/app/src/main/res/mipmap-*` ve
+`drawable-*` altındaki ÜRETİLMİŞ kopyalardan geliyor; oraya yalnızca prebuild
+yazıyor.
+
+**v47'de yaşandı:** ikon PNG'leri yenilendi, derleme başarılı oldu, APK eski
+logoyla çıktı. Derleme hiçbir uyarı vermedi çünkü Gradle'ın gördüğü kaynaklar
+yerindeydi — sadece eskiydi.
+
+Kural: **`app.json` ya da `assets/images/` altındaki herhangi bir şey
+değiştiyse prebuild ŞART.** Sonra ikonu paketin içine bakarak doğrulayın:
+
+```powershell
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+$zip = [System.IO.Compression.ZipFile]::OpenRead($apk)
+$zip.Entries | Where-Object { $_.FullName -match 'res/.*\.(png|webp)$' } |
+  Sort-Object Length -Descending | Select-Object -First 5 FullName, Length
+```
+
+En büyük birkaç görüntüyü çıkarıp gözle bakın. Adaptive ön planın 108 dp
+tuvalde ortadaki **72 dp**'lik daireye sığdığını da doğrulayın; taşan kısmı
+launcher kırpıyor.
+
+Prebuild sonrası korunduğu doğrulananlar (v47): `versionCode`, imzalama
+yapılandırması, `arm64-v8a` ABI kısıtı, `gradle.properties` içindeki
+`java.io.tmpdir`.
 
 ### prebuild neyi korur, neyi korumaz
 
