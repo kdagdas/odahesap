@@ -596,6 +596,40 @@ Ayrımın testi tek soru: **kullanıcı buradan bir şeyle mi dönecek (görev),
   iş tam olarak SEÇİM. `AnchorMenu`'ye geçmeleri hem doğru biçim olur hem üç
   ekranda tam sayfa bağlam değişimini kaldırır. Yapılmadı; sıraya alındı.
 
+## Almanca uzun yazar — dar kaplar için üç kural
+
+Uygulama Türkçe geliştiriliyor ama Almancaya çevrilecek ve Almanca sistematik
+olarak daha uzun: *"Başkasına"* → *"Für jemand anderen"*, *"Düzenli
+giderler"* → *"Regelmäßige Ausgaben"*. Sıkıştırdığımız her yer o gün yeniden
+sıkışabilir.
+
+**Ölçüldü (20 Ağustos 2026):** dar kaplarda **sabit genişlikli tek bir metin
+kutusu yok** — `width: N` taşıyan her stil ikon, avatar, tutamak ya da nokta.
+Bu en önemli koruma ve kendiliğinden var, çünkü ekranlar baştan sona flex
+kullanıyor. Yani Almanca **düzeni kırmayacak**; en fazla satır kaydıracak ya
+da kırpacak. Kırılan bir düzenle kırpılan bir kelime aynı ağırlıkta sorun
+değil.
+
+96 ayrı etiketin yalnızca 13'ü 20 karakteri geçiyor ve hepsi **geniş
+bloklarda** (boş durum açıklamaları, yer tutucular) — orada sarma zaten
+normal.
+
+Riskli kap sayısı dört: **haplar · birincil düğmeler · menü satırları ·
+`HeaderSplit` sütunları.** Kural onlar için:
+
+1. **Sabit genişlik verme.** Kıran şey budur; kırpma değil.
+2. **Dar kapta `numberOfLines={1}` ve YANINDA İKON.** Kırpılırsa anlamı ikon
+   taşır. Süzgeç hapları, `MenuSatir` ve `PrimaryButton` bugün böyle.
+3. **Çeviriye uzunluk sınırı yaz.** Hap etiketleri için "≤10 karakter" gibi
+   bir not, çeviri dosyasında standart bir alandır ve çevirmen ona uyar.
+   *"Tümü · Eve · Sana · Başkasına · Kendine"* kısaltması TÜRKÇEYE ÖZGÜ;
+   Almancada karşılıkları yeniden seçilecek.
+
+Ve dürüst sınır: bazı yerler yine bozulacak. Onları önceden çözmenin yolu yok
+— dili değiştirip cihazda bakmak gerekiyor, aynı deneme turu. Hedef bozulmayı
+önlemek değil, **bulmayı ve düzeltmeyi ucuz tutmak**; sabit genişlik olmadığı
+sürece her düzeltme tek satır.
+
 ## Kolay gözden kaçan tasarım kararları
 
 **Bildirim hataları yutulur.** `notify()` hiçbir zaman istisna fırlatmaz —
