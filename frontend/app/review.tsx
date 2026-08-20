@@ -87,6 +87,10 @@ export default function Review() {
     }))
   );
   const [bulkSplit, setBulkSplit] = useState<Split>({ mode: "equal", with: {} });
+  /** Son silinen kalem ve YERİ — geri alma şeridi bundan besleniyor. */
+  const [silinen, setSilinen] = useState<{ satir: Row; index: number } | null>(null);
+  /** Hangi satırın genel adı düzenleniyor. Aynı anda tek satır. */
+  const [genelDuzenle, setGenelDuzenle] = useState<number | null>(null);
 
   // Ev bilgisi fiş okunurken hâlâ iniyor olabiliyor, kalemler ise OCR yanıtı
   // gelir gelmez kuruluyor. Varsayılan "tüm ev" bölüşümü üyeler geldiğinde
@@ -107,7 +111,41 @@ export default function Review() {
 
   const updateRow = (i: number, patch: Partial<Row>) =>
     setRows((rs) => rs.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
-  const removeRow = (i: number) => setRows((rs) => rs.filter((_, idx) => idx !== i));
+  /**
+   * Kalem silme — GERİ ALINABİLİR.
+   *
+   * Çarpı, adı düzenlerken parmağın hemen yanında duruyor ve yanlışlıkla
+   * basılıyor. Bedeli orantısız: gitmiş kalemi geri koymak ya fişi yeniden
+   * taramayı ya da ad/adet/fiyat/birim/kategori/genel ad'ın hepsini elle
+   * yazmayı gerektiriyordu.
+   *
+   * Çözüm ONAY SORMAK DEĞİL: silme çoğu zaman bilinçli (fişteki depozito
+   * satırı, poşet). Her silmede "emin misin?" sormak doğru işi cezalandırır.
+   * Geri alma ise yalnızca hata yapana bedel ödetiyor — ve o bedel bir
+   * dokunuş.
+   *
+   * Satır ESKİ YERİNE dönüyor: sona eklemek "hangisiydi" sorusunu doğurur,
+   * uzun fişte kaybolur.
+   */
+  const removeRow = (i: number) => {
+    const satir = rows[i];
+    setRows((rs) => rs.filter((_, idx) => idx !== i));
+    setAcikSatir(null);
+    if (satir) setSilinen({ satir, index: i });
+  };
+
+  useEffect(() => {
+    if (!silinen) return;
+    const t = setTimeout(() => setSilinen(null), 8000);
+    return () => clearTimeout(t);
+  }, [silinen]);
+
+  const geriAl = () => {
+    if (!silinen) return;
+    const { satir, index } = silinen;
+    setRows((rs) => [...rs.slice(0, index), satir, ...rs.slice(index)]);
+    setSilinen(null);
+  };
   const addRow = () =>
     // Elle eklenen kalemde genel ad YOK: modelin bilgisi değil kullanıcının
     // yazdığı ad var, ve uydurmak yanlış birleştirmeye yol açar.
@@ -478,35 +516,43 @@ export default function Review() {
                     <Text style={styles.rowTotal}>{formatEUR(rowTotal(r))}</Text>
                   </View>
                 </View>
-                <Text style={styles.catLabel}>{CATEGORY_LABEL_TR[r.category]}</Text>
+                {/* KATEGORİ · GENEL AD — tek satır, ikisi de küçük.
+                    Genel ad ilk denemede kendi kutusunda, "BU ÜRÜN ASLINDA
+                    NE?" başlığıyla duruyordu ve fazla yer kaplıyordu. Ev
+                    sahibinin itirazı doğruydu: Türkiye'de fişte zaten "Dost
+                    1 lt Süt" yazıyor, kimse onun süt olduğunu merak etmiyor.
+                    Alan yalnızca Almanya'daki gibi fişte markadan başka bir
+                    şey yazmadığında düzeltiliyor — yani çok nadiren.
 
-                {/* GENEL AD — ekrana ilk kez çıkıyor.
-                    Alan Tur 8'den beri var ve "En Çok Aldıklarımız", ürün
-                    sayfası, fiyat hareketleri, alınacaklar köprüsü — hepsi
-                    buna dayanıyor. Ama HİÇBİR YERDE GÖRÜNMÜYORDU: OCR
-                    üretiyor, kaydediliyor, kimse bakamıyor.
-
-                    Bunun iki bedeli vardı. Biri: alanın çalışıp çalışmadığı
-                    ölçülemiyordu (Tur 8'den 11'e kadar sessizce ölü kaldı ve
-                    kimse fark etmedi). İkincisi daha ağır: yanlış bir genel
-                    ad iki AYRI ürünü sessizce tek satırda toplar ve bu
-                    projede kural yazılı — yanlış birleştirmek,
-                    birleştirmemekten pahalı. Sessiz bir birleştirmenin insan
-                    denetimi olmalı.
-
-                    Kapalı satırda değil, açık satırda: çoğu kalemde
-                    düzeltilecek bir şey yok ve listeyi kalabalıklaştırmaz. */}
-                <View style={styles.genelKutu}>
-                  <Text style={styles.subLabel}>BU ÜRÜN ASLINDA NE?</Text>
-                  <TextInput
-                    style={styles.genelInput}
-                    value={r.generic || ""}
-                    onChangeText={(t) => updateRow(i, { generic: t || null })}
-                    placeholder="süt, sucuk, ekmek…"
-                    placeholderTextColor={colors.onSurfaceTertiary}
-                    autoCapitalize="none"
-                    testID={`review-item-${i}-generic`}
-                  />
+                    Ama GÖRÜNÜR kalması şart: arka planda toplanmaya devam
+                    ediyor ve ürün gruplamasının tamamı buna dayanıyor.
+                    Görünmezse yanlışı da fark edilmez. Çözüm: kategorinin
+                    yanında aynı puntoda, dokunulunca düzeltilebilir. */}
+                <View style={styles.etiketSatir}>
+                  <Text style={styles.catLabel}>{CATEGORY_LABEL_TR[r.category]}</Text>
+                  <Text style={styles.catAyrac}>·</Text>
+                  {genelDuzenle === i ? (
+                    <TextInput
+                      style={styles.genelInput}
+                      value={r.generic || ""}
+                      onChangeText={(t) => updateRow(i, { generic: t || null })}
+                      onBlur={() => setGenelDuzenle(null)}
+                      onSubmitEditing={() => setGenelDuzenle(null)}
+                      placeholder="süt, sucuk…"
+                      placeholderTextColor={colors.onSurfaceTertiary}
+                      autoCapitalize="none"
+                      autoFocus
+                      returnKeyType="done"
+                      testID={`review-item-${i}-generic`}
+                    />
+                  ) : (
+                    <Pressable onPress={() => setGenelDuzenle(i)} hitSlop={8}
+                               testID={`review-item-${i}-generic-edit`}>
+                      <Text style={[styles.genelTxt, !r.generic && styles.genelBos]}>
+                        {r.generic || "genel ad yok"}
+                      </Text>
+                    </Pressable>
+                  )}
                 </View>
                 {renderSplit(r.split, (sp) => updateRow(i, { split: sp }), "BÖLÜŞÜM", rowTotal(r), `item-${i}`)}
                 <Pressable onPress={() => setAcikSatir(null)} style={styles.kapatSatir}
@@ -524,6 +570,22 @@ export default function Review() {
           </Pressable>
         </View>
         </ScrollView>
+
+        {/* GERİ ALMA ŞERİDİ — kaydet çubuğunun hemen üstünde.
+            Kalıcı değil: sekiz saniye durup kayboluyor. Kalıcı olsaydı
+            bilerek silen kişi onu her seferinde kapatmak zorunda kalırdı,
+            yani doğru işi yapan cezalandırılırdı. */}
+        {silinen && (
+          <View style={styles.geriSerit} testID="review-undo">
+            <Ionicons name="trash-outline" size={16} color={colors.onDarkMuted} />
+            <Text style={styles.geriTxt} numberOfLines={1}>
+              {silinen.satir.name || "Kalem"} silindi
+            </Text>
+            <Pressable onPress={geriAl} hitSlop={10} testID="review-undo-btn">
+              <Text style={styles.geriBtn}>Geri al</Text>
+            </Pressable>
+          </View>
+        )}
 
         {/* Alt cubuk telefonun gezinme cubugunun altinda kaliyordu: kenardan
             kenara cizim acik oldugu icin guvenli alan payini elle eklemek sart. */}
@@ -650,14 +712,26 @@ const styles = StyleSheet.create({
     ...T.body, color: colors.ink,
   },
   bulkWrap: { marginBottom: spacing.xs },
-  /* Genel ad kutusu: fiyat/miktar satırından AYRI durmalı — o satır fişin
-     yazdığını düzeltiyor, bu ise fişte hiç yazmayan bir şeyi söylüyor. */
-  genelKutu: {
-    backgroundColor: colors.surfaceSecondary, borderRadius: radius.md,
-    paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
-    marginTop: spacing.sm, gap: 2,
+  etiketSatir: { flexDirection: "row", alignItems: "center", gap: 6, minHeight: 22 },
+  catAyrac: { ...T.caption, color: colors.onSurfaceTertiary },
+  /* Genel ad kategoriyle AYNI puntoda: ikisi de "bu kalem ne" sorusunun
+     cevabı ve biri diğerinden önemli değil. */
+  genelTxt: { ...T.captionSb, color: colors.inkSecondary },
+  genelBos: { ...T.caption, color: colors.onSurfaceTertiary, fontStyle: "italic" },
+  genelInput: {
+    ...T.captionSb, color: colors.ink, padding: 0, minWidth: 90,
+    borderBottomWidth: 1, borderBottomColor: colors.accent,
   },
-  genelInput: { ...T.body, color: colors.ink, padding: 0, minHeight: 24 },
+  /* Koyu şerit: kartların üstünde durduğunu ve GEÇİCİ olduğunu söylüyor.
+     Beyaz bir satır listenin devamı gibi okunurdu. */
+  geriSerit: {
+    flexDirection: "row", alignItems: "center", gap: spacing.md,
+    backgroundColor: colors.dark, marginHorizontal: spacing.lg,
+    borderRadius: radius.md, paddingHorizontal: spacing.lg, paddingVertical: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  geriTxt: { ...T.caption, color: colors.onDark, flex: 1 },
+  geriBtn: { ...T.bodySb, color: colors.accentOnDark },
   splitBox: {
     borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface,
     borderRadius: radius.md, marginTop: spacing.sm, overflow: "hidden",
