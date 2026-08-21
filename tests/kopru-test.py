@@ -9,6 +9,9 @@ listesiyle eslestiriliyor. Uc kural korunuyor:
   2. Kesin eslesme `sure=True` doner (kutu isaretli acilir), iceren eslesme
      `sure=False` (kutu bos acilir). Yanlis dusurmek, dusurmemekten pahali.
   3. Zaten alinmis maddeler ve BASKASININ kisisel listesi hic bakilmaz.
+     KENDI kisisel listen ise bakiliyor -- madde de fis de ayni kisinin.
+  4. Bir fis kalemi birden cok maddeye uyuyorsa HEPSI listeleniyor ve hicbiri
+     isaretli acilmiyor; hangisini kastettigini yalnizca kullanici bilir.
 
 Eslestirme Tur 8'in genel urun adi isinin uzerine kuruluyor: fiste
 "SAHNE 200G" yaziyor, listede "Krema" -- ikisi de ayni anahtara dusuyor.
@@ -112,10 +115,59 @@ check("Bob'un maddesi Alice'e onerildi",
       any(x["item_id"] == kori for x in m), str(m))
 
 
-print("\n-- 4. ALINMIS madde ve KISISEL liste hic bakilmaz --")
+print("\n-- 4. ALINMIS madde bakilmaz; KENDI kisisel listen bakilir --")
 m = eslestir(alice, ["Buzluk", "Tıraş köpüğü"])
 check("alinmis madde onerilmiyor", not any(x["item_id"] == alinmis for x in m), str(m))
-check("kisisel liste onerilmiyor", not any(x["item_id"] == kisisel for x in m), str(m))
+# ONCEDEN kendi kisisel listen de elenmisti ve bu bir kayipti: ev sahibi
+# "dana kusbasi"yi Kendim sekmesinde tutuyordu ve hicbir fis onunla bulusamadi.
+# Gizlilik sorunu yok -- madde de fis de ayni kisinin.
+check("kendi kisisel maddem oneriliyor",
+      any(x["item_id"] == kisisel for x in m), str(m))
+check("kisisel maddenin kapsami donuyor",
+      next((x["scope"] for x in m if x["item_id"] == kisisel), None) == "self", str(m))
+
+# BASKASININ kisisel listesi hala gorunmez. Kural bu ve degismedi.
+bob_kisisel = ekle(bob, "Bob tras kopugu", scope="self")
+mb = eslestir(alice, ["Bob tras kopugu"])
+check("baskasinin kisisel maddesi onerilmiyor",
+      not any(x["item_id"] == bob_kisisel for x in mb), str(mb))
+mb = eslestir(bob, ["Bob tras kopugu"])
+check("sahibine ise oneriliyor",
+      any(x["item_id"] == bob_kisisel for x in mb), str(mb))
+
+
+print("\n-- 4b. COK ADAY: hepsi listeleniyor, hicbiri isaretli degil --")
+# Ev sahibinin somut sikayeti: listede hem "dana kusbasi" hem "kusbasi" vardi,
+# fis yalnizca birini gosterdi. Eskiden bir fis kalemi ilk uydugu maddeye
+# yaziliyor, gerisi eleniyordu (`kullanilan` kumesi).
+_bugun = date.today().isoformat()
+dana = ekle(alice, "dana kusbasi")
+kus = ekle(alice, "kusbasi")
+mk = eslestir(alice, ["RINDER GULASCH"], _bugun)
+check("genel ad yokken hicbiri eslesmiyor",
+      not any(x["item_id"] in (dana, kus) for x in mk), str(mk))
+
+def _kusbasi():
+    r = c.post(f"{API}/shopping/match", headers=hdr(alice), json={
+        "names": ["RINDER GULASCH"], "generics": ["kusbasi"],
+        "expense_date": _bugun,
+    })
+    r.raise_for_status()
+    return {x["item_id"]: x for x in r.json()["matches"]}
+
+bulunan = _kusbasi()
+check("her IKI aday da listelendi", dana in bulunan and kus in bulunan, str(bulunan))
+check("cok adayda birebir eslesme bile isaretsiz",
+      bulunan.get(kus, {}).get("sure") is False, str(bulunan))
+check("iceren aday da isaretsiz",
+      bulunan.get(dana, {}).get("sure") is False, str(bulunan))
+
+# TEK aday kalinca birebir eslesme yine isaretli aciliyor: kural "coklukta
+# duraksa", "hicbir zaman guvenme" degil.
+c.delete(f"{API}/shopping/{dana}", headers=hdr(alice))
+check("tek aday kalinca birebir eslesme yine isaretli",
+      _kusbasi().get(kus, {}).get("sure") is True, str(_kusbasi()))
+c.delete(f"{API}/shopping/{kus}", headers=hdr(alice))
 
 
 print("\n-- 5. sunucu HICBIR SEYI isaretlemiyor --")

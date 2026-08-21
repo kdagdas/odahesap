@@ -3115,14 +3115,24 @@ async def match_shopping(body: ShoppingMatchReq, user=Depends(get_current_user))
       * `sure=True`  — anahtarlar birebir aynı; kutu işaretli gelir
       * `sure=False` — biri ötekini içeriyor (ör. "süt" ⊂ "tam yağlı süt");
         kutu BOŞ gelir. Yanlış düşürmek, düşürmemekten pahalı.
+
+    Bir fiş kalemi birden çok maddeye uyuyorsa **hepsi listeleniyor** ve
+    hiçbiri işaretli açılmıyor — hangisini kastettiğini yalnızca kullanıcı
+    bilir. Ev listesinin yanında kişinin KENDİ listesi de taranıyor.
     """
     hh = await get_user_household(user["user_id"])
-    if not hh:
-        return {"matches": []}
+
+    # KİŞİSEL LİSTE DE EŞLEŞİYOR. Önce yalnızca ev listesine bakılıyordu ve
+    # "Kendim" sekmesine yazılan hiçbir madde fişle buluşamıyordu — ev sahibi
+    # "dana kuşbaşı"yı orada tutuyordu ve eşleşme hiç kurulmadı. Gizlilik
+    # sorunu yok: kişisel madde de fiş de aynı kişinin.
+    kapsamlar: List[dict] = [{"scope": "self", "added_by": user["user_id"]}]
+    if hh:
+        kapsamlar.append({"household_id": hh["household_id"], "scope": "household"})
 
     bekleyen = await db.shopping_items.find(
-        {"household_id": hh["household_id"], "scope": "household", "done": False},
-        {"_id": 0, "item_id": 1, "text": 1, "created_at": 1},
+        {"done": False, "$or": kapsamlar},
+        {"_id": 0, "item_id": 1, "text": 1, "created_at": 1, "scope": 1},
     ).to_list(500)
     if not bekleyen:
         return {"matches": []}
@@ -3170,19 +3180,29 @@ async def match_shopping(body: ShoppingMatchReq, user=Depends(get_current_user))
                 anahtarlar.append(gk)
         fis.append((ad, [a for a in anahtarlar if a]))
 
-    kullanilan: set = set()
+    # BİR FİŞ KALEMİ BİRDEN ÇOK MADDEYE UYABİLİR ve hepsi listeleniyor.
+    #
+    # Önce `kullanilan` diye bir küme vardı: bir fiş kalemi ilk uyduğu maddeye
+    # yazılıyor, geri kalanlar eleniyordu. Ev sahibi listesine hem "dana
+    # kuşbaşı" hem "kuşbaşı" yazmıştı; fiş yalnızca birini gösterdi ve
+    # hangisinin neden seçildiği görünmüyordu.
+    #
+    # Doğrusu SEÇTİRMEK. Hangi maddeyi kastettiğini yalnızca kullanıcı bilir;
+    # alt sayfa zaten çoklu seçim ve kutular tek tek açılıp kapanıyor.
     out = []
     for it in bekleyen:
         anahtar = product_key(it["text"]) or it["text"].casefold()
         if not anahtar:
             continue
+        # Madde başına EN FAZLA BİR satır (`break`): aynı maddeyi iki kez
+        # listelemek seçimi kolaylaştırmaz, kalabalıklaştırır.
         for ad, fanahtarlar in fis:
-            if ad in kullanilan or not fanahtarlar:
+            if not fanahtarlar:
                 continue
             if anahtar in fanahtarlar:
                 out.append({"item_id": it["item_id"], "text": it["text"],
+                            "scope": it.get("scope", "household"),
                             "receipt_name": ad, "sure": True})
-                kullanilan.add(ad)
                 break
             # Iceren eslesme: "sut" ile "tam yagli sut".
             #
@@ -3197,9 +3217,22 @@ async def match_shopping(body: ShoppingMatchReq, user=Depends(get_current_user))
                     break
             if eslesti:
                 out.append({"item_id": it["item_id"], "text": it["text"],
+                            "scope": it.get("scope", "household"),
                             "receipt_name": ad, "sure": False})
-                kullanilan.add(ad)
                 break
+
+    # ÇOK ADAYLI KALEMDE HİÇBİRİ İŞARETLİ AÇILMIYOR.
+    #
+    # Fişteki bir "kuşbaşı" satırı hem "kuşbaşı" hem "dana kuşbaşı"ya
+    # uyuyorsa, alınan şey büyük ihtimalle BİR tanesi. İkisini birden işaretli
+    # açmak, alınmamış bir maddeyi haber vermeden düşürmek olurdu — projenin
+    # yazılı kuralı: yanlış düşürmek, düşürmemekten pahalıdır.
+    kac: dict = {}
+    for m in out:
+        kac[m["receipt_name"]] = kac.get(m["receipt_name"], 0) + 1
+    for m in out:
+        if kac[m["receipt_name"]] > 1:
+            m["sure"] = False
     return {"matches": out}
 
 

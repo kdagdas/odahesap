@@ -228,7 +228,12 @@ export default function Review() {
    * oluyor. Liste PAYLASILAN bir sey -- ev arkadasinin yazdigi maddeyi haber
    * vermeden silmek uygulamanin en cok guven kaybedecegi yer olurdu.
    */
-  type Eslesme = { item_id: string; text: string; receipt_name: string; sure: boolean };
+  type Eslesme = {
+    item_id: string; text: string; receipt_name: string; sure: boolean;
+    /** Ev listesi mi kendi listen mi. Sunucu artik ikisine de bakiyor;
+     *  hangisini dusurdugunu bilmeden onaylamak dogru olmaz. */
+    scope?: "household" | "self";
+  };
   const [kopru, setKopru] = useState<Eslesme[] | null>(null);
   const [secili, setSecili] = useState<Record<string, boolean>>({});
 
@@ -789,7 +794,12 @@ export default function Review() {
                           color={on ? colors.accent : colors.inkTertiary} />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.kopruAd}>{m.text}</Text>
-                  <Text style={styles.kopruFis} numberOfLines={1}>{m.receipt_name}</Text>
+                  <Text style={styles.kopruFis} numberOfLines={1}>
+                    {/* Kapsam yalnizca KENDIM oldugunda yaziliyor. Ev listesi
+                        varsayilan; "Ev" yazmak her satirda bilinen bir seyi
+                        tekrarlamak olurdu. */}
+                    {m.scope === "self" ? "Kendim · " : ""}{m.receipt_name}
+                  </Text>
                 </View>
                 {!m.sure && (
                   <View style={styles.kopruSuphe}>
