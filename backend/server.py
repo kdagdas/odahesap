@@ -1500,6 +1500,52 @@ async def _ocr_kota_kontrol(user_id: str) -> None:
     await db.ocr_calls.insert_one({"user_id": user_id, "at": simdi})
 
 
+async def _genel_ad_bellegi(household_id: str, user_id: str) -> Dict[str, str]:
+    """Evin kendi fişlerinden öğrenilmiş **ham ad → genel ad** eşlemesi.
+
+    ### Niçin var
+
+    Ev sahibi "Rinder Gulasch"ı fiş ekranında elle "kuşbaşı" diye düzeltti.
+    Aynı ürünü bir sonraki taramada model "et" dedi ve düzeltme kaybolmuştu —
+    kullanıcının verdiği cevabı unutan bir uygulama, her seferinde aynı soruyu
+    soruyor demektir. Somut bedeli de vardı: alışveriş listesindeki "kuşbaşı"
+    fişle eşleşemedi.
+
+    ### Niçin TAHMİN değil BELLEK
+
+    Bu, benzer iki adı kendi başımıza birleştirmek değil. Birleştirmeyi zaten
+    kullanıcı yaptı; biz **gördüğü ve onayladığı** eşlemeyi okuyoruz.
+    `/shopping/suggest` aynı belleği aynı gerekçeyle kullanıyor.
+
+    ### Niçin EN YENİ kazanıyor
+
+    Kayıtlar tersten sıralı ve `setdefault` ilkini tutuyor, yani en son
+    düzeltme geçerli. Böylece bellek kendi kendini onarıyor: ilk taramada
+    yanlış kabul edilen bir genel ad, ikinci düzeltmeyle yerini bırakıyor.
+    Sabit bir sözlük olsaydı yanlış giren madde orada kalırdı.
+
+    Görünürlük süzgeci atlanmıyor: başkasının kişisel harcamasından öğrenilmiş
+    bir ad, o harcamanın varlığını sızdırırdı.
+    """
+    bellek: Dict[str, str] = {}
+    if not household_id:
+        return bellek
+    exps = await db.expenses.find(
+        {"household_id": household_id, **_visible_filter(user_id)},
+        {"_id": 0, "items": 1},
+    ).sort("created_at", -1).to_list(1500)
+    for e in exps:
+        for it in (e.get("items") or []):
+            genel = (it.get("generic") or "").strip().lower()
+            # "@depozito" gibi işaretli adlar ürün değil; bellek onları almaz.
+            if not genel or genel.startswith("@"):
+                continue
+            anahtar = product_key(str(it.get("name") or ""))
+            if anahtar:
+                bellek.setdefault(anahtar, genel)
+    return bellek
+
+
 @api.post("/ocr/receipt")
 async def ocr_receipt(body: OCRRequest, user=Depends(get_current_user)):
     if not GEMINI_API_KEY:
@@ -1548,6 +1594,10 @@ async def ocr_receipt(body: OCRRequest, user=Depends(get_current_user)):
         logger.error("OCR JSON parse edilemedi: %s", text[:300])
         raise HTTPException(status_code=502, detail="Fiş okunamadı, lütfen tekrar deneyin")
 
+    # Evin kendi gecmisinden ogrenilmis genel adlar; tek sorgu, dongunun
+    # disinda. Gerekcesi `_genel_ad_bellegi` icinde yazili.
+    bellek = await _genel_ad_bellegi((hh or {}).get("household_id", ""), user["user_id"])
+
     items = []
     for it in parsed.get("items", []) or []:
         try:
@@ -1590,6 +1640,14 @@ async def ocr_receipt(body: OCRRequest, user=Depends(get_current_user)):
         # sorun degil, yanlis gelmesi sorun -- isteme "emin degilsen null don"
         # yazili.
         generic = str(it.get("generic") or "").strip().lower()[:40] or None
+        # EVIN BELLEGI MODELIN CEVABINI EZIYOR. Ayni ham ad daha once
+        # gorulduyse, kullanicinin o zaman gordugu genel ad geciyor: model
+        # ayni urune bir sefer "kusbasi" bir sefer "et" diyebiliyor ve bu
+        # tutarsizlik urun gruplamasinin tamamini bozuyor. Kullanici bu
+        # ekranda yine duzeltebilir; duzeltirse bellek de guncelleniyor.
+        hatirlanan = bellek.get(product_key(name) or "")
+        if hatirlanan:
+            generic = hatirlanan
         items.append(
             {
                 "name": name,
