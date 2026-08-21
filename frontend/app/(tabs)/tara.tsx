@@ -226,7 +226,7 @@ export default function Tara() {
       mediaTypes: ["images"],
       quality: 1,
       allowsMultipleSelection: true,
-      selectionLimit: 8,
+      selectionLimit: COKLU_SECIM_SINIRI,
     });
     if (res.canceled) return;
     // Sirayla kucultuluyor: sekiz fisin base64'unu ayni anda bellekte tutmak
@@ -307,7 +307,13 @@ export default function Tara() {
       <SafeAreaView style={styles.controls} edges={["bottom"]}>
         <Pressable style={styles.sideBtn} onPress={pickImage} testID="open-gallery-btn">
           <Ionicons name="images-outline" size={24} color={colors.onDark} style={styles.glyph} />
-          <View style={styles.multiBadge}><Text style={styles.multiBadgeTxt}>×N</Text></View>
+          {/* Rozet "birden fazla seçebilirsin" diyor. Önce burada düz metin
+              olarak `×N` yazılıydı: doldurulmamış bir şablon, ekranda cebir
+              gibi duruyordu ve hiçbir şey öğretmiyordu. Sayının kendisi hem
+              aynı işi görüyor hem sınırı söylüyor. */}
+          <View style={styles.multiBadge}>
+            <Text style={styles.multiBadgeTxt}>×{COKLU_SECIM_SINIRI}</Text>
+          </View>
         </Pressable>
         <Pressable style={styles.shutter} onPress={takePhoto} disabled={processing} testID="shutter-btn">
           <View style={styles.shutterInner}>
@@ -321,6 +327,15 @@ export default function Tara() {
     </View>
   );
 }
+
+/**
+ * Galeriden bir seferde kaç fiş seçilebilir.
+ *
+ * Rozet ile `selectionLimit` AYNI sabitten besleniyor. Ayrı yazılsalardı biri
+ * değiştiğinde öteki yalan söylerdi — ve rozetin tek işi zaten bu sayıyı
+ * söylemek.
+ */
+const COKLU_SECIM_SINIRI = 8;
 
 const CORNER = 24;
 // Shutter (84) + padding above and below. The guide frame reserves this much
