@@ -617,6 +617,25 @@ export default function Denge() {
                  vurgunun kendisi "seçili" ile "açık" arasında ayrım
                  yapmıyor. */
               <View style={styles.ekstre}>
+                {/* PENCEREYI SOYLEYEN TEK SATIR.
+                    Ev sahibinin defalarca takildigi kafa karisikligi buradaydi
+                    ve sebebi bir hesap hatasi degil bir CUMLE hatasiydi:
+                    Anasayfa "Sana dusen 145,37" diyor, Kasa ayni anda
+                    "Agustos'ta sana dusen 142,45". Ikisi de dogru -- Anasayfa
+                    takvim ayini, ekstre ise ODESILMEMIS olani (acik donem)
+                    gosteriyor. Ama Kasa'nin etiketi "Agustos'ta" diyerek ay
+                    penceresi IDDIA ediyor ve odesilmemis rakami gosteriyordu.
+                    Ayni kelimeler, iki sayi, hicbir aciklama.
+
+                    Cozum sayiyi degistirmek DEGIL: ikisi de dogru sayilar ve
+                    ikisi de gerekli. Cozum blogu dogru cercevelemek. Ay
+                    etiketleri yerinde kaliyor cunku blok ay ay okunuyor; ustune
+                    konan bu satir hepsinin hangi pencerede oldugunu soyluyor.
+                    Acik donem zaten son odesmede basliyor, yani cumle bir
+                    yorum degil bir olgu. */}
+                <Text style={styles.ekstrePencere} testID="ekstre-pencere">
+                  Son ödeşmeden bu yana
+                </Text>
                 {Math.abs(ekstre.carried) > 0.005 && (
                   <EkstreSatir
                     etiket="Önceki aylardan"
@@ -1150,6 +1169,9 @@ const styles = StyleSheet.create({
   heroValue: { ...T.hero, marginTop: spacing.xs },
   heroHint: { ...T.body, color: colors.onDarkMuted, marginTop: 2 },
   ekstre: { marginTop: spacing.md, gap: 2 },
+  /* Uslup OVERLINE degil: bu bir bolum basligi degil, blogun kendisi hakkinda
+     bir not. Buyuk harf ve harf araligi ona hak etmedigi bir agirlik verirdi. */
+  ekstrePencere: { ...T.caption, color: colors.onDarkMuted, marginBottom: 4 },
   ekstreRow: { flexDirection: "row", alignItems: "center", gap: spacing.md },
   /* Dokunulabilir satır biraz nefes alıyor ve içeri kayıyor: vurgu bir kutu
      olarak çizildiğinde etiketin kutuya yapışmaması için. Negatif kenar
