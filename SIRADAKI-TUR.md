@@ -1005,6 +1005,64 @@ biriminde harcama yapıp evin birimine yazmak isterse. O güne kadar canlı kur
 kaynağı, önbellek ve "kur eskidi" hata durumu eklemek, olmayan bir soruna
 bakım yükü almaktır.
 
+### KİMLİK ÇİPİ ve ÇOKLU KİMLİK — yapılacak
+
+**1. Çip yalnızca İKİNCİ kimlik varken görünsün.** Tek evi olan kullanıcı için
+"hangi evdesin" diye bir soru yok; çip orada boş yere yer kaplar. İkinci bir
+ev ya da grup kurulduğu an beliriyor — ve o an, uygulamanın hayatında bir kez
+olan bir an, yani `HintCard` ile "artık buradan geçiş yapabilirsin" demenin
+gerçekten hak edildiği yer. Yeni mekanizma gerekmiyor, var olanın kullanımı.
+
+**2. Kurma kapısı PROFİL'de, geçiş kapısı ÇİPTE.** Kurmak bir kez olur, geçiş
+her gün — nadir olan ayarlarda, sık olan başlıkta durur. Profil'deki **EV**
+grubuna, "Ev ayarları"nın altına iki satır: *"Yeni ev ya da grup kur · Tatil,
+piknik ya da ikinci bir ev"* ve *"Davet koduyla katıl"*. Alt yazı önemli:
+"grup" tek başına soyut, "tatil, piknik" deyince okumadan anlaşılıyor.
+
+**3. TEK KİŞİLİKTEN PAYLAŞIMLIYA GEÇİŞ — cümle eksik, veri modeli değil.**
+
+Ölçüldü: mekanizma **zaten var**. `POST /households/approve` içinde
+`include_open_period` bayrağı ve arayüzde sorusu duruyor — "bu kişi dönem
+başından beri evde miydi?". Hayırsa yeni üye geçmiş harcamalara HİÇ girmiyor,
+çünkü `split_with` kayıt anında donuyor. Yani "tek başıma harcadığım 350 €
+arkadaşıma yüklenmesin" bugün de doğru çalışıyor.
+
+**Eski kayıtları KİŞİSELE taşıma fikri değerlendirildi ve REDDEDİLDİ.**
+Kazancı mahremiyet (yeni gelen, tek yaşarkenki alışverişi görmez). Bedeli
+analiz sürekliliği: trend satırı ev harcamasını ev harcamasıyla
+karşılaştırıyor; eski ay kişisele taşınırsa evin karşılaştıracağı geçmişi
+kalmaz ve ev sahibinin "ev kendi bütçesini görmeye devam etsin" isteğinin
+tam tersi olur. Ayrıca katılınan evin geçmişi sır değil — aksine faydalı
+(fiyat geçmişi, ürün listesi, market alışkanlığı). Mahremiyet kuralı zaten
+**kişisel** harcamaları koruyor ve onlar zaten kişisel kalıyor.
+
+**Yapılacak olan tek şey:** bu geçişi bir *dönüşüm* olarak yaşayan kullanıcıya
+o anda tek cümlelik açıklama — *"Şu ana kadarki 350 € senin harcaman olarak
+kalacak, Ahmet bugünden itibaren bölüşecek."* Soru zaten var, eksik olan
+cümlenin bu senaryoda doğru okunması.
+
+### ÖNE ÇIKAN TAVANI — ölçüldü, 3'te BIRAKILDI
+
+Cihazdan ölçüldü (360 dp genişlik, 780 dp yükseklik):
+
+| Durum | Lacivert | Oran |
+|---|---|---|
+| Tek satır (bugün) | 324 dp | %42 |
+| İki satır | 354 dp | %45 |
+| **Üç satır** | **415 dp** | **%53** |
+
+Kimlik çipi eklendiğinde bu sayılar ~6 dp DÜŞÜYOR: çip, yerine geçtiği
+"EV + ev adı" bloğundan (38 dp) kısa (32 dp).
+
+**Asıl bedel piksel değil:** üç satırda "Nereye Gitti" halkası ekrandan
+taşıyor, yani Anasayfa'nın açılışta gösterdiği tek grafik kaydırmadan
+görünmüyor. "Üç" sayısı maketten seçilmişti; cihaz onu bir satır aşağı
+çekiyor.
+
+**Ev sahibinin kararı: şimdilik 3 kalsın.** Ölçüm buraya yazıldı ki karar
+gerektiğinde gerekçesiyle birlikte yeniden açılabilsin — `ONE_CIKAN_TAVAN`
+tek bir sayı, sunucu tarafı, APK gerektirmiyor.
+
 ### DERLEME BEKLEYENLER (v53'e girecek)
 
 Sunucu tarafı düzeltmeler canlıya anında gidiyor; istemci tarafı bir sonraki
