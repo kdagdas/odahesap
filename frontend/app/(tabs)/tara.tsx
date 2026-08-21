@@ -391,11 +391,22 @@ const styles = StyleSheet.create({
   },
   sideBtn: {
     width: 52, height: 52, borderRadius: 26,
-    // Beyaz yerine koyu: parlak bir fişin üstünde beyaz halka kayboluyor,
-    // koyu halka her zeminde buton olarak okunuyor.
-    backgroundColor: "rgba(15,27,51,0.55)",
-    borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(255,255,255,0.35)",
+    /* Beyaz yerine koyu daire: parlak bir fişin üstünde beyaz halka
+       kayboluyor, koyu daire her zeminde buton olarak okunuyor.
+
+       SAÇ TELİ KALINLIĞINDA BEYAZ KONTUR KALDIRILDI. Zemini koyudan ayırmak
+       için konmuştu ama işi zaten dolgu yapıyordu; geriye kalan şey yarım
+       kalmış bir kenardı ve ucuz görünüyordu — bir kenarlık ya vardır ya
+       yoktur, %35 opaklıkta bir saç teli ikisi de değil.
+
+       Yerine dolgu biraz koyulaştı ve yumuşak bir gölge eklendi: şeklin
+       sınırını çizgi değil ışık belirliyor. Deklanşörün beyaz halkası da
+       aynı sebeple gölgeli — orada halka kasıtlı, çünkü deklanşör olduğunu
+       o söylüyor. */
+    backgroundColor: "rgba(15,27,51,0.62)",
     alignItems: "center", justifyContent: "center",
+    shadowColor: colors.black, shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.35, shadowRadius: 6, elevation: 5,
   },
   // Ionicons bir metin glifi olduğu için gölge stilleri ona uygulanabiliyor.
   glyph: { textShadowColor: "rgba(0,0,0,0.65)", textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 5 },
