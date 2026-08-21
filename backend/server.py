@@ -2448,6 +2448,21 @@ async def record_price_points(expense: dict, household: dict) -> None:
         if not mkey:
             return
         week = _iso_week(expense.get("expense_date"))
+        # SEPET KODU — fiş başına rastgele, hanenin hiçbir izini taşımıyor.
+        #
+        # Neden gerekli: kimliksiz fiyat kayıtlarıyla "domates alan salatalık
+        # da alıyor mu" sorulamıyordu ve daha kötüsü KAÇ AYRI FİŞ olduğu
+        # sayılamıyordu. On kayıt, bir hanenin on alışverişi de olabilir on
+        # hanenin birer alışverişi de — bu, satılabilirliği değil KENDİ
+        # medyanlarımızın kalitesini de zayıflatıyordu.
+        #
+        # Sepet kodu bunu çözüyor ama hane takibini açmıyor: sepetler
+        # birbirine bağlanamıyor, yani kimse zaman içinde izlenemiyor.
+        # Sadakat kartsız bir market fişinden farksız.
+        #
+        # GERİYE DÖNÜK EKLENEMEZ: bu satırdan önce yazılmış her kayıt sepetsiz
+        # kaldı ve öyle kalacak. Karar bu yüzden veri birikmeden verildi.
+        sepet_id = new_id("spt")
         rows = []
         for item in expense.get("items") or []:
             p = price_of_item(item)
@@ -2460,6 +2475,7 @@ async def record_price_points(expense: dict, household: dict) -> None:
                 "country": household.get("country") or "DE",
                 "currency": expense.get("currency") or household.get("currency") or "EUR",
                 "week": week,
+                "sepet_id": sepet_id,
                 "category": item.get("category") or "diger",
                 "source": "receipt",
                 "created_at": now_utc(),
@@ -2467,8 +2483,59 @@ async def record_price_points(expense: dict, household: dict) -> None:
             })
         if rows:
             await db.price_points.insert_many(rows)
+            await _sepet_bagini_yaz(sepet_id, expense, household)
     except Exception as exc:      # noqa: BLE001 — bilerek yutuluyor
         logger.warning("fiyat kaydi yazilamadi: %s", exc)
+
+
+# Bağ tablosu açık mı. **Rıza ekranı gelince buraya bağlanacak** ve varsayılan
+# KAPALI olacak; bugün açık çünkü uygulama genele açık değil ve iki evin de
+# sahibi veri sorumlusunun kendisi.
+#
+# Tek bir yerde durması bilerek: rıza geldiğinde değiştirilecek nokta aranmasın.
+BAG_TOPLAMA_ACIK = True
+
+
+async def _sepet_bagini_yaz(sepet_id: str, expense: dict, household: dict) -> None:
+    """Sepeti hanesine bağla — **ayrı koleksiyonda, ayrıca silinebilir.**
+
+    ### Neden fiyat kaydının İÇİNE değil YANINA
+
+    `household_id`'yi `price_points` içine koymak kolay olurdu ama pahalıya
+    mal olurdu: o zaman "verilerimi sil" talebi fiyat kaydının kendisini
+    silmek demek olurdu ve her silme talebi tarihsel veride bir delik açardı.
+    Yüz kullanıcı ayrıldığında istatistik çökerdi.
+
+    Ayrı tabloda ise silme **tek satırlık** bir iş: bağ gider, fiyat kaydı
+    kalır ve o anda GERÇEKTEN anonim hâle gelir. Aynı şey rıza geri
+    çekildiğinde de geçerli.
+
+    Üçüncü fayda: mağaza ya da hukuk itiraz ederse bir koleksiyon düşürülür —
+    göç yok, geriye dönük çalışma yok.
+
+    Dördüncüsü ve belki en önemlisi: **satılabilir olan taraf yapısı gereği
+    temiz kalıyor.** `price_points` hiçbir zaman kişisel veri olmuyor;
+    yalnızca bu tablo oluyor.
+
+    ### GDPR notu
+
+    Bu tablo takma adlandırılmış değil DOĞRUDAN kişisel veri (hane ve kullanıcı
+    kimliği açık). Bilinçli: takma ad da GDPR'de kişisel veri sayıldığı için
+    (Resital 26) gizlemenin hukuki bir kazancı olmuyor, ama okunabilirliğin
+    kaybı oluyor. Koruma gizlemede değil **ayrılabilirlikte.**
+    """
+    if not BAG_TOPLAMA_ACIK:
+        return
+    try:
+        await db.sepet_kaynak.insert_one({
+            "sepet_id": sepet_id,
+            "household_id": household.get("household_id"),
+            "user_id": expense.get("added_by"),
+            "expense_id": expense.get("expense_id"),
+            "created_at": now_utc(),
+        })
+    except Exception as exc:      # noqa: BLE001 — fiyat kaydını düşürmesin
+        logger.warning("sepet bagi yazilamadi: %s", exc)
 
 
 async def _record_revision(before: dict, patch: dict, user: dict, action: str) -> None:
@@ -6389,6 +6456,12 @@ async def on_startup():
     # OCR sayacı: sorgu daima (kullanıcı, zaman) ikilisi. TTL 40 gün — aylık
     # pencere için yeterli, ve sayaç sonsuza kadar büyümüyor.
     await db.ocr_calls.create_index([("user_id", 1), ("at", -1)])
+    # Sepet kodu: fiyat kayitlarini sepete gore gruplamak icin.
+    await db.price_points.create_index("sepet_id")
+    # Bag tablosu: silme talebi hane ya da kullanici uzerinden geliyor.
+    await db.sepet_kaynak.create_index("sepet_id", unique=True)
+    await db.sepet_kaynak.create_index("household_id")
+    await db.sepet_kaynak.create_index("user_id")
     await db.ocr_calls.create_index("at", expireAfterSeconds=60 * 60 * 24 * 40)
     # Fiyat kayıtlarında kimlik alanı yok, indeks de sorgunun kendisine göre:
     # "şu ürün, şu ülkede, şu paket sınıfında, hangi markette kaça".
