@@ -86,13 +86,15 @@ const ONE_CIKAN_IKON: Record<string, any> = {
  * ### Nötr satırlar GRİ değil YEŞİL
  *
  * Önce gri denendi ("renk anlam taşır, süs olarak harcanmamalı") ama cihazda
- * sönük kaldı. Sebebi şu: lacivert alanda yeşil zaten SEMANTİK DEĞİL —
- * hemen üstteki trend satırı da yeşil ve orada gösterdiği şey bir ARTIŞ.
- * Yani bu blokta yeşil "iyi haber" demiyor, uygulamanın vurgu rengi demek.
+ * sönük kaldı. Kural şöyle kuruldu: **yalnızca istisnalar renkli.** Amber
+ * "senden bir şey isteniyor", kiremit "para ters yöne gidiyor", yeşil geri
+ * kalan her şey. İki yüksek sesli renk anlam taşıyor; üçüncüsü zemin.
  *
- * Kural buna göre kuruldu: **yalnızca istisnalar renkli.** Amber "senden bir
- * şey isteniyor", kiremit "para ters yöne gidiyor", yeşil geri kalan her şey.
- * İki yüksek sesli renk anlam taşıyor; üçüncüsü zemin.
+ * **Bu gerekçe bir kez ÇÜRÜK bir dayanağa yaslanmıştı** ve düzeltildi: eskiden
+ * "yeşil burada semantik değil, bak trend satırı da yeşil ve artış gösteriyor"
+ * deniyordu. Yani bir hatayı başka bir kararın kanıtı olarak kullanıyorduk.
+ * Trend satırı artık artışta kiremit; kural bundan zayıflamadı, güçlendi —
+ * kiremit ARTIK HER İKİ YERDE de aynı şeyi söylüyor.
  */
 const ONE_CIKAN_RENK: Record<string, string> = {
   odesme: colors.attention,        // amber — senden bir şey bekliyor
@@ -283,19 +285,36 @@ export default function Panel() {
 
               Tıklanabilir, çünkü bu satırı okuyanın aklından geçen soru
               "neden?" ve cevabı eğride. Merak ile kapı aynı yerde. */}
-          {stats?.change_pct != null && (
+          {stats?.change_pct != null && (() => {
+            /* TREND RENGİ ANLAM TAŞIYOR: artış kiremit, düşüş yeşil.
+               Uzun süre her ikisi de yeşildi ve ev sahibi haklı olarak
+               takıldı: ekranda "9,5 katı" yazıyor, yanında yukarı ok, rengi
+               yeşil. Uygulamanın kendi kuralı "kiremit = para ters yöne
+               gidiyor" ve öne çıkan satırlarda `zam` zaten o renkte. Aynı
+               rengin bir yerde nötr, bir yerde iyi haber olması okuyanın
+               ayırt edemeyeceği bir çelişkiydi.
+
+               ÖLÜ BÖLGE var (%5): küçük dalgalanmayı kiremite boyamak kurt
+               masalı okumak olur, sonra gerçek artış geldiğinde kimse
+               bakmaz. O aralıkta renk gri -- "gri = yalın bilgi". */
+            const OLU_BOLGE = 5;
+            const renk = stats.change_pct > OLU_BOLGE ? colors.negativeOnDark
+                       : stats.change_pct < -OLU_BOLGE ? colors.accentOnDark
+                       : colors.onDarkMuted;
+            return (
             <Pressable style={styles.trendRow} hitSlop={8} testID="open-stats-trend"
                        onPress={() => router.push("/istatistik")}>
               <Ionicons
                 name={stats.change_pct >= 0 ? "trending-up" : "trending-down"}
-                size={13} color={colors.accentOnDark}
+                size={13} color={renk}
               />
-              <Text style={styles.trendPct}>{degisimTxt(stats.change_pct)}</Text>
+              <Text style={[styles.trendPct, { color: renk }]}>{degisimTxt(stats.change_pct)}</Text>
               <Text style={styles.trendPrev} numberOfLines={1}>
                 · geçen ay bugün {formatEURShort(stats.prev_same_day)}
               </Text>
             </Pressable>
-          )}
+            );
+          })()}
 
           {/* ARAMA — lacivert alanın DİBİNDE, kahraman rakamın altında.
               Buraya konmasının sebebi: aramanın öne çıkma derecesi,
