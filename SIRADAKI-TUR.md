@@ -1278,6 +1278,87 @@ kimsenin aklına gelmez)? Hangi eş anlamlı yanlış? Hangi temel ürün eksik?
 
 Kural hatırlatması: **yanlış bir eş anlamlı, eksik olandan pahalı.**
 
+### GÜVENLİK — genele açmadan önce, sırayla
+
+Kod tarafı denetlendi. Ayrıntılı gerekçe ve tehdit sıralaması ayrı belgede;
+burada yapılacaklar duruyor.
+
+**Doğrulanmış olanlar (değiştirmeyin):** şifreler `bcrypt` + kullanıcı başına
+ayrı tuz · oturum jetonu `secrets.token_urlsafe(32)` · IBAN sunucuda HİÇ yok,
+cihazda · günlüklerde e-posta/jeton/şifre geçmiyor · `public_user` bir BEYAZ
+LİSTE (listede olmayan alan dönmüyor, yeni alan kazara sızamıyor) ·
+`_visible_filter` tek geçit.
+
+**Yapılacaklar — hepsi bedava, toplamı bir günlük iş:**
+
+1. **Giriş denemesi sınırı** (`/auth/login`). Bugün sınırsız. İki risk birden:
+   sözlük saldırısı, VE bcrypt bilerek yavaş olduğu için saniyede yüzlerce
+   giriş isteği Render'ın tek işlemcisini bitirir — yani aynı zamanda DoS
+   kapısı. OCR kotasındaki kalıbın aynısı kullanılabilir.
+2. **Şifre en az 8 karakter** + yaygın şifre listesi reddi. Bugün 6, ve asıl
+   risk algoritma değil şifrenin zayıflığı: bcrypt geri döndürülemez ama zayıf
+   şifre tahmin edilebilir.
+3. **CORS daralt.** `allow_origins=["*"]` gereksiz genişlik.
+4. **Yedekten `password_hash` ve FCM jetonu çıkar.** Yedeğin amacı veriyi
+   kurtarmak; hash'i kurtarmaya gerek yok (kullanıcı sıfırlar), FCM jetonu
+   zaten yeniden üretiliyor. Ev sahibi bugünkü yedekleri korumak istedi —
+   bu madde GENELE AÇILMADAN önce.
+5. **Hesap silme akışı** (GDPR) — yasal zorunluluk.
+6. **Şifre sıfırlama** — güvenlik maddesi de: kurtulma yolu olmayan kullanıcı
+   şifresini bir yere yazar.
+
+**PANELDE yapılacaklar — kod değil, buradan görülemez:**
+
+- **Yönetici hesaplarında 2FA** (Atlas + Render). Tek ayar, riskin en büyük
+  kısmını kapatıyor: şifre sızsa bile giremezler.
+- **Atlas IP erişim listesi.** M0 kurulumlarında sık `0.0.0.0/0` kalır; öyleyse
+  `MONGO_URL` sızdığı an dünyanın her yerinden bağlanılabilir. Render'ın çıkış
+  IP'leriyle sınırla.
+- **Dar yetkili ayrı DB kullanıcısı** — uygulamanın kullanıcısı yönetici
+  hesabı olmamalı, koleksiyon silme yetkisi olmamalı.
+
+**Uçtan uca şifreleme DEĞERLENDİRİLDİ ve mümkün değil.** "Ben görebileyim
+başkası göremesin" isteğinin bir yarısı imkânsız: sen okuyabiliyorsan senin
+yerine geçen de okuyabilir. Kıracak tek şey uçtan uca şifreleme — ama o zaman
+sunucu fişi işleyemez, fiyat hesaplayamaz, genel ad üretemez. Uygulamanın
+tamamı çalışmaz. Doğru soru "senin yerine geçmek ne kadar zor" ve cevabı
+yukarıdaki üç panel ayarında.
+
+### PRICE_POINTS'E SEPET KODU — geriye dönük EKLENEMEZ, şimdi karar
+
+Bugün `price_points` içinde `household_id`, `user_id`, `expense_id` HİÇ yok.
+Bu kasıtlıydı ve gizlilik açısından doğru — ama analitik bedeli ölçüldü:
+
+**Yapılabilen:** toplulaştırılmış fiyat istatistiği (haftalık medyan, market
+bazlı seri, ülke endeksi). Satılabilir ürün zaten buydu.
+
+**Yapılamayan:**
+- **Sepet analizi** — "domates alan salatalık da alıyor mu". Perakendede
+  ticari değeri en yüksek sinyal ve elimizde yok.
+- **Doğru payda** — kaç ayrı fiş olduğu sayılamıyor. On kayıt, bir hanenin on
+  alışverişi de olabilir on hanenin birer alışverişi de. Bu yalnızca satışı
+  değil KENDİ MEDYANLARIMIZIN kalitesini de zayıflatıyor.
+- Fiyat artışına tepki (zam gelince marka değişti mi).
+
+**Hane kodu (pseudonym) DEĞERLENDİRİLDİ ve reddedildi.** `HMAC(tuz,
+household_id)` aynı haneyi hep aynı koda götürür ve geri çevrilemez — ama
+**GDPR'de takma adlandırılmış veri HÂLÂ kişisel veridir** (Resital 26). Kod
+eklendiği an bugün dışında olduğumuz bütün yükümlülüklerin içine giriyoruz.
+Kazanç gerçek, bedeli hukuki.
+
+**KARAR ÖNERİSİ: fiş başına rastgele `sepet_id`.** Hanenin hiçbir izini
+taşımıyor, sepetler birbirine bağlanamıyor, yani kimse zaman içinde
+izlenemiyor. Sadakat kartsız bir market fişinden farksız. Kazandırdığı:
+sepet analizi ✓ ve doğru payda ✓.
+
+**ACİLİYETİ:** geriye dönük eklenemez. Bugün yazılan her kayıt sepet kodu
+olmadan yazılıyor ve o veri sonsuza kadar öyle kalıyor. Somut bir işleme
+hedefi olmasa bile altyapının şimdi hazır olması gereken madde budur.
+
+**Uyarı:** nadir bir ürünü tek bir hane alıyorsa sepet tek başına
+tanımlayıcı olabilir. Yayınlanan her toplulaştırmada k-anonimlik (hiçbir
+hücre N'den az sepetten gelmesin) uygulanmalı.
+
 ### Ölçüm (analitik) — genele açmadan ÖNCE, sonra değil
 
 Analitik **geriye dönük çalışmaz**: lansmandan sonra "ilk hafta insanlar
