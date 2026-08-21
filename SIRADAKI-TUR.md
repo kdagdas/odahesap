@@ -1005,6 +1005,87 @@ biriminde harcama yapıp evin birimine yazmak isterse. O güne kadar canlı kur
 kaynağı, önbellek ve "kur eskidi" hata durumu eklemek, olmayan bir soruna
 bakım yükü almaktır.
 
+### BÜTÇE — B versiyonu (yapılacak, MAJOR)
+
+Uygulamanın söylediği her cümle bugün **geçmiş zaman**: nereye gitti, ne
+zamlandı, kim ne kadar borçlu. "Bu ay 254 € fazla" bir rapor — okuyan onunla
+ne yapacağını bilmiyor. İleriye bakan tek şey alınacaklar listesi.
+
+Bütçe bu boşluğu kapatıyor ve **çekirdeğe komşu**: aynı kategoriler, aynı
+veri, yeni mekanik yok. Görev dağılımı ikinci bir uygulamayken, bütçe
+"nereye gitti"nin doğal bir sonraki cümlesi: "ne kadar kaldı".
+
+**B VERSİYONU: kahraman rakam HARCANAN kalıyor, bütçe bağlam oluyor.**
+
+- Rakamın altında ince çubuk + iki uçta "500 € bütçenin %70'i" / "147,90 €
+  kaldı".
+- Çubukta **beyaz işaret**: ayın ne kadarı geçti. Dolgu işaretin gerisindeyse
+  iyi, ilerisindeyse hızlı — "ne kadar hızlı gidiyoruz" sorusunun cevabı tek
+  görsel, kelimesiz.
+- **Bütçe kurulmamışsa çubuk hiç çizilmiyor**, ekran bugünkü hâline dönüyor.
+
+**Neden "kalan" kahraman OLMUYOR** — üç gerekçe:
+1. Bütçe isteğe bağlı olmak zorunda; ilk ayında kimse kendi rakamını bilmiyor.
+   Kahraman rakam bütçeye bağlıysa uygulamanın İKİ ana ekranı olur ve
+   çoğunluk bütçesiz olanı görür. **Bir kahraman rakam isteğe bağlı olamaz.**
+2. "Harcanan" bir OLGU (fişlerden doğrulanabiliyor), "kalan" bir GÖRÜŞ
+   (uydurulmuş bir sayıya bağlı). Projenin yazılı kuralı: kahraman rakam olgu
+   olmalı.
+3. Ay boyunca AZALAN sayı kayıp gibi okunur, ARTAN sayı bilgi gibi. YNAB
+   "available" gösteriyor ama bütün metodolojisi zarf bütçesi ve kullanıcı
+   kurulum emeğini önceden vermiş. Ev uygulaması bunu varsayamaz.
+
+**Kategori bütçesi İSTEĞE BAĞLI.** Analiz sayfasında yeni kart değil, var olan
+"nereye gitti" listesinin ikinci sütunu (çubuk + "215/200"). Bütçesi olmayan
+kategori çubuk göstermiyor. Dokuz kategoriye bütçe koymayı zorunlu kılmak,
+kurulumu kimsenin bitiremeyeceği bir işe çevirir — **tek bir ev bütçesi
+yeter**, ev sahibinin kararı da bu yönde.
+
+**DEVİR YOK.** Kalan bütçenin ertesi aya aktarılması YNAB'ın alanı ve dipsiz
+bir kuyu. Ay biter, sayı sıfırlanır.
+
+Gereken yeni şey az: bir ayar ekranı ve bir sayı. Bütçe **aylık** (insanlar
+parayı ay olarak düşünüyor, analiz zaten ay bazlı) ve **ev ayarı** (paylaşılan
+bir sayı).
+
+### MANŞET YERİ — lacivert bir daha büyümesin
+
+Bütçe çubuğu gelince lacivert alan yeniden kalabalıklaşıyor. İki çözüm
+tartışıldı:
+
+- **A · oklarla sayfalama** (ev sahibinin önerisi): lacivert sabit kalıyor ama
+  öteki cümleler GİZLİ. Kullanıcı odaklı sayfalama, otomatik dönmekten iyi —
+  ama sayfalanan içerik ölçülebilir biçimde göz ardı ediliyor.
+- **B · tek manşet lacivertte, gerisi kartta**: en üst sıradaki cümle
+  lacivertte kalıyor; ötekiler beyaz alanda **"Ayrıca dikkat çekenler"**
+  kartında, hepsi tek bakışta. Hiçbir şey gizlenmiyor, yeni etkileşim modeli
+  yok, ve **kaç cümle olursa olsun lacivertin boyu değişmiyor.**
+
+Altındaki ayrım: **lacivert "kim ve ne kadar" der, beyaz "neye dikkat et" der.**
+İkisi farklı iş; ayrıldığında lacivert bir daha hiç büyümüyor — `ONE_CIKAN_TAVAN`
+tartışması da kendiliğinden kapanıyor.
+
+KARAR BEKLİYOR.
+
+### TEKRAR ALIM RİTMİ — yapılacak, küçük
+
+Yemek planlama / dolap envanteri fikri **reddedildi**, ve gerekçesi odak
+değil teknik: fişler eve NE GİRDİĞİNİ söylüyor, hiçbir şey evden NE ÇIKTIĞINI
+söylemiyor. Altı yumurta alındı, dördü yendi — envanter hâlâ altı sanıyor. Bir
+hafta içinde yanlışa döner ve **yanlış envanter, envantersizlikten kötüdür**
+(kendinden emin yanlış öneriler üretir). Fresh-it bunu kullanıcıya envanteri
+elle güncelleterek çözüyor: GÜNLÜK girdi yükü. Bu evin haftalık girdide bile
+zorlandığı ölçüldü.
+
+**Savunulabilir %10'u:** alım RİTMİ. Uygulama sütün ortalama beş günde bir
+alındığını fişlerden zaten biliyor. Altıncı günde alınacaklar ekranında bir
+manşet: *"süt · genelde bu aralıkta alıyorsunuz."* Dolapta ne var iddiası YOK
+— sadece alım ritmi hakkında bir OLGU. Aynı kural: olgu evet, doğrulanamayan
+iddia hayır. Yapay zekâ gerekmiyor, fiş geçmişi yeter.
+
+Yeri: alınacaklar ekranı (karar öncesi bilginin doğru yeri orası) ve
+istenirse Anasayfa'daki dikkat çekenler kartı.
+
 ### KİMLİK ÇİPİ ve ÇOKLU KİMLİK — yapılacak
 
 **1. Çip yalnızca İKİNCİ kimlik varken görünsün.** Tek evi olan kullanıcı için
