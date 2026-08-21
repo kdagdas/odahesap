@@ -967,13 +967,35 @@ function SilPaneli({
  *
  * Veri yoksa örnekler düşüyor, uydurma yapılmıyor: yeni bir evde yer tutucu
  * kısalıyor, yanlış bir market adı göstermiyor.
+ *
+ * ### Market örneği EN SIK değil EN KISA olandan seçiliyor
+ *
+ * Ev sahibinin evi düzenli olarak "Bizim Fleischer GmbH"ya gidiyor ve en sık
+ * market oydu; yer tutucu arama çubuğunun tamamını kaplıyordu. Yer tutucunun
+ * işi "market de aranabilir" demek — bunu HER market adı söyler, ama yalnızca
+ * sığan bir tanesi söyleyebilir.
+ *
+ * Kırpmak (`Bizim Fle…`) denenmedi bile: kırpılmış bir ad tanınmıyor, örnek
+ * olmaktan çıkıp gürültüye dönüyor. Hiçbiri sığmıyorsa market düşüyor —
+ * "Süt, Salih…" hâlâ doğru bir cümle.
  */
+const IPUCU_MARKET_SINIR = 12;
+
 export function useAramaIpucu(uyeAdi?: string | null): string {
   const [market, setMarket] = React.useState<string | null>(null);
   React.useEffect(() => {
     let canli = true;
-    require("./api").apiGet("/merchants/frequent?limit=1")
-      .then((r: any) => { if (canli) setMarket(r?.merchants?.[0]?.name ?? null); })
+    // Bes market isteniyor ki secilecek bir sey olsun; en sik tek market
+    // uzunsa baska secenek kalmiyordu.
+    require("./api").apiGet("/merchants/frequent?limit=5")
+      .then((r: any) => {
+        if (!canli) return;
+        const adlar: string[] = (r?.merchants || [])
+          .map((m: any) => String(m?.name || "").trim())
+          .filter((n: string) => n && n.length <= IPUCU_MARKET_SINIR);
+        adlar.sort((a, b) => a.length - b.length);
+        setMarket(adlar[0] ?? null);
+      })
       .catch(() => {});
     return () => { canli = false; };
   }, []);
