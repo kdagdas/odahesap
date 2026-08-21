@@ -96,9 +96,16 @@ async function pickAndUpload(
   return { ok: true };
 }
 
+/**
+ * Galeriden profil fotoğrafı seç.
+ *
+ * **İzin İSTENMİYOR ve istenmemeli.** `launchImageLibraryAsync` sistemin foto
+ * seçicisini açıyor; o seçici izinsiz çalışıyor ve yalnızca kullanıcının
+ * seçtiği tek dosyayı veriyor. Buradaki eski izin kapısı, `READ_MEDIA_IMAGES`
+ * kalıcı reddedilmiş bir cihazda düğmeyi tamamen çalışmaz yapıyordu — fiş
+ * tarama ekranındaki hatanın aynısı, aynı sebeple.
+ */
 export async function pickPhotoFromLibrary(): Promise<PickResult> {
-  const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-  if (!perm.granted) return { ok: false, error: "Galeri izni verilmedi" };
   return pickAndUpload(() =>
     ImagePicker.launchImageLibraryAsync({
       mediaTypes: ["images"],

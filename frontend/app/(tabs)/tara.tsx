@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   View, Text, StyleSheet, Pressable, ActivityIndicator, ScrollView,
-  Animated, useWindowDimensions,
+  Animated, useWindowDimensions, Platform, Linking,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
@@ -87,6 +87,26 @@ export default function Tara() {
   const [error, setError] = useState<string | null>(null);
   const cam = useRef<CameraView>(null);
 
+  /* İZİN EKRANA GİRİNCE SORULUYOR — düğmeye basmayı beklemeden.
+     Bu sekmenin tek işi kamera; buraya gelmek zaten "fiş tarayacağım" demek.
+     Açıklama ekranı diyaloğun ARKASINDA duruyor, yani reddeden kişi neden
+     istendiğini yine okuyor ve tekrar deneyebiliyor.
+
+     Uygulama açılışı başına BİR KEZ (`useRef`): sekmeler ayakta kaldığı için
+     her odaklanmada sormak, Kasa↔Fiş arasında gidip gelen birine dakikada
+     dört diyalog gösterirdi.
+
+     Android iki hak veriyor; ikinci retten sonra `canAskAgain` false oluyor
+     ve `requestPermission()` SESSİZCE hiçbir şey yapmıyor -- düğme ölü
+     kalıyordu. O durumda tek yol sistem ayarları, aşağıda ona geçiliyor. */
+  const izinSoruldu = useRef(false);
+  useEffect(() => {
+    if (!permission || permission.granted || !permission.canAskAgain) return;
+    if (izinSoruldu.current) return;
+    izinSoruldu.current = true;
+    requestPermission();
+  }, [permission, requestPermission]);
+
   const sendToOCR = async (base64: string) => {
     setProcessing(true); setError(null);
     clearQueue();
@@ -142,10 +162,36 @@ export default function Tara() {
   const saveToGallery = async (uri?: string) => {
     if (!uri) return;
     try {
-      const perm = await MediaLibrary.getPermissionsAsync();
+      /* ANDROID 13+ : HİÇBİR İZİN İSTENMİYOR, çünkü gerekmiyor.
+         `expo-media-library`nin kendi kaynağında yazılı: `hasWritePermissions()`
+         TIRAMISU ve üstünde sabit `false` dönüyor, yani `saveToLibraryAsync`
+         izin aramıyor; kayıt `MediaStore.insert` ile yapılıyor ve kapsamlı
+         depolamada uygulamanın kendi eklediği dosya için izin gerekmiyor.
+
+         Eskiden burada `requestPermissionsAsync()` çağrılıyordu — parametresiz,
+         yani OKUMA izni (`READ_MEDIA_IMAGES`). İki ayrı zarar veriyordu:
+
+         1. Android 14+ bunu üç seçenekli soruyor ve "Sınırlı izin ver"
+            denince sistem kullanıcıyı FOTO SEÇİCİYE götürüyor. Kamerayla fiş
+            tarayan biri, tarama biter bitmez kendini galeride buluyordu.
+         2. Kalıcı reddedilince (`USER_FIXED`) fişler SESSİZCE galeriye
+            kaydedilmez oldu. Cihazda ölçüldü: son kaydedilen kopya 15 Ağustos.
+            Hata yok, kayıt da yok — bu projenin tekrar eden "hata vermeyen
+            hata" sınıfı.
+
+         Android 12 ve altında kaydetmek `WRITE_EXTERNAL_STORAGE` istiyor ve o
+         izin `app.json` içinde bilerek engelli. Orada kaydetme yapılmıyor:
+         kaydetme ikramiye, tarama asıl iş. */
+      if (Platform.OS === "android") {
+        if (Number(Platform.Version) >= 33) await MediaLibrary.saveToLibraryAsync(uri);
+        return;
+      }
+      // iOS: yalnızca EKLEME izni. `writeOnly` "Yalnızca fotoğraf ekle"
+      // diyaloğunu açıyor -- kütüphaneyi okuma izni istemiyor.
+      const perm = await MediaLibrary.getPermissionsAsync(true);
       const granted = perm.granted
         ? true
-        : (await MediaLibrary.requestPermissionsAsync()).granted;
+        : (await MediaLibrary.requestPermissionsAsync(true)).granted;
       if (granted) await MediaLibrary.saveToLibraryAsync(uri);
     } catch (e) { console.log("galeriye kaydedilemedi", e); }
   };
@@ -166,8 +212,16 @@ export default function Tara() {
   };
 
   const pickImage = async () => {
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) { setError("Galeri izni verilmedi"); return; }
+    /* İZİN KAPISI KALDIRILDI — olmayan bir kapıya kilit takılmıştı.
+       `ImagePickerModule.kt` içinde `launchImageLibraryAsync` hiçbir izin
+       kontrolü yapmıyor: sistemin foto seçicisini (`PickVisualMedia`) açıyor
+       ve o seçici izinsiz çalışıyor, zaten amacı bu — kullanıcı ne seçerse
+       yalnızca onu veriyor.
+
+       Kapının bedeli somuttu: `READ_MEDIA_IMAGES` kalıcı reddedilmiş bir
+       cihazda "Galeriden seç" düğmesi hiçbir şey yapmıyor, yalnızca "Galeri
+       izni verilmedi" yazıyordu. Kullanıcı izni geri açsa bile bu ekrana
+       gelmesinin sebebi zaten kamerayı istememesiydi. */
     const res = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ["images"],
       quality: 1,
@@ -196,9 +250,22 @@ export default function Tara() {
             <Ionicons name="camera-outline" size={40} color={colors.ink} />
           </View>
           <Text style={styles.permTitle}>Kamera izni gerekli</Text>
-          <Text style={styles.permDesc}>Fişleri taramak için kameraya erişim izni ver. İstemezsen galeriden de seçebilirsin.</Text>
-          <Pressable style={styles.permBtn} onPress={requestPermission} testID="grant-camera-permission">
-            <Text style={styles.permBtnTxt}>İzin ver</Text>
+          <Text style={styles.permDesc}>
+            {permission.canAskAgain
+              ? "Fişleri taramak için kameraya erişim izni ver. İstemezsen galeriden de seçebilirsin."
+              : "Kamera izni kapalı. Android bunu bir daha soramıyor; ayarlardan açman gerekiyor. İstemezsen galeriden de seçebilirsin."}
+          </Text>
+          {/* Aynı düğme, iki farklı iş. `canAskAgain` false iken
+              `requestPermission()` sessizce hiçbir şey yapmıyordu: kullanıcı
+              basıyor, ekran değişmiyor, uygulama bozuk görünüyordu. */}
+          <Pressable style={styles.permBtn} testID="grant-camera-permission"
+                     onPress={() => {
+                       if (permission.canAskAgain) requestPermission();
+                       else Linking.openSettings();
+                     }}>
+            <Text style={styles.permBtnTxt}>
+              {permission.canAskAgain ? "İzin ver" : "Ayarları aç"}
+            </Text>
           </Pressable>
           <Pressable style={styles.altBtn} onPress={pickImage} testID="pick-image-fallback">
             <Ionicons name="images-outline" size={18} color={colors.accentDark} />
