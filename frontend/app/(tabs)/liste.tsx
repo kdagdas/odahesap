@@ -222,7 +222,7 @@ export default function Liste() {
   /* Kaydırma ipucu artık HER AÇILIŞTA bir kez — gerekçesi `useKaydirmaIpucu`
      içinde. Eskiden burada cihazda saklanan bir kerelik bir kurulum vardı;
      ipucunun kendisi Aktivite'ye de gerekince ikisi `ui.tsx`'te birleşti. */
-  const ipucuOyna = useKaydirmaIpucu("liste", pending.length > 0);
+  const ipucuSatir = useKaydirmaIpucu("liste", pending[0]?.item_id);
 
   return (
     <View style={styles.root} testID="liste-screen">
@@ -340,7 +340,7 @@ export default function Liste() {
                         ediyor, yani en sik eylem hala tek dokunus. */}
                     {pending.map((it, i) => (
                       <View key={it.item_id}>
-                        <KaydirmaIpucu oyna={i === 0 && ipucuOyna}>
+                        <KaydirmaIpucu oyna={ipucuSatir === it.item_id}>
                         <KaydirSil onSil={() => remove(it)}
                                    testID={`liste-del-${it.item_id}`}>
                           <Row

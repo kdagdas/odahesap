@@ -138,7 +138,7 @@ export default function Aktivite() {
     try { await apiPost("/notifications/clear-read", {}); } catch { load(); }
   };
 
-  const ipucuOyna = useKaydirmaIpucu("aktivite", rows.length > 0);
+  const ipucuSatir = useKaydirmaIpucu("aktivite", rows[0]?.notification_id);
 
   return (
     <View style={styles.root} testID="aktivite-screen">
@@ -205,7 +205,7 @@ export default function Aktivite() {
                     return (
                       <View key={n.notification_id}>
                         {i > 0 && <Divider />}
-                        <KaydirmaIpucu oyna={i === 0 && ipucuOyna}>
+                        <KaydirmaIpucu oyna={ipucuSatir === n.notification_id}>
                           <KaydirSil onSil={() => sil(n)}
                                      testID={`aktivite-del-${n.notification_id}`}>
                             {hedef ? (

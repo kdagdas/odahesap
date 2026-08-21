@@ -1087,19 +1087,59 @@ const oynatilanIpuclari = new Set<string>();
  * Kasa↔Alınacaklar arasında gidip gelen biri onu dakikada dört kez görür ve
  * animasyon bir tike döner.
  *
- * `hazir` listenin dolduğunu söyler — boş listede oynatacak satır yok.
+ * ### İpucu bir SATIRA bağlı, sıradaki bir YERE değil
+ *
+ * Eskiden hook `boolean` döndürüyordu ve satır `oyna={i === 0 && ipucuOyna}`
+ * diyordu; yani ipucu "listenin 0 numaralı yeri"ne bağlıydı ve bayrak bir kez
+ * `true` olduktan sonra bir daha `false` olmuyordu. Cihazda üç ayrı belirti
+ * üretti, üçü de aynı kusurdan:
+ *
+ *  1. **Donmuş satır.** Liste sırası değişince eski satırın `oyna`'sı
+ *     `true→false` olup animasyon duruyor, `translateX` yolda kalıyordu.
+ *     Satır sola kaymış hâlde, altındaki kırmızı dekor açıkta, KALICI olarak.
+ *  2. **İki satırda birden.** Donmuş satır dururken yeni 0 numaralı satır
+ *     kendi animasyonuna başlıyordu.
+ *  3. **Tekrar oynama.** Bayrak kalıcı `true` olduğu için, listenin başı her
+ *     değiştiğinde yeni satır ipucunu devralıp baştan oynuyordu.
+ *
+ * Sıra ne zaman değişir? Madde eklemek (iyimser ekleme en üste koyuyor),
+ * işaretlemek, silmek, `load()` dönüşü — yani en sık yapılan şeyler. "Sık
+ * kullanınca çıkıyor" denmesinin sebebi buydu.
+ *
+ * Şimdi hook **oynayacak satırın kimliğini** döndürüyor: kimlik başta bir kez
+ * seçiliyor, animasyon bitince `null`'a düşüyor. Hiçbir satır sonradan
+ * devralamıyor, ikinci bir satır aynı anda oynayamıyor.
+ *
+ * `ilkSatirId` listenin dolduğunu da söyler — boş listede oynatacak satır yok.
  */
-export function useKaydirmaIpucu(anahtar: string, hazir: boolean): boolean {
-  const [oyna, setOyna] = React.useState(false);
+/** Liste yerleşsin diye kısa bekleme; hemen oynatılınca satır henüz
+ *  ölçülmemiş oluyor ve animasyon yutuluyor. */
+const IPUCU_GECIKME = 550;
+/** Animasyonun toplam süresi + pay. `KaydirmaIpucu` 260+700+220 = 1180 ms
+ *  sürüyor; bitmeden bırakmak satırı yolda dondururdu. */
+const IPUCU_SURE = 1320;
+
+export function useKaydirmaIpucu(anahtar: string, ilkSatirId?: string | null): string | null {
+  const [satir, setSatir] = React.useState<string | null>(null);
+  /* İlk satırın kimliği REF'te okunuyor, bağımlılıkta DEĞİL. Bağımlılığa
+     konsaydı listenin başı her değiştiğinde efekt yeniden kurulur ve ipucu
+     baştan oynardı — düzeltilen hatalardan biri tam olarak buydu. */
+  const ilkRef = React.useRef(ilkSatirId);
+  ilkRef.current = ilkSatirId;
+  const hazir = !!ilkSatirId;
+
   useFocusEffect(React.useCallback(() => {
     if (!hazir || oynatilanIpuclari.has(anahtar)) return;
     oynatilanIpuclari.add(anahtar);
-    // Liste yerleşsin diye kısa bir bekleme; hemen oynatılınca satır henüz
-    // ölçülmemiş oluyor ve animasyon yutuluyor.
-    const t = setTimeout(() => setOyna(true), 550);
-    return () => clearTimeout(t);
+    const bas = setTimeout(() => setSatir(ilkRef.current ?? null), IPUCU_GECIKME);
+    // İpucu KENDİ KENDİNİ kapatıyor. Eskiden `true` olup öyle kalıyordu ve
+    // sonuçları şunlardı: bir maddeyi işaretleyip listenin başı değişince
+    // yeni ilk satır ipucunu DEVRALIP yeniden oynuyordu.
+    const bit = setTimeout(() => setSatir(null), IPUCU_GECIKME + IPUCU_SURE);
+    return () => { clearTimeout(bas); clearTimeout(bit); setSatir(null); };
   }, [anahtar, hazir]));
-  return oyna;
+
+  return satir;
 }
 
 /**
@@ -1119,21 +1159,30 @@ export function KaydirmaIpucu({
 }: { oyna: boolean; children: React.ReactNode }) {
   const x = React.useRef(new Animated.Value(0)).current;
   React.useEffect(() => {
-    if (!oyna) return;
+    /* HER ÇIKIŞTA SIFIRLANIYOR — hem oynamadığında hem durdurulduğunda.
+       Eskiden yalnızca `anim.stop()` vardı ve `stop()` değeri BULUNDUĞU YERDE
+       bırakıyor. Animasyon yarıda kesilirse satır kalıcı olarak sola kaymış
+       kalıyor ve altındaki kırmızı dekor açıkta duruyordu. */
+    if (!oyna) { x.setValue(0); return; }
     const anim = Animated.sequence([
       Animated.timing(x, { toValue: -SIL_GENIS / 2, duration: 260, useNativeDriver: true }),
       Animated.delay(700),
       Animated.timing(x, { toValue: 0, duration: 220, useNativeDriver: true }),
     ]);
     anim.start();
-    return () => anim.stop();
+    return () => { anim.stop(); x.setValue(0); };
   }, [oyna, x]);
 
   return (
     <View style={styles.ipucuKap}>
-      <View style={styles.ipucuArka} pointerEvents="none">
-        <Ionicons name="trash-outline" size={19} color={colors.onBrand} />
-      </View>
+      {/* Dekor YALNIZCA oynarken çiziliyor. Eskiden her satırın altında
+          sürekli duruyordu; görünmemesi öndeki katmanın tam yerinde
+          olmasına bağlıydı, yani hatayı gizleyen şey hatanın kendisiydi. */}
+      {oyna && (
+        <View style={styles.ipucuArka} pointerEvents="none">
+          <Ionicons name="trash-outline" size={19} color={colors.onBrand} />
+        </View>
+      )}
       <Animated.View style={[styles.ipucuOn, { transform: [{ translateX: x }] }]}>
         {children}
       </Animated.View>
