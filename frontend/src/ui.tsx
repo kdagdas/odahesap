@@ -1190,6 +1190,60 @@ export function KaydirmaIpucu({
   );
 }
 
+/**
+ * Var olan bir satırı bir an vurgular — "aradığın şey ZATEN burada".
+ *
+ * ### Niçin var
+ *
+ * Alınacaklar'da aynı maddeyi ikinci kez eklemek engelleniyor. Sessizce
+ * engellemek en kötü seçenekti: kullanıcı düğmeye basar, hiçbir şey olmaz ve
+ * uygulamayı bozuk sanar. Reddetmek yerine CEVAP VERMEK gerekiyordu — var
+ * olan satırı göstermek "duydum seni, o zaten oradaydı" diyor.
+ *
+ * ### Niçin altta, üstte değil
+ *
+ * Renk katmanı satırın ARKASINDA. Üste konsaydı okunurluk için yarı saydam
+ * olmak zorunda kalırdı ve yarı saydam bir katman altındaki yazıyı soluklaştırır
+ * — göze çekmek isterken okunmaz yapardık. Satırın kendi zemini yok (`Card`
+ * veriyor), o yüzden arkaya konan renk doğrudan görünüyor.
+ *
+ * ### Niçin `nonce`
+ *
+ * Aynı maddeyi üst üste iki kez yazarsan `aktif` zaten `true` kalır ve efekt
+ * yeniden kurulmaz — ikinci denemede hiçbir şey olmazdı. Sayaç her istekte
+ * artıyor, animasyon her istekte baştan oynuyor.
+ *
+ * Değer HER ÇIKIŞTA sıfırlanıyor. `stop()` değeri bulunduğu yerde bırakır ve
+ * bu, kaydırma ipucunda satırları kalıcı olarak yamuk bırakan hatanın ta
+ * kendisiydi; aynı kusur burada tekrarlanmıyor.
+ */
+export function Vurgu({
+  aktif, nonce, children,
+}: { aktif: boolean; nonce?: number; children: React.ReactNode }) {
+  const o = React.useRef(new Animated.Value(0)).current;
+  React.useEffect(() => {
+    if (!aktif) { o.setValue(0); return; }
+    // İki nabız: tek nabız "ekran titredi" gibi okunuyor, ikincisi onu
+    // kasıtlı bir işarete çeviriyor. Üçüncüsü ise tik gibi görünüyor.
+    const anim = Animated.sequence([
+      Animated.timing(o, { toValue: 1, duration: 160, useNativeDriver: true }),
+      Animated.timing(o, { toValue: 0, duration: 260, useNativeDriver: true }),
+      Animated.timing(o, { toValue: 1, duration: 160, useNativeDriver: true }),
+      Animated.timing(o, { toValue: 0, duration: 520, useNativeDriver: true }),
+    ]);
+    anim.start();
+    return () => { anim.stop(); o.setValue(0); };
+  }, [aktif, nonce, o]);
+
+  return (
+    <View>
+      <Animated.View pointerEvents="none"
+                     style={[StyleSheet.absoluteFill, styles.vurguKat, { opacity: o }]} />
+      {children}
+    </View>
+  );
+}
+
 /* ------------------------------------------------ tutturulmuş menü */
 
 export type MenuTutamak = { x: number; y: number; width: number; height: number };
@@ -2865,6 +2919,7 @@ const styles = StyleSheet.create({
   /* Satırın altındaki dekoru örtmesi için ZEMİNİ olmak zorunda; `Card` ile
      aynı renk, yani ekranda hiçbir fark yok. */
   ipucuOn: { backgroundColor: colors.surface },
+  vurguKat: { backgroundColor: colors.accentSoft },
   yilBaslik: {
     ...overline, paddingHorizontal: spacing.lg,
     marginTop: spacing.md, marginBottom: spacing.xs,

@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   View, Text, StyleSheet, ScrollView, TextInput, Pressable,
   ActivityIndicator, KeyboardAvoidingView, Platform, RefreshControl,
+  useWindowDimensions,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useLocalSearchParams } from "expo-router";
@@ -13,7 +14,7 @@ import { useHousehold } from "@/src/household";
 import {
   ScreenHeader, Sheet, Card, Row, Divider, Avatar, IconPill, Overline, TabSwitch,
   animateNextLayout, useScrollPad, useBasaSar, yenileme, formatEUR,
-  KaydirSil, GeriAlSeridi, KaydirmaIpucu, useKaydirmaIpucu,
+  KaydirSil, GeriAlSeridi, KaydirmaIpucu, useKaydirmaIpucu, Vurgu,
 } from "@/src/ui";
 import { colors, spacing, radius, type as T, metrics } from "@/src/theme";
 
@@ -96,10 +97,57 @@ export default function Liste() {
   const member = (id?: string | null) => members.find((m) => m.user_id === id);
   const first = (id?: string | null) => member(id)?.name?.split(" ")[0] || "";
 
-  const add = async () => {
-    const text = draft.trim();
+  /* KOPYA UYARISI — hem satırın kendisi hem girdinin altında bir cümle.
+     Satır ekranın dışındaysa vurgu görünmez; cümle her hâlükârda görünür. */
+  const [vurgu, setVurgu] = useState<{ id: string; n: number } | null>(null);
+  const [kopyaNot, setKopyaNot] = useState<string | null>(null);
+  const vurguSayaci = useRef<any>(null);
+  const { height: ekranY } = useWindowDimensions();
+  /** Satırların ekrandaki yerini ölçmek için — kaydırma buradan hesaplanıyor. */
+  const satirRef = useRef<Record<string, any>>({});
+  const kaydirmaY = useRef(0);
+
+  const kopyayiGoster = (item: Item) => {
+    setKopyaNot(`"${item.text}" zaten listede`);
+    // Sayaç her istekte artıyor: aynı maddeyi üst üste iki kez yazınca `aktif`
+    // zaten `true` kalır ve animasyon bir daha oynamazdı.
+    setVurgu((v) => ({ id: item.item_id, n: (v?.n || 0) + 1 }));
+    if (vurguSayaci.current) clearTimeout(vurguSayaci.current);
+    vurguSayaci.current = setTimeout(() => { setVurgu(null); setKopyaNot(null); }, 2800);
+    // Ölçüp gerekiyorsa kaydırıyoruz. Satır zaten görünüyorsa ekranı
+    // oynatmak, kullanıcının baktığı yeri sebepsiz değiştirmek olurdu.
+    const dugum = satirRef.current[item.item_id];
+    if (!dugum?.measureInWindow) return;
+    dugum.measureInWindow((_x: number, y: number, _w: number, h: number) => {
+      const ust = 180, alt = ekranY - 190;
+      if (y >= ust && y + h <= alt) return;
+      const hedef = ekranY * 0.38;
+      scrollRef.current?.scrollTo({ y: Math.max(0, kaydirmaY.current + (y - hedef)), animated: true });
+    });
+  };
+
+  useEffect(() => () => { if (vurguSayaci.current) clearTimeout(vurguSayaci.current); }, []);
+
+  /* Karşılaştırma için sadeleştirme. Türkçe küçültme AYRI (`tr`): varsayılan
+     küçültmede "İ" → "i̇" oluyor ve "İçecek" ile "içecek" tutmuyordu. */
+  const sadele = (t: string) => t.trim().toLocaleLowerCase("tr").replace(/\s+/g, " ");
+
+  const add = async (metin?: string) => {
+    const text = (metin ?? draft).trim();
     if (!text) return;
-    setAdding(true); setError(null);
+    /* AYNI MADDE İKİNCİ KEZ EKLENMİYOR — ama sessizce de reddedilmiyor.
+       Kopya satırın bedeli yazmak değil, MARKETTE İKİ KEZ ARAMAK; üstelik
+       birebir aynı iki satırdan hangisini sildiğin de belli olmuyor.
+       Sessizce engellemek ise en kötüsü olurdu: kullanıcı basar, hiçbir şey
+       olmaz, uygulamayı bozuk sanar. Var olan satırı göstermek reddetmek
+       değil CEVAP VERMEK. (Bring! kopyaları birleştiriyor, AnyList "zaten
+       listede" diyor — listenin işi hatırlatmak, saymak değil.)
+
+       ALINMIŞ maddeler hariç: geçen hafta alınan "süt" bu hafta yeniden
+       lazım olabilir ve o gerçekten yeni bir madde. */
+    const mevcut = items.find((i) => !i.done && sadele(i.text) === sadele(text));
+    if (mevcut) { setDraft(""); kopyayiGoster(mevcut); return; }
+    setAdding(true); setError(null); setKopyaNot(null);
     // İyimser ekleme: liste yazarken her maddede ağı beklemek uygulamayı
     // bozuk hissettiriyordu.
     const temp: Item = {
@@ -232,6 +280,10 @@ export default function Liste() {
           contentContainerStyle={[styles.scroll, altPay]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
+          // Kopya vurgusu satiri gorunur alana getirirken bu konumdan
+          // hesaplaniyor; `measureInWindow` ekrana gore olcuyor, listeye degil.
+          scrollEventThrottle={64}
+          onScroll={(e) => { kaydirmaY.current = e.nativeEvent.contentOffset.y; }}
           refreshControl={
             <RefreshControl {...yenileme(refreshing, () => { setRefreshing(true); load(); })} />
           }
@@ -278,7 +330,7 @@ export default function Liste() {
                 onChangeText={setDraft}
                 placeholder={scope === "household" ? "Eve ne lazım?" : "Sana ne lazım?"}
                 placeholderTextColor={colors.inkTertiary}
-                onSubmitEditing={add}
+                onSubmitEditing={() => add()}
                 onFocus={() => setYaziyor(true)}
                 onBlur={() => setTimeout(() => setYaziyor(false), 150)}
                 returnKeyType="done"
@@ -286,7 +338,7 @@ export default function Liste() {
                 testID="liste-input"
               />
               <Pressable style={[styles.addBtn, (!draft.trim() || adding) && { opacity: 0.4 }]}
-                         onPress={add} disabled={!draft.trim() || adding} testID="liste-add-btn">
+                         onPress={() => add()} disabled={!draft.trim() || adding} testID="liste-add-btn">
                 <Ionicons name="add" size={24} color={colors.onBrand} />
               </Pressable>
             </View>
@@ -301,7 +353,13 @@ export default function Liste() {
                              style={[styles.oneriCip,
                                      o.source === "gecmis" && styles.oneriGecmis,
                                      o.source === "esanlamli" && styles.oneriEs]}
-                             onPress={() => setDraft(o.name)}
+                             /* Çip DOĞRUDAN EKLİYOR, kutuyu doldurmuyor.
+                                Önce yazılanı kutuya koyup "+" beklemek iki
+                                dokunuştu ve ikincisi hiçbir bilgi taşımıyordu:
+                                öneriye dokunmak zaten "bunu istiyorum" demek.
+                                Yazılmış kısmi metin siliniyor -- çip zaten o
+                                metnin gitmek istediği yer. */
+                             onPress={() => add(o.name)}
                              testID={`liste-oneri-${o.name}`}>
                     <Text style={[styles.oneriTxt,
                                   o.source === "gecmis" && styles.oneriTxtGecmis,
@@ -313,6 +371,14 @@ export default function Liste() {
               </ScrollView>
             )}
 
+            {/* Satir ekranin disinda kalabilir; cumle her halukarda goruluyor.
+                Kirmizi DEGIL: bu bir hata degil, bir cevap. */}
+            {kopyaNot && (
+              <View style={[styles.kopyaNot, styles.mx]} testID="liste-kopya-not">
+                <Ionicons name="checkmark-circle" size={15} color={colors.accentDark} />
+                <Text style={styles.kopyaNotTxt} numberOfLines={1}>{kopyaNot}</Text>
+              </View>
+            )}
             {error && <Text style={[styles.err, styles.mx]} testID="liste-error">{error}</Text>}
 
             {loading ? (
@@ -339,10 +405,17 @@ export default function Liste() {
                         bu yuzden jeste gecmis. Dokunmak "aldim" demeye devam
                         ediyor, yani en sik eylem hala tek dokunus. */}
                     {pending.map((it, i) => (
-                      <View key={it.item_id}>
+                      <View key={it.item_id}
+                            ref={(r) => { satirRef.current[it.item_id] = r; }}
+                            collapsable={false}>
                         <KaydirmaIpucu oyna={ipucuSatir === it.item_id}>
                         <KaydirSil onSil={() => remove(it)}
                                    testID={`liste-del-${it.item_id}`}>
+                          {/* Vurgu EN ICERIDE: satirla birlikte kayiyor ve
+                              rengi satirin ARKASINA dusuyor, yazinin ustune
+                              degil -- yari saydam bir katman yaziyi
+                              soluklastirirdi. */}
+                          <Vurgu aktif={vurgu?.id === it.item_id} nonce={vurgu?.n}>
                           <Row
                             minHeight={52}
                             onPress={() => toggle(it)}
@@ -374,6 +447,7 @@ export default function Liste() {
                               ) : undefined
                             }
                           />
+                          </Vurgu>
                         </KaydirSil>
                         </KaydirmaIpucu>
                         {i < pending.length - 1 && <Divider inset={58} />}
@@ -486,4 +560,9 @@ const styles = StyleSheet.create({
   doneHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   clear: { ...T.captionSb, color: colors.accent },
   err: { ...T.caption, color: colors.negative, marginTop: spacing.sm },
+  kopyaNot: {
+    flexDirection: "row", alignItems: "center", gap: 6,
+    marginTop: spacing.sm,
+  },
+  kopyaNotTxt: { ...T.caption, color: colors.accentDark, flex: 1 },
 });
