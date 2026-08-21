@@ -253,24 +253,102 @@ içindeki `splits.abi.include` satırına `"armeabi-v7a"` geri eklenmeli.
 
 ---
 
-## Fiş tarama ekranı — bilinen sorunlar
+## Fiş tarama ve Alınacaklar — 21 Ağustos dökümü, HEPSİ KAPANDI
 
-Ev sahibi 21 Ağustos'ta "epey hata var" dedi ve dökümü yeni oturumda
-verecek. **Tur 14'e geçmeden önce bunlar kapatılacak.**
+Ev sahibi hataları tek tek anlattı. Altısı da kapandı; her birinin kalıcı
+dersi burada. **Hiçbiri konsola bir şey yazmıyordu** — bu ekranın hataları
+istisnasız "hata vermeyen hata" sınıfından çıkıyor.
 
-Bu ekran uygulamanın en karmaşık yeri ve sebebi yapısal: tek ekranda dört iş
-birden var — kalem düzenleme, bölüşüm seçimi, market/tarih alanları ve
-alınacaklar köprüsü. Bu turda dokunulan yerler (hata ararken ilk bakılacak
-noktalar):
+### 1. Gerekmeyen izin, izni olmayan bir kapı açmaktır
 
-- Ödeyen satırı için `useSikMarketler` eklendi (market yer tutucusu)
-- `OdesmeUyarisi` eklendi (tarih alanının altına, v53'te gelecek)
-- Kalem satırında bölüşüm açılımı ve `AnchorMenu` kalıbı Tur 12'de kuruldu
-- `/shopping/match` köprüsü kaydetme sonrası alt sayfa olarak çıkıyor
+Fişi galeriye kaydetmek için **okuma** izni isteniyordu (`READ_MEDIA_IMAGES`).
+Kaydetmek için o izin gerekmiyor: `expo-media-library` kaynağında
+`hasWritePermissions()` Android 13+ için sabit `false` dönüyor, kayıt
+`MediaStore.insert` ile yapılıyor ve kapsamlı depolamada uygulamanın kendi
+eklediği dosya için izin aranmıyor.
 
-Hataları alırken **her birini ayrı ayrı yaz ve ölç** — bu turda çıkan altı
-sessiz hatanın hepsi "hata vermeyen hata" sınıfındaydı ve hiçbiri konsola
-bir şey yazmıyordu.
+Yanlış izin üç zarar veriyordu:
+
+- Android 14+ bunu üç seçenekli soruyor; "Sınırlı izin ver" denince sistem
+  kullanıcıyı **foto seçiciye** götürüyor. Kamerayla fiş tarayan biri, tarama
+  biter bitmez kendini galeride buluyordu.
+- İzin kalıcı reddedilince (`USER_FIXED`) fişler **sessizce** kaydedilmez
+  oldu. `adb shell ls /sdcard/DCIM` ile ölçüldü: son kopya 15 Ağustos.
+- "Galeriden seç" düğmesi tamamen çalışmıyordu. `ImagePickerModule.kt` içinde
+  `launchImageLibraryAsync` **hiçbir izin kontrolü yapmıyor**; sistemin foto
+  seçicisi izinsiz çalışıyor ve zaten amacı bu. Aynı gereksiz kapı profil
+  fotoğrafında da vardı.
+
+> **Kural:** izin isteyen bir satır yazmadan önce, o iznin gerçekten gerekip
+> gerekmediğini **modülün kaynağından** doğrula. Gereksiz izin yalnızca
+> kullanıcıyı yormaz — reddedildiğinde çalışan bir şeyi bozar.
+
+`canAskAgain` false iken `requestPermission()` sessizce hiçbir şey yapıyor;
+kamera izin ekranındaki düğme bu yüzden ölüydü. Artık o durumda düğme
+"Ayarları aç" oluyor (`Linking.openSettings()`). İzin ayrıca ekrana girince
+bir kez kendiliğinden soruluyor.
+
+Android 12 ve altında kaydetme `WRITE_EXTERNAL_STORAGE` istiyor ve o izin
+`app.json` içinde bilerek engelli — orada kaydetme yapılmıyor. **Bilinen
+sınır**, kabul edildi: kaydetme ikramiye, tarama asıl iş.
+
+### 2. Kaydırma ipucu bir YERE bağlıydı, bir SATIRA değil
+
+`useKaydirmaIpucu` `boolean` döndürüyor, satır `oyna={i === 0 && ipucuOyna}`
+diyordu. Üç ayrı belirti, tek kusur:
+
+| Belirti | Sebep |
+|---|---|
+| Satır sola kaymış donuyor | `oyna` `true→false` olunca `anim.stop()` değeri **bulunduğu yerde** bırakıyor |
+| İki satırda birden oynuyor | Donmuş satır dururken yeni 0 numaralı satır kendi animasyonuna başlıyor |
+| Bir daha oynuyor | Bayrak kalıcı `true`; listenin başı değişince yeni satır ipucunu devralıyor |
+
+Sıra ne zaman değişir? Madde eklemek, işaretlemek, silmek, `load()` dönüşü —
+en sık yapılan şeyler. Hatanın "sık kullanınca çıktığı" hissinin sebebi buydu.
+
+> **Kural:** `Animated` değerini durduran her yol onu **sıfırlamak zorunda**.
+> `stop()` bir geri alma değil, bir dondurma. Ve bir animasyon listedeki
+> **sıraya** değil **kimliğe** bağlanır.
+
+Aynı kalıp Aktivite ekranında da vardı; tek düzeltme ikisini kapattı.
+
+### 3. Bir fiş kalemi tek maddeye harcanıyordu
+
+`/shopping/match` içinde `kullanilan` kümesi vardı: fiş kalemi ilk uyduğu
+maddeye yazılıyor, kalan adaylar eleniyordu. Listede hem "dana kuşbaşı" hem
+"kuşbaşı" varken yalnızca biri görünüyordu. Sunucu **tercih ediyordu** ve o
+tercihi yapacak bilgi sunucuda yok. Şimdi uyan her madde listeleniyor; bir
+kalem birden çok maddeye uyuyorsa **hiçbiri işaretli açılmıyor**.
+
+### 4. Kişisel liste hiç eşleşmiyordu
+
+Sorgu `scope: "household"` ile sınırlıydı. Belgedeki kural "**BAŞKASININ**
+kişisel listesi bakılmaz" diyordu; kod kendi listeni de eliyordu. Artık
+isteyenin kendi `self` maddeleri de taranıyor, kapsam yanıtta dönüyor ve alt
+sayfada "Kendim ·" diye yazılıyor.
+
+### 5. Genel ad her taramada sıfırdan geliyordu
+
+Marka → genel ad sözlüğü kurulmuş **sanılıyordu**. `genel-ad-sozluk.csv` bir
+teklif listesiydi, ONAY sütunu boş ve dosya hiç sunucuya girmedi. Sonuç:
+elle düzeltilen "Rinder Gulasch → kuşbaşı" bir sonraki taramada "et" oldu.
+
+`_genel_ad_bellegi()` evin **görünür** fişlerinden ham ad → genel ad
+eşlemesini okuyup modelin cevabını eziyor. Tahmin değil bellek: birleştirmeyi
+kullanıcı yaptı, biz okuyoruz. En yeni düzeltme kazanıyor, yani bellek kendini
+onarıyor. Evler arası ortak sözlük hâlâ yol haritasında.
+
+### 6. Aynı madde iki kez eklenebiliyordu
+
+Artık eklenmiyor; var olan satır iki nabızlık yeşille vurgulanıyor, gerekirse
+oraya kaydırılıyor ve girdinin altında "… zaten listede" yazıyor. Sessizce
+engellemek en kötü seçenekti — kullanıcı basar, hiçbir şey olmaz, uygulamayı
+bozuk sanar.
+
+### Bu ekran neden en karmaşık yer
+
+Tek ekranda dört iş birden var: kalem düzenleme, bölüşüm seçimi, market/tarih
+alanları ve alınacaklar köprüsü. Hata ararken ilk bakılacak yerler bunlar.
 
 ## Koleksiyonlar — sonradan eklenenler
 

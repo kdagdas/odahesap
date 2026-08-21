@@ -1273,6 +1273,33 @@ tutulabilir (marka adı → genel ad; içinde fiyat da kişi de yok).
 **Tetikleyici:** ev sayısı anlamlı hale geldiğinde, ya da daha ucuz/zayıf
 bir modele geçilirse (kapsama düşerse bellek yastık olur).
 
+### ÜST KATEGORİ ÖNERİSİ — istendi, ÖLÇÜLMEDEN BAŞLANMAYACAK
+
+Ev sahibinin isteği: "et" yazınca kıyma, kuşbaşı, kemikli çıksın; "baharat"
+yazınca kekik, kimyon çıksın. Yani öneri listesinde bir **ana ad → alt adlar**
+ilişkisi.
+
+Kendi endişesi de doğruydu ve kaydediliyor: **"başka dilleri de düşününce ucu
+bucağı olmaz."** Öyle. Elle yazılan bir ürün ontolojisi iki dilde başlar, üç
+dilde bakım işine döner ve her yeni ülkede sıfırdan küratörlük ister. Bu bir
+tur işi değil, kendi turu.
+
+**Karar: şimdilik yapılmıyor.** Sebep sadece maliyet değil — ev sahibinin
+kendi teşhisi daha keskin çıktı: *"asıl sorun fişte genel adın ne çıkacağını
+bilmemem."* Yani hiyerarşi eksikliği belirtiydi, hastalık değil. Hastalık
+`generic`in her taramada değişebilmesiydi ve o **kapatıldı** (evin genel ad
+belleği, `_genel_ad_bellegi`).
+
+**Tetikleyici — hiyerarşiye ne zaman dönülür:** bellek oturduktan sonra hâlâ
+"yazdığım kelime listede olan ürünü bulmuyor" şikâyeti geliyorsa. O zaman
+ölçülecek şey belli: kaç aramanın karşılığı boş döndü ve kaçında aranan
+kelime var olan bir ürünün ÜST adıydı.
+
+**Yapılırsa nerede yapılmayacağı da belli: EŞLEŞTİRMEDE.** Fişteki "et"
+kaleminin listedeki "kuşbaşı"nı düşürmesi tam olarak "yanlış birleştirme"
+olur — ve bu projenin yazılı kuralı, yanlış birleştirmenin birleştirmemekten
+pahalı olduğu. Hiyerarşi yalnızca **yazma yardımcısında** yaşayabilir.
+
 ### Başlangıç ürün listesi ve eş anlamlılar — KÜRATÖRLÜK BEKLİYOR
 
 `TEMEL_URUNLER` (~110 madde) ve `ES_ANLAMLILAR` (~20 eşleme) `server.py`
@@ -1284,6 +1311,19 @@ değil (sözlükte "quark" çıkmıştı — Almanya'da her markette var, Türki
 kimsenin aklına gelmez)? Hangi eş anlamlı yanlış? Hangi temel ürün eksik?
 
 Kural hatırlatması: **yanlış bir eş anlamlı, eksik olandan pahalı.**
+
+### BU EVİN SON İZİ — `MERCHANT_COLORS` içinde iki satır
+
+`theme.ts` içindeki marka renkleri listesinde `"BIZIM FLEISCHER"` ve
+`"BIZIM"` duruyor: bu evin gittiği yerel kasap, uygulamanın içine gömülü ve
+her kullanıcıya gidiyor. Yorumda bilinçli olduğu yazılı (tanıdık rozet rengi
+liste taramasını hızlandırıyor) ve **zararsız** — yalnızca bir renk, hiçbir
+yerde yazı olarak görünmüyor.
+
+Yine de bu, "bütün yer tutucular yerelleştirildi" temizliğinden **artakalan
+tek iz**. Genele açmadan önce alınacak: tanınmayan marketler için zaten
+isimden renk türeten bir havuz var (`FALLBACK_COLORS`) ve bu dükkân da oradan
+alsın. Kayıp, evin kendi rozetinin rengi değişmesi; bedeli bir kez.
 
 ### GÜVENLİK — genele açmadan önce, sırayla
 
@@ -1443,6 +1483,20 @@ sınıfındaydı ve her birine kalıcı bir kontrol eklendi:
 - **"Bu tarih son ödeşmeden önce" uyarısı** (fiş + elle giriş)
 - **Arama örneğinde kendi adın çıkmıyor** (ev arkadaşı gösteriliyor)
 - **Kişisel alınacaklarda çip yüksekliği düzeltmesi**
+
+21 Ağustos dökümünden gelenler (ayrıntı ve gerekçeler `DEVAM.md` → "Fiş
+tarama ve Alınacaklar — 21 Ağustos dökümü"):
+
+- **Galeri izni komple kalktı** — fiş kaydetmek izin istemiyor, "Galeriden
+  seç" artık çalışıyor, kamera izni ekranı `canAskAgain` false iken ayarlara
+  götürüyor
+- **Kaydırma ipucu satıra bağlandı** — donan/iki kez oynayan satırlar bitti
+  (Alınacaklar + Aktivite)
+- **Aynı madde iki kez eklenmiyor**, var olan satır vurgulanıyor
+- **Öneri çipi doğrudan ekliyor**
+- **Eşleşmede bütün adaylar listeleniyor** + kişisel liste de taranıyor
+- **Genel ad evin belleğinden geliyor** (sunucu tarafı, APK gerektirmiyor)
+- **Arama yer tutucusunda en kısa market seçiliyor**
 
 ---
 
