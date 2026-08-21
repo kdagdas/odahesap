@@ -406,7 +406,12 @@ export default function Liste() {
                         ediyor, yani en sik eylem hala tek dokunus. */}
                     {pending.map((it, i) => (
                       <View key={it.item_id}
-                            ref={(r) => { satirRef.current[it.item_id] = r; }}
+                            /* Satir gidince kaydi da gidiyor: birakilan olu
+                               dugum hem birikir hem yanlis yer olcturur. */
+                            ref={(r) => {
+                              if (r) satirRef.current[it.item_id] = r;
+                              else delete satirRef.current[it.item_id];
+                            }}
                             collapsable={false}>
                         <KaydirmaIpucu oyna={ipucuSatir === it.item_id}>
                         <KaydirSil onSil={() => remove(it)}
