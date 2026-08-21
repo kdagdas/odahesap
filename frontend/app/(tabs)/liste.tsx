@@ -434,8 +434,20 @@ const styles = StyleSheet.create({
   mx: { marginHorizontal: spacing.lg },
   /* Şerit kartın dışında ve yatay kaydırılabilir: altı öneri dar telefonda
      sığmıyor, alt satıra sarsaydı liste iki satır birden aşağı kayardı. */
-  oneriSerit: { marginTop: spacing.sm },
-  oneriIc: { paddingHorizontal: spacing.lg, gap: spacing.sm },
+  /* `alignSelf` ve `alignItems` OLMAZSA çipler dev gibi açılıyor.
+     Sebep: bu şerit `Sheet` içinde ve `Sheet` `flex: 1`. Yüksekliği
+     sınırlanmamış yatay bir ScrollView, kalan dikey boşluğu kaplıyor;
+     içerik kabında `alignItems` yazılı değilse varsayılan `stretch`
+     devreye giriyor ve ÇİPLER o yüksekliğe kadar uzuyor.
+     Ev sekmesinde görünmüyordu çünkü altındaki liste uzun, boş dikey alan
+     yok. Kişisel sekmede liste kısa olunca hata ortaya çıktı.
+     Elle giriş ekranındaki şerit (`chipRow`) bunu baştan doğru yapıyordu;
+     buraya kopyalanırken `alignItems` düşmüş. */
+  oneriSerit: { marginTop: spacing.sm, flexGrow: 0, alignSelf: "stretch" },
+  oneriIc: {
+    paddingHorizontal: spacing.lg, gap: spacing.sm,
+    alignItems: "center", paddingVertical: 2,
+  },
   oneriCip: {
     backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border,
     borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: 6,
