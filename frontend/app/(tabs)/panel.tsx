@@ -18,6 +18,7 @@ import {
 import { ConfirmSheet } from "@/app/duzenli";
 import {
   colors, spacing, radius, type as T, overline, fontFamily, metrics, CATEGORY_ICONS,
+  marketKisaAd,
 } from "@/src/theme";
 
 type Expense = {
@@ -628,7 +629,7 @@ export default function Panel() {
                           leading={<Avatar name={author?.name} avatarId={(author as any)?.avatar_id}
                                            userId={author?.user_id} photoVersion={(author as any)?.photo_version} />}
                           title={author?.name || "Bilinmeyen"}
-                          subtitle={`${e.merchant || (e.source === "receipt" ? "Fiş" : "Manuel")} · ${target}`}
+                          subtitle={`${marketKisaAd(e.merchant) || (e.source === "receipt" ? "Fiş" : "Manuel")} · ${target}`}
                           right={<Money value={e.total} />}
                         />
                         {i < Math.min(expenses.length, 5) - 1 && <Divider />}

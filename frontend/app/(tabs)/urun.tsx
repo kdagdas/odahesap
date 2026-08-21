@@ -22,7 +22,7 @@ import {
   AylikCubuk, formatEUR, formatQty, useScrollPad, useGeriDon, useBasaSar, yenileme,
   ayAdi, buAy,
 } from "@/src/ui";
-import { colors, spacing, type as T, metrics } from "@/src/theme";
+import { colors, spacing, type as T, metrics, marketKisaAd } from "@/src/theme";
 
 const AY_UZUN = ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran",
                  "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"];
@@ -178,7 +178,7 @@ export default function Urun() {
                         <Row
                           minHeight={52}
                           title={<Text style={styles.alimAd} numberOfLines={1}>{a.name}</Text>}
-                          subtitle={`${a.merchant} · ${kisaTarih(a.day)}`}
+                          subtitle={`${marketKisaAd(a.merchant)} · ${kisaTarih(a.day)}`}
                           right={
                             <View style={styles.sag}>
                               {a.qty !== 1 ? (

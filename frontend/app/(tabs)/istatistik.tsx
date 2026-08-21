@@ -37,6 +37,7 @@ import {
 } from "@/src/ui";
 import {
   colors, spacing, radius, type as T, fontFamily, metrics, CATEGORY_ICONS,
+  marketKisaAd,
 } from "@/src/theme";
 
 type Monthly = {
@@ -260,7 +261,7 @@ export default function Istatistik() {
                             {/* Market YAZILI: karşılaştırma aynı market içinde
                                 yapıldığı için hangisi olduğu bilginin parçası. */}
                             <Text style={styles.fiyatAlt} numberOfLines={1}>
-                              {f.merchant.toLocaleUpperCase("tr")} · {formatEUR(f.prev)} → {formatEUR(f.now)}
+                              {marketKisaAd(f.merchant).toLocaleUpperCase("tr")} · {formatEUR(f.prev)} → {formatEUR(f.now)}
                               {f.unit !== "adet" ? `/${f.unit}` : ""}
                             </Text>
                           </View>

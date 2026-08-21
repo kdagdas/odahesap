@@ -16,7 +16,7 @@ import {
   animateNextLayout, useScrollPad, useBasaSar, yenileme, formatEUR,
   KaydirSil, GeriAlSeridi, KaydirmaIpucu, useKaydirmaIpucu, Vurgu,
 } from "@/src/ui";
-import { colors, spacing, radius, type as T, metrics } from "@/src/theme";
+import { colors, spacing, radius, type as T, metrics, marketKisaAd } from "@/src/theme";
 
 type Scope = "household" | "self";
 
@@ -306,7 +306,7 @@ export default function Liste() {
                 <Ionicons name="cart-outline" size={12} color={colors.onDarkMuted} />
                 <Text style={styles.sonTxt} numberOfLines={1}>
                   Son alışveriş <Text style={styles.sonVurgu}>{gunFarki(sonAlisveris.day)}</Text>
-                  {sonAlisveris.merchant ? ` · ${sonAlisveris.merchant}` : ""}
+                  {sonAlisveris.merchant ? ` · ${marketKisaAd(sonAlisveris.merchant)}` : ""}
                 </Text>
               </View>
             )}
@@ -440,7 +440,7 @@ export default function Liste() {
                             subtitle={it.last_price != null ? (
                               <Text style={styles.ipucu} numberOfLines={1}>
                                 geçen sefer {formatEUR(it.last_price)}
-                                {it.last_merchant ? ` · ${it.last_merchant}` : ""}
+                                {it.last_merchant ? ` · ${marketKisaAd(it.last_merchant)}` : ""}
                               </Text>
                             ) : undefined}
                             right={

@@ -25,6 +25,7 @@ import {
 } from "@/src/ui";
 import {
   colors, spacing, radius, type as T, overline, fontFamily, CATEGORY_ICONS, CATEGORY_LABEL_TR,
+  marketKisaAd,
 } from "@/src/theme";
 
 /** `generic`: fişteki ad ile ürünün NE olduğu farklı şeyler — fiş
@@ -281,7 +282,7 @@ export default function Review() {
     if (dupe && !dupeDismissed) {
       Alert.alert(
         "Bu fiş zaten kayıtlı olabilir",
-        `${dupe.merchant || "Market yok"} · ${formatDateTR(dupe.expense_date)} · ${formatEUR(dupe.total)}\n\n` +
+        `${marketKisaAd(dupe.merchant) || "Market yok"} · ${formatDateTR(dupe.expense_date)} · ${formatEUR(dupe.total)}\n\n` +
         "Aynı gün aynı marketten iki alışveriş olabilir. Yine de kaydedilsin mi?",
         [
           { text: "Vazgeç", style: "cancel" },
@@ -418,7 +419,7 @@ export default function Review() {
               <View style={{ flex: 1 }}>
                 <Text style={styles.dupeTitle}>Bu fiş zaten kayıtlı olabilir</Text>
                 <Text style={styles.dupeTxt}>
-                  {dupe.merchant || "Market yok"} · {formatDateTR(dupe.expense_date)} · {formatEUR(dupe.total)}
+                  {marketKisaAd(dupe.merchant) || "Market yok"} · {formatDateTR(dupe.expense_date)} · {formatEUR(dupe.total)}
                 </Text>
               </View>
               <Pressable onPress={() => setDupeDismissed(true)} hitSlop={10} testID="dismiss-duplicate">

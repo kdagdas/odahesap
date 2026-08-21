@@ -369,6 +369,39 @@ const FALLBACK_COLORS = [
  *  Sunucudaki `normalize_merchant()` ile aynı fikir, burada küçük hâli. */
 const LEGAL_SUFFIX = /\s+(GMBH|GMBH\s*&\s*CO\.?\s*KG|MBH|AG|KG|OHG|GBR|E\.?K\.?|SE|A\.?Ş\.?|AS|LTD\.?\s*ŞTİ\.?|LTD\.?|ŞTİ\.?|TİC\.?|SAN\.?|INC\.?|B\.?V\.?)+$/;
 
+/**
+ * Ekranda gösterilecek KISA market adı — ticari unvan eki atılmış hâli.
+ *
+ * Fişin üstünde "Bizim Fleischer GmbH" yazıyor ve kayda da öyle giriyor:
+ * `resolve_merchant()` eki ATMIYOR, yalnızca evin geçmişindeki bir yazıma
+ * benziyorsa ona yapıştırıyor. Ek yalnızca KARŞILAŞTIRMA anahtarında düşüyor
+ * (`normalize_merchant`) ve o fonksiyonun kendi kuralı şu: "kullanıcıya
+ * gösterilen ad bozulmaz."
+ *
+ * Cihazda çıkan bedel: Alınacaklar'da satır "geçen sefer 16,49 € · Bizim
+ * Fleischer G…" diye kesiliyordu, iki satır yukarıda ise aynı dükkân "Bizim
+ * Fleischer" diye tam yazıyordu — iki kayıt, iki ham yazım.
+ *
+ * ### Niçin KAYITTA değil GÖSTERİMDE
+ *
+ * Kayıtta atsaydık eski "GmbH"li satırlar yerinde kalır ve iki yazım kalıcı
+ * olarak yan yana yaşardı; düzeltmek için geriye dönük göç gerekirdi. Burada
+ * eski kayıt da yeni kayıt da anında aynı görünüyor, veriye dokunulmuyor ve
+ * karar geri alınabilir kalıyor. Ek fişin üstünde duruyor, dükkânın adında
+ * değil — insanlar oraya "Bizim Fleischer" diyor.
+ *
+ * Ekten geriye bir şey kalmıyorsa ada dokunulmuyor: adı gerçekten "AG" olan
+ * bir yeri boş bırakamayız.
+ */
+const LEGAL_SUFFIX_I = new RegExp(LEGAL_SUFFIX.source, "i");
+
+export function marketKisaAd(name?: string | null): string {
+  const ham = (name || "").trim();
+  if (!ham) return "";
+  const kisa = ham.replace(LEGAL_SUFFIX_I, "").trim();
+  return kisa || ham;
+}
+
 export function merchantColor(name?: string | null): string {
   if (!name) return colors.dark;
   const raw = name.trim().toUpperCase();

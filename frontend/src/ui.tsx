@@ -29,7 +29,7 @@ import {
 
 import {
   colors, spacing, radius, type as T, overline, fontFamily, metrics, merchantTint,
-  CATEGORY_ICONS, CATEGORY_LABEL_TR,
+  marketKisaAd, CATEGORY_ICONS, CATEGORY_LABEL_TR,
 } from "./theme";
 
 /* ------------------------------------------------------------------ metin */
@@ -2512,8 +2512,10 @@ export function MerchantBadge({ name }: { name?: string | null }) {
   const { bg, fg } = merchantTint(name);
   return (
     <View style={[styles.merchant, { backgroundColor: bg }]}>
+      {/* Ticari unvan eki atiliyor: gerekcesi `marketKisaAd` icinde. Rozet
+          dukkani ADLANDIRIYOR, fisin ustundeki unvani tekrarlamiyor. */}
       <Text style={[styles.merchantTxt, { color: fg }]} numberOfLines={1}>
-        {name.toUpperCase()}
+        {marketKisaAd(name).toUpperCase()}
       </Text>
     </View>
   );
