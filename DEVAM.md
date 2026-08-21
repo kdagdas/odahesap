@@ -22,9 +22,19 @@ edebilsin diye yazıldı. Mimari ve kurulum için önce [README.md](README.md).
 curl https://odahesap-api.onrender.com/api/
 ```
 
-`{"service":"odahesap","ok":true,"push_ready":true,"push_detail":"hazir"}`
+```json
+{"service":"odahesap","ok":true,"push_ready":true,"push_detail":"hazir",
+ "commit":"d8eca069","tazelik_gun":10,"etki_orani":0.005}
+```
 
 `push_ready: false` ise bildirimler çalışmıyor; `push_detail` sebebini yazar.
+
+**`commit` alanı iki kez pahalıya mal olduktan sonra eklendi.** "Kodu deploy
+ettim ama davranış değişmedi" durumunda tek bilinmeyen sunucunun hangi
+sürümde olduğuydu ve dışarıdan sorulamıyordu. Artık tahmin yok. Yerelde
+`"yerel"` yazıyor — yani aynı alan "üretime mi bakıyorum" sorusunu da
+cevaplıyor. `tazelik_gun` ve `etki_orani`, öne çıkan satırının canlı
+ayarları.
 
 ### Sırlar nerede
 
@@ -242,6 +252,60 @@ sürüm hiç kurulmadı. 32 bit bir telefon katılırsa `android/app/build.gradl
 içindeki `splits.abi.include` satırına `"armeabi-v7a"` geri eklenmeli.
 
 ---
+
+## Fiş tarama ekranı — bilinen sorunlar
+
+Ev sahibi 21 Ağustos'ta "epey hata var" dedi ve dökümü yeni oturumda
+verecek. **Tur 14'e geçmeden önce bunlar kapatılacak.**
+
+Bu ekran uygulamanın en karmaşık yeri ve sebebi yapısal: tek ekranda dört iş
+birden var — kalem düzenleme, bölüşüm seçimi, market/tarih alanları ve
+alınacaklar köprüsü. Bu turda dokunulan yerler (hata ararken ilk bakılacak
+noktalar):
+
+- Ödeyen satırı için `useSikMarketler` eklendi (market yer tutucusu)
+- `OdesmeUyarisi` eklendi (tarih alanının altına, v53'te gelecek)
+- Kalem satırında bölüşüm açılımı ve `AnchorMenu` kalıbı Tur 12'de kuruldu
+- `/shopping/match` köprüsü kaydetme sonrası alt sayfa olarak çıkıyor
+
+Hataları alırken **her birini ayrı ayrı yaz ve ölç** — bu turda çıkan altı
+sessiz hatanın hepsi "hata vermeyen hata" sınıfındaydı ve hiçbiri konsola
+bir şey yazmıyordu.
+
+## Koleksiyonlar — sonradan eklenenler
+
+| Koleksiyon | Ne tutuyor | Not |
+|---|---|---|
+| `ocr_calls` | `{user_id, at}` | OCR kotası sayacı · 40 gün TTL |
+| `price_points` | Fiyat kayıtları + `sepet_id` | **Kimlik alanı YOK** |
+| `sepet_kaynak` | `{sepet_id, household_id, user_id, expense_id}` | Bağ tablosu · **ayrıca silinebilir** |
+| `expense_revisions` | Düzenleme geçmişi | |
+
+**`price_points` ile `sepet_kaynak` neden AYRI:** "verilerimi sil" talebi bağ
+tablosundan tek satır silmek olsun diye. Fiyat kaydı yerinde kalır ve o anda
+gerçekten anonim hâle gelir. Kimlikler fiyat kaydının içinde olsaydı her
+silme talebi tarihsel veride bir delik açardı.
+
+Bağ yazımı `BAG_TOPLAMA_ACIK` ile tek yerden kapatılabiliyor — rıza ekranı
+gelince oraya bağlanacak.
+
+## OCR ucunu TEST ETMEYİN
+
+`/ocr/receipt` gerçekten modeli çağırır. Uçtan uca test yazmak, her
+çalıştırmada ücretsiz kotayı yakmak demek — **bu bir kez yaşandı**: test 20
+istek atmaya çalıştı, 7.'sinde sağlayıcının kendi 429'u döndü, hem kota yandı
+hem test yanlış şeyi ölçtü (bizim sınırımızı değil sağlayıcınınkini).
+
+Kota mantığı ucun ÖNÜNDE ayrı bir fonksiyonda (`_ocr_kota_kontrol`); doğru
+test yeri orası — `tests/kota-test.py` birim testi olarak yazıldı ve üretim
+veritabanına bağlanırsa kendini durduruyor.
+
+Sınırlar: kişi başı **saatte 20, ayda 100**. Ölçüyle: bu ev iki ayda 48 fiş
+taramış (kişi başı ~8/ay), yani 12 kat pay var.
+
+**Asıl koruma kodda DEĞİL:** sağlayıcı panelindeki API kota tavanı. Kodla
+yapılan her şey bir açık bulunursa atlatılabilir; fatura tavanı atlatılamaz.
+Ücretli katmana geçmeden önce yapılacak ilk iş odur.
 
 ## Yedekleme
 

@@ -2,12 +2,19 @@
 
 > Bu dosya yeni bir sohbet penceresine geçerken bağlamı taşımak için yazıldı.
 >
-> Son durum: **APK v44 (sürüm 1.2.0)**, `main` canlıya deploy edildi.
-> **Tur 10 (para çekirdeği) ve Tur 11 (analiz sayfası) bitti.**
-> Uygulamanın bugünkü hâli için [PROJE-DOKUMANI.md](PROJE-DOKUMANI.md),
-> günlük operasyon için [DEVAM.md](DEVAM.md).
+> **Son durum: APK v52 (sürüm 1.3.0)** telefonda kurulu. `main` canlıya
+> deploy edildi — sunucunun hangi kodda olduğunu `curl .../api/` söylüyor.
+> **Tur 10-13 bitti.**
 >
-> Aşağıdaki KARAR başlıkları Tur 10/11'in gerekçeleridir ve **hâlâ
+> Kurallar ve tuzaklar artık [CLAUDE.md](CLAUDE.md)'de toplandı; her oturum
+> onu okuyor. Uygulamanın bugünkü hâli [PROJE-DOKUMANI.md](PROJE-DOKUMANI.md),
+> günlük operasyon [DEVAM.md](DEVAM.md).
+>
+> **SIRADAKİ İŞ: fiş tarama ekranındaki hatalar.** Ev sahibi "epey hata var"
+> diyor ve dökümü yeni sohbette verecek. Onlardan önce başka bir işe
+> girilmeyecek — aşağıdaki Tur 14 planı hatalar kapandıktan SONRA.
+>
+> Aşağıdaki KARAR başlıkları önceki turların gerekçeleridir ve **hâlâ
 > geçerlidir** — bir sonraki oturum bunları yeniden tartışmasın diye duruyor.
 
 ---
@@ -1387,6 +1394,58 @@ Sıra:
 
 ---
 
+## TUR 13 SONRASI — v45'ten v52'ye kadar yapılanlar
+
+Bu blok tek bir uzun oturumda birikti (72 commit). Kararların gerekçeleri
+kendi başlıklarında; burada yalnızca **ne değişti** duruyor.
+
+**Uygulamada**
+- Tema seçici + "kaydedildi" geri bildirimi hatası · 13 hayvan avatarı (eski
+  renk kimlikleri korunarak) · tarama vizörü logosu (Poppins Bold, köşe %17)
+- Aramada bir harflik tolerans · market çipleri evin kendi geçmişinden
+- Öne çıkan: üç satır, paraya göre sıralama, renk, 10 günlük tazelik,
+  %0,5'lik etki eşiği
+- Tam kaydırınca silme + geri alma şeridi (Alınacaklar ve Bildirimler)
+- Alınacaklar'da öneri çipleri: evin geçmişi + temel liste + eş anlamlılar,
+  marka adıyla da bulunuyor ("nuggr" → dondurma)
+- **Bütün yer tutucular yerelleştirildi** — "REWE, EDEKA", "DE00 …",
+  "Örn. Kadir" gibi bu evin/ülkenin izleri temizlendi
+
+**Sunucuda**
+- Düzenleme bildirimi alana değil SONUCA bakıyor (para değişmediyse susuyor)
+- `/merchants/frequent` · `/shopping/suggest` · `/stats/highlight` çoklu satır
+- **OCR kotası**: kişi başı saatte 20, ayda 100 — uç tamamen açıktı
+- **Sağlık ucu sürüm damgası**: `commit`, `tazelik_gun`, `etki_orani`
+- `last_settlement` alanı (ödeşme öncesi tarih uyarısı için)
+- **Sepet kodu + bağ tablosu** — `price_points` kimliksiz kalıyor, bağ ayrı
+  koleksiyonda ve tek satırda silinebiliyor
+
+**Belgede**
+- `CLAUDE.md` eklendi: ölçümle verilmiş kararlar, derleme tuzakları, test ve
+  gizlilik kuralları tek dosyada
+- Rakip haritası ve güvenlik durumu ayrı belgelerde çıkarıldı
+
+**Bu oturumda yakalanan SESSİZ hatalar** — hepsi "hata vermeyen hata"
+sınıfındaydı ve her birine kalıcı bir kontrol eklendi:
+1. Tema seçimi kaydediliyordu ama anlatan yoktu
+2. `prebuild` atlanınca versionCode VE ikon eskide kaldı (iki APK boşa gitti)
+3. Tam kaydırma hiçbir şey yapmıyordu (`?.` sayesinde sessizce)
+4. Üretim eski kodu çalıştırıyordu ve dışarıdan sorulamıyordu
+5. "su" yazınca "su" çıkmıyordu (kaynak ağırlığı eşleşme kalitesini eziyordu)
+6. Kişisel alınacaklarda çipler dev gibi açılıyordu (`alignItems` eksikti)
+
+---
+
+## DERLEME BEKLEYENLER — v53'e girecek
+
+İstemci tarafı, kodda hazır ama v52'de YOK:
+
+- **"Bu tarih son ödeşmeden önce" uyarısı** (fiş + elle giriş)
+- **Arama örneğinde kendi adın çıkmıyor** (ev arkadaşı gösteriliyor)
+- **Kişisel alınacaklarda çip yüksekliği düzeltmesi**
+
+---
+
 ## Tur 14 planı — öncelik sırasıyla
 
 ### 1. ÖDEYEN ile EKLEYEN ayrılıyor — en yüksek getirili madde
@@ -1590,9 +1649,12 @@ elle değiştirilmemeli. Debug yavaştır — performans yargısı release'de ve
 ## Yeni sohbete yapıştırılacak metin
 
 ```
-D:\SettleUp\OdaHesap üzerinde çalışıyoruz. Önce şu üç dosyayı oku:
-SIRADAKI-TUR.md, PROJE-DOKUMANI.md, DEVAM.md.
-Tur 10-13 bitti (APK v49 / sürüm 1.3.0). Tur 14'e başla.
+D:\SettleUp\OdaHesap üzerinde çalışıyoruz. CLAUDE.md'yi ve SIRADAKI-TUR.md'yi
+oku; gerekirse DEVAM.md ve PROJE-DOKUMANI.md.
+Tur 10-13 bitti (APK v52 / sürüm 1.3.0, telefonda kurulu).
+
+ÖNCE FİŞ TARAMA EKRANINDAKİ HATALARI kapatacağız — Tur 14 planına
+geçmeden önce. Hataları anlatacağım.
 ```
 
 ### Yeni oturumun İLK yapması gerekenler
