@@ -1065,7 +1065,50 @@ Altındaki ayrım: **lacivert "kim ve ne kadar" der, beyaz "neye dikkat et" der.
 İkisi farklı iş; ayrıldığında lacivert bir daha hiç büyümüyor — `ONE_CIKAN_TAVAN`
 tartışması da kendiliğinden kapanıyor.
 
-KARAR BEKLİYOR.
+**KARAR: B.** Sayfalama reddedildi çünkü ev sahibinin kendi gerekçesiyle
+çelişiyordu — "diğer bildirimlerin kaçırılmasını istemiyorum" derken,
+sayfalama tam olarak kaçırılma ihtimalini artırıyor.
+
+En kalabalık gün çizildi (ödeşme günü + vadesi gelen kira + üç dikkat
+cümlesi) ve lacivert hâlâ tek manşet taşıyor. Kalabalık beyaza düşüyor,
+orası kaydırılabiliyor.
+
+**İki kural doğdu:**
+
+- **Cümle bilgi verir, kart eylem ister.** Ödeşme günü cümle (bugün yapılacak
+  bir şey yok, bilmek yeter); kira kart (dokununca onaylanıyor). Kira
+  MANŞETE ÇIKMIYOR — kendi kartında zaten duruyor, aynı şeyi iki kez söylemek
+  satırı değersizleştirir.
+- **Nabız yalnızca senden bir şey isteyen satırda.** Manşette ve "Vadesi
+  Gelenler" başlığında olması doğru: aynı olayın iki ucu. Fiyat ve bütçe
+  cümlelerinde nabız yok.
+
+### ÖDEŞME GÜNÜ — isteğe bağlı, yapılacak
+
+Ev bir gün belirleyebiliyor ("her ayın 30'u"). **Kural değil cümle
+değişiyor:** ödeşme yine istendiği an yapılabiliyor, tarih yalnızca
+hatırlatmanın metnini belirliyor. Kurmayan ev bugünkü davranışta kalıyor
+(14 gün + 25 € eşiği) — bütçe gibi, yokluğunda ekran bugünkü hâline dönüyor.
+
+**Asıl kazanç psikolojik:**
+
+> "3 haftadır ödeşilmedi" bir SİTEM. "Ödeşme günü 3 gün sonra" bir RANDEVU.
+
+Ev arkadaşları arasında para konuşmasının en pahalı yanı sürtüşme. Sitem
+birini suçlar (kim geciktirdi?), randevu kimseyi suçlamaz çünkü tarihi ev
+birlikte koymuştur. Aynı bilgi, sıfır gerilim. Projenin yazılı kuralıyla da
+uyumlu: *"ev arkadaşları arasındaki borç bankayla olan borç değil."*
+
+**Yapısal uyum:** uygulamada zaten DÖNEM var ve ödeşme günü doğal bir dönem
+sınırı. O gün "dönemi kapat" önerisi kendiliğinden anlamlı oluyor — iki
+mevcut özellik bağlanıyor, yeni kavram icat edilmiyor.
+
+**Dikkat:** gün geçerse TON BOZULMAMALI. "Ödeşme günü 4 gün geçti · 62,40 €"
+olgusal kalmalı; "hâlâ ödeşmediniz" olmamalı, yoksa randevu tekrar siteme
+döner.
+
+Vadesi gelen düzenli giderle aynı görsel dilde duruyor (amber nabız, gün
+kutusu) çünkü ikisi de tarihli ve ikisi de bir şey istiyor.
 
 ### TEKRAR ALIM RİTMİ — yapılacak, küçük
 
