@@ -1491,14 +1491,28 @@ async def gemini_vision(system_prompt: str, user_text: str, image_b64: str, mime
 # Haftalık 30 zaten ayı ~130'da tutuyor. İki farklı pencereli sınır yan yana
 # durunca kullanıcıya hangisine takıldığını anlatmak zorlaşıyordu ve ikinci
 # sınır hiçbir şey eklemiyordu.
+# ### ŞU AN GEVŞEK — dar değerler PAYLAŞIM GÜNÜ açılacak
+#
+# Ev sahibi haklı bir itiraz getirdi: kota önce ONU vuruyor. Uygulamayı
+# günde defalarca test ediyor, arkadaşları da deniyor; saatte 5 fiş sınırı
+# geliştirmeyi durdurur. Sınırın amacı yabancı kalabalıktan korunmak, kendi
+# ekibini yavaşlatmak değil.
+#
+# Yapı yerinde duruyor, yalnızca sayılar geniş. **Paylaşım günü tek satır:**
+# 5 / 10 / 30 (ev sahibinin verdiği ölçüler — "bir kullanıcı genelde saatte
+# üç fişten fazla taramaz; o gün üç markete gitmiştir ve fişleri aynı anda
+# taramak ister"). O sayılar burada duruyor ki paylaşım anında yeniden
+# tartışılmasın.
 OCR_KUTULAR = (
-    ("saat", timedelta(hours=1), 5,
+    ("saat", timedelta(hours=1), 20,
      "Saatlik fiş tarama sınırına ulaştın. Bir süre sonra tekrar dene."),
-    ("gun", timedelta(days=1), 10,
+    ("gun", timedelta(days=1), 60,
      "Bugünlük fiş tarama sınırına ulaştın. Yarın tekrar dene."),
-    ("hafta", timedelta(days=7), 30,
+    ("hafta", timedelta(days=7), 200,
      "Bu haftalık fiş tarama sınırına ulaştın."),
 )
+# Paylaşım günü uygulanacak değerler — silinmesin, ölçüyle verildiler.
+OCR_KUTULAR_PAYLASIM = (5, 10, 30)
 
 # ### GLOBAL GÜNLÜK TAVAN — kişi başına kutular cebi KORUMUYOR
 #
@@ -1510,7 +1524,10 @@ OCR_KUTULAR = (
 # Bu sayı bir ÇEVİRME DÜĞMESİ: beş kişilik bugünkü kullanımın çok üstünde,
 # yüz kişilik bir testte ise gerçek bir tavan. Aşıldığında kullanıcıya
 # suçlayıcı olmayan dürüst bir cümle dönüyor.
-OCR_GLOBAL_GUNLUK = 200
+# Şu an 800: beş kişilik kullanımın ve yoğun testin çok üstünde, ama
+# kaçak bir döngünün faturayı büyütmesini yine de engelliyor. Paylaşım günü
+# 200'e iner.
+OCR_GLOBAL_GUNLUK = 800
 
 # Eski adlar: `kota-test.py` ve olası dış okuyucular için korunuyor.
 OCR_SAATLIK_SINIR = OCR_KUTULAR[0][2]
