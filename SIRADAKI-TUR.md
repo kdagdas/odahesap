@@ -1560,6 +1560,16 @@ Aile kipi kültürel bir zorunluluk: geleneksel bir Türk ailesinde eve alınan
 alınmıştır, kim ne kadar içti diye bakılmaz. O davranış tam olarak
 "bölüşmesi kapalı mod" demek — yani en zor sanılan kültürel uyum, bir anahtar.
 
+> **DÜZELTME (22 Ağustos).** Bu madde bir yerde "Alanya evi aile kipine
+> geçer" varsayımıyla okunuyordu. Ev sahibi düzeltti: **iki ev de paylaşımlı
+> ev.** Alanya'daki de bir paylaşımlı ev, Almanya'daki de. Yani aile kipinin
+> elimizdeki iki evden **hiçbirinde** karşılığı yok.
+>
+> Bu, maddeyi geçersiz kılmıyor ama **gerekçesini değiştiriyor**: artık bir
+> ihtiyaç değil bir PAZAR GENİŞLETMESİ. Kendi evimizde denenemeyecek bir
+> özelliği yazmanın bedeli de belli — doğru çalıştığını ancak yabancı bir
+> kullanıcıdan öğreniriz. Öncelik sıralamasında bu bilinerek yer alsın.
+
 **Kullanıcıya kip sorulmayacak.** Kurulumda TEK bir insan sorusu var —
 *"Kimlerle kullanacaksın?"* → ev arkadaşlarımla / eşim ve ailemle / bir
 etkinlik için / yalnız — ve yapılandırma ondan türüyor. Kip bir uygulama
@@ -1587,7 +1597,11 @@ ayrı bir madde değil, aynı maddenin parçası.
   49 harcamanın 48'i fiş, 1'i elle. İki ayda bir kez açılan ekrana yeniden
   tasarım yatırmak, en çok kullanılana yatırmamak demek.
 - **Test verisi üreticisi** — 4 kişilik ev, 6 ay.
-- **Dışa aktarma (CSV/PDF).**
+- **Dışa aktarma (CSV/PDF).** Şimdilik ihtiyaç YOK, ertelendi (22 Ağustos).
+  Yapıldığında: CSV ham veri olarak çıkabilir ama **PDF bir TASARIM işi** —
+  logo, evin adı, dönem, ve neyin neye göre hesaplandığı. Ev sahibinin sözü:
+  "o da bir tasarım hâlinde çıksın." Biçimlenmemiş bir PDF, CSV'nin pahalı
+  hâlidir; iki çıktının aynı işi yapması gerekmiyor.
 
 ---
 
@@ -1614,6 +1628,15 @@ ayrı bir madde değil, aynı maddenin parçası.
 - **Eksik kategoriler** (eczane, yapı market, giyim). Ev sahibi kararsız:
   yeni kategori sayfayı uzatıyor ama bu ürünler nadir alınıyor. 19 Ağustos'ta
   ertelendi.
+
+  **22 Ağustos — itiraz ortadan kalktı.** Endişe halkanın karışmasıydı ve
+  yerindeydi: palet 9 dilim için ayarlanmış (`theme.ts` içinde yazılı), 12
+  dilim saç teli genişliğine iner. Ama Anasayfa halkası artık ilk dört
+  kategoriyi çizip gerisini tek "Kalanlar" diliminde topluyor. Nadir bir
+  kategori eklendiğinde resim değişmiyor — kendiliğinden oraya katılıyor.
+  Kategorinin asıl değeri zaten halkada değil **süzgeçte ve aramada**:
+  "bu ay eczaneye ne kadar gitti" sorusu, %2'lik bir dilimden değil bir
+  süzgeçten cevaplanır.
 - **Anasayfa'ya tek satırlık "bu ay dikkat çeken şey"** — grafik değil CÜMLE,
   ve yalnızca gerçekten kayda değer bir şey varsa. Analiz sayfasını açmayan
   kullanıcıya değerin bir kırıntısını taşır.
