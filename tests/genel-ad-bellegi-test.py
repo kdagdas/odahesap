@@ -118,6 +118,33 @@ async def main():
           bellek_o.get(server.product_key("GIZLI URUN X")) == "sampuan", str(bellek_o))
 
     print()
+    print("== YAKIN esleme: OCR ayni satiri farkli okuyunca ==")
+    # Cihazda olculdu: ayni fisin iki taramasi ayni satiri farkli okudu.
+    #   16 Agustos: ALTAPH.  FIXIERBND  -> sargi bezi
+    #   22 Agustos: ALTRAPH. FIXIERBIND
+    # Tam esleme iskaliyor; yakin esleme yakalamali. Burada iki urunu
+    # BIRLESTIRMIYORUZ -- kullanicinin ekranda gorup duzeltebilecegi bir
+    # oneri uretiyoruz.
+    await harcama(hh, ben, [{"name": "ALTAPH. FIXIERBND", "generic": "sargi bezi"}])
+    bellek = await server._genel_ad_bellegi(hh, ben)
+    check("tam esleme calisiyor",
+          server.bellekten_genel_ad(bellek, "ALTAPH. FIXIERBND") == "sargi bezi")
+    check("OCR farki yakalandi",
+          server.bellekten_genel_ad(bellek, "ALTRAPH. FIXIERBIND") == "sargi bezi",
+          str(server.bellekten_genel_ad(bellek, "ALTRAPH. FIXIERBIND")))
+
+    print()
+    print("== YAKIN esleme ALAKASIZ adi yakalamamali ==")
+    # Esik gercekten koruyor mu: benzemeyen bir ad bellekten cevap almamali.
+    # Yanlis bir genel ad, genel ad olmamasindan pahali.
+    check("alakasiz ad bos donuyor",
+          server.bellekten_genel_ad(bellek, "COCA COLA 1L") is None,
+          str(server.bellekten_genel_ad(bellek, "COCA COLA 1L")))
+    check("kisa anahtarda yakin esleme kapali",
+          server.bellekten_genel_ad(bellek, "un") is None,
+          str(server.bellekten_genel_ad(bellek, "un")))
+
+    print()
     print("== evsiz kullanicida bellek BOS, sorgu bile atilmiyor ==")
     check("evsiz -> bos sozluk", await server._genel_ad_bellegi("", ben) == {})
 

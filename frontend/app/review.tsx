@@ -171,10 +171,26 @@ export default function Review() {
     setRows((rs) => [...rs.slice(0, index), satir, ...rs.slice(index)]);
     setSilinen(null);
   };
-  const addRow = () =>
-    // Elle eklenen kalemde genel ad YOK: modelin bilgisi değil kullanıcının
-    // yazdığı ad var, ve uydurmak yanlış birleştirmeye yol açar.
+  /**
+   * Kalem ekle — **yeni satır DOĞRUDAN AÇIK geliyor.**
+   *
+   * Önce kapalı ekleniyordu ve ev sahibi cihazda şunu yaşadı: düğmeye bastı,
+   * ekranda hiçbir şey olmadı (yeni satır boş ve listenin en altında, görüş
+   * alanının dışında), tekrar bastı — **iki boş kalem** oluştu. Sonra her
+   * birini kalem düğmesiyle tek tek açması gerekti.
+   *
+   * Bir eylem sonucunu göstermiyorsa kullanıcı onu tekrar eder. Yeni kalemin
+   * tek anlamı zaten "şimdi bir şey yazacağım"; kapalı açmak, istenen tek
+   * durumu bir dokunuş uzağa koyuyordu.
+   *
+   * Elle eklenen kalemde genel ad YOK: modelin bilgisi değil kullanıcının
+   * yazdığı ad var, ve uydurmak yanlış birleştirmeye yol açar.
+   */
+  const addRow = () => {
     setRows((rs) => [...rs, { name: "", price: "0,00", quantity: "1", unit: "adet", category: "diger", generic: null, split: bulkSplit }]);
+    // Ekleme ÖNCESİ uzunluk, yeni satırın indeksi.
+    setAcikSatir(rows.length);
+  };
 
   const applyBulk = (sp: Split) => {
     setBulkSplit(sp);
@@ -409,9 +425,18 @@ export default function Review() {
         </ScreenHeader>
 
         <View style={styles.list}>
-          <HintCard hintKey="review-tap" testID="review-hint">
-            Kategori simgesine ve <Text style={{ fontFamily: fontFamily.semibold }}>ADET</Text> etiketine
-            dokunarak değiştirebilirsin.
+          {/* İPUCU KEŞFEDİLEMEYENİ ÖĞRETİYOR, görüneni değil.
+              Önce "kategori simgesine ve ADET etiketine dokun" yazıyordu ve
+              bu, lacivert başlıktaki "fiyat, miktar ve kategoriyi
+              düzenleyebilirsin" cümlesinin tekrarıydı — aynı şey iki yerde.
+              Üstelik ikisi de görünen şeyleri anlatıyordu; kalem düğmesi
+              zaten bir kalem.
+
+              Bu ekranda tahmin EDİLEMEYEN tek jest satıra dokunmanın
+              BÖLÜŞÜMÜ açması. En sık yapılan iş o ve hiçbir işareti yok. */}
+          <HintCard hintKey="review-split" testID="review-hint">
+            Bölüşümü değiştirmek için <Text style={{ fontFamily: fontFamily.semibold }}>satıra</Text> dokun.
+            Ad, fiyat ve miktar için sağdaki kalem düğmesi.
           </HintCard>
           {dupe && !dupeDismissed && (
             <View style={styles.dupeBox} testID="duplicate-warning">
@@ -486,7 +511,17 @@ export default function Review() {
               testID="bulk-split"
               renderTrigger={(ac, ozet, ref) => (
                 <Pressable ref={ref} style={styles.bulkRow} onPress={ac} testID="bulk-split">
-                  <Text style={styles.bulkLabel}>TÜMÜ</Text>
+                  {/* "TÜMÜ" DEĞİL "TÜMÜNE UYGULA".
+                      Blok küçültülürken etiket kısaltılmıştı ve ev sahibi
+                      cihazda takıldı: "tümü" tek başına bir isim parçası,
+                      hiçbir eylem söylemiyor. Yanındaki hapta zaten "Tüm ev"
+                      yazıyor, yani "TÜMÜ · Tüm ev" diye okunuyor ve ikisi de
+                      aynı kelimeyi tekrarlıyor. Etiketin işi bu satırın
+                      ÖTEKİLERDEN farkını söylemek: bu satır bütün kalemlere
+                      birden yazıyor.
+                      Hap `flexShrink: 1`, yani uzun etiket onu kırpıyor —
+                      taşma riski yok. */}
+                  <Text style={styles.bulkLabel}>TÜMÜNE UYGULA</Text>
                   <View style={styles.bulkHap}>
                     <Ionicons name="home" size={13} color={colors.inkSecondary} />
                     <Text style={styles.bulkTxt} numberOfLines={1}>{ozet}</Text>

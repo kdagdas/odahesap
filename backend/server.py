@@ -1609,6 +1609,51 @@ async def _genel_ad_bellegi(household_id: str, user_id: str) -> Dict[str, str]:
     return bellek
 
 
+def bellekten_genel_ad(bellek: Dict[str, str], ad: str) -> Optional[str]:
+    """Bellekte bu ham adın karşılığı — tam eşleşme, yoksa YAKIN eşleşme.
+
+    ### Niçin yakın eşleşme gerekiyor
+
+    Cihazda ölçüldü: **aynı fişin iki taraması aynı satırı farklı okudu.**
+
+        16 Ağustos taraması:  ALTAPH.  FIXIERBND   -> sargı bezi
+        22 Ağustos taraması:  ALTRAPH. FIXIERBIND
+
+    Ham ad değişince anahtar değişiyor, bellek ıskalıyor ve aynı ürünün iki
+    alışı asla aynı seriye düşmüyor — yani fiyat karşılaştırması da hiç
+    kurulamıyor. Sebep model değil fiş: küçültülmüş bir görüntüde sıkışık
+    kısaltmalar bazen böyle okunuyor.
+
+    ### Niçin bu, "otomatik ürün eşleştirme yok" kuralını çiğnemiyor
+
+    Burada iki ürünü BİRLEŞTİRMİYORUZ. Yalnızca kullanıcının fiş ekranında
+    **göreceği ve tek dokunuşla düzeltebileceği** bir genel ad öneriliyor;
+    yanlışsa ekranda duruyor ve düzeltiliyor. Sessiz bir birleştirme değil,
+    görünür bir öneri — bedeli asimetrik olarak düşük.
+
+    Eşik 0,88 ve keyfi değil: `match_known_merchant` aynı eşiği kullanıyor ve
+    orada ölçülmüştü ("bizim fleisher" ↔ "bizim fleischer" 0,96 veriyor,
+    "rewe" ↔ "penny" 0,2'de kalıyor). Yukarıdaki fiş çifti 0,93 veriyor.
+
+    Üç harften kısa anahtarda yakın eşleşme KAPALI: kısa dizgilerde benzerlik
+    oranı anlamsızlaşıyor ("su" ↔ "un" 0,5).
+    """
+    anahtar = product_key(ad)
+    if not anahtar:
+        return None
+    tam = bellek.get(anahtar)
+    if tam:
+        return tam
+    if len(anahtar) < 3:
+        return None
+    en_iyi, en_iyi_oran = None, 0.0
+    for k, v in bellek.items():
+        oran = difflib.SequenceMatcher(None, anahtar, k).ratio()
+        if oran > en_iyi_oran:
+            en_iyi, en_iyi_oran = v, oran
+    return en_iyi if en_iyi_oran >= 0.88 else None
+
+
 @api.post("/ocr/receipt")
 async def ocr_receipt(body: OCRRequest, user=Depends(get_current_user)):
     if not GEMINI_API_KEY:
@@ -1708,7 +1753,7 @@ async def ocr_receipt(body: OCRRequest, user=Depends(get_current_user)):
         # ayni urune bir sefer "kusbasi" bir sefer "et" diyebiliyor ve bu
         # tutarsizlik urun gruplamasinin tamamini bozuyor. Kullanici bu
         # ekranda yine duzeltebilir; duzeltirse bellek de guncelleniyor.
-        hatirlanan = bellek.get(product_key(name) or "")
+        hatirlanan = bellekten_genel_ad(bellek, name)
         if hatirlanan:
             generic = hatirlanan
         items.append(
