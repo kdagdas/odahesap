@@ -32,7 +32,11 @@ type Hareket = { tur: string; tutar: number; artiran: boolean };
 type EkstreAy = {
   month: string; share: number; paid: number; delta: number; lines?: Hareket[];
 };
-type Ekstre = { months: EkstreAy[]; carried: number; current_month: string };
+type Ekstre = {
+  months: EkstreAy[]; carried: number; current_month: string;
+  /** Son ödeşmeden bu yana EVİN toplamı — kapsam bölüşme listesinden. */
+  ev_toplam?: number;
+};
 
 /**
  * Hareket türlerinin ekrandaki adı. Sunucu yalnızca anahtar gönderiyor.
@@ -994,6 +998,27 @@ export default function Denge() {
                         <PrimaryButton label="Ödeştik" icon="checkmark-done"
                                        onPress={() => setMode("close")}
                                        tone="muted" testID="close-period-btn" />
+                        {/* SON ÖDEŞMEDEN BU YANA EVİN TOPLAMI — kararın
+                            alındığı yerde.
+
+                            Ev sahibinin sorusu: "Ağustos'ta ev ne kadar
+                            harcadı"yı sürekli görüyoruz ama son ödeşmeden bu
+                            yana ne kadar harcandığını hiç görmüyoruz. O
+                            rakamın anlamlı olduğu tek an da bu an —
+                            "ödeşmek üzereyiz, bu süreçte ev ne kadar harcadı?"
+
+                            Ekstre bloğuna KONMADI: orası `ödediğin − sana
+                            düşen = bakiyen` kimliğine dayanıyor ve araya evin
+                            toplamını sokmak o aritmetiği bozardı.
+
+                            Sıfırsa hiç çizilmiyor — "boş kalabilme cesareti".
+                            Ödeştikten hemen sonra 0,00 € yazan bir satır
+                            bilgi değil gürültü. */}
+                        {!!ekstre?.ev_toplam && ekstre.ev_toplam > 0.005 && (
+                          <Text style={styles.footNote} testID="odesme-ev-toplam">
+                            Son ödeşmeden bu yana ev {formatEUR(ekstre.ev_toplam)} harcadı
+                          </Text>
+                        )}
                         <Text style={styles.footNote}>
                           {ordered.length === 1
                             ? "Kalan borç ödenmiş olarak kaydedilir"

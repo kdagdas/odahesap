@@ -3725,8 +3725,16 @@ async def _ekstre(household_id: str, period_id: str, user_id: str,
     exps = await db.expenses.find(
         {"household_id": household_id, "period_id": period_id}, {"_id": 0}
     ).to_list(5000)
+    ev_toplam = 0.0
+    uyeler = set(members)
     for e in exps:
         shares = expense_shares(e, members)
+        # EV TOPLAMI — kapsam ETİKETTEN değil BÖLÜŞME LİSTESİNDEN çıkıyor.
+        # `/stats` de aynı kuralı kullanıyor: evin tamamı listede değilse o
+        # harcamayı ev almadı. "sen + Salih" alımı `custom` etiketi taşıyor
+        # ama ev harcaması değil.
+        if uyeler and uyeler <= set(shares):
+            ev_toplam += float(e.get("total") or 0)
         # Hangi satıra ne yazılacağını `akis_paylari` söylüyor; `/expenses?akis=`
         # de aynı fonksiyonu okuyor, yani ekstredeki satır ile o satıra
         # dokununca açılan fiş listesi aynı tanımdan geliyor.
@@ -3777,6 +3785,18 @@ async def _ekstre(household_id: str, period_id: str, user_id: str,
         # Ekstre bloğundaki tek satırlık devir: bu aydan öncekilerin toplamı.
         "carried": round(sum(k["delta"] for k in sirali if k["month"] < bu_ay), 2),
         "current_month": bu_ay,
+        # SON ÖDEŞMEDEN BU YANA EVİN TOPLAMI.
+        #
+        # Ev sahibinin sorusu: "Ağustos'ta ev ne kadar harcadı"yı sürekli
+        # görüyoruz ama son ödeşmeden bu yana ne kadar harcandığını hiç
+        # görmüyoruz. Oysa o rakamın anlamlı olduğu tek an ödeşme anı —
+        # "ödeşmek üzereyiz, bu süreçte ev ne kadar harcadı?"
+        #
+        # Ekstre bloğunun İÇİNE konmuyor: orası `ödediğin − sana düşen =
+        # bakiyen` kimliğine dayanıyor ve araya evin toplamını sokmak o
+        # aritmetiği bozardı. İstemci bunu "Ödeştik" düğmesinin yanında,
+        # kararın alındığı yerde gösteriyor.
+        "ev_toplam": round(ev_toplam, 2),
     }
 
 
@@ -3822,7 +3842,8 @@ async def balances(period_id: Optional[str] = None, user=Depends(get_current_use
     # Ekstre: bakiyenin ay ay dökümü. Kapalı dönemde hesaplanmıyor — orada
     # bakiye sıfır ve gösterilecek bir borç yok.
     result["statement"] = (
-        {"months": [], "carried": 0, "current_month": month_key(ev_bugun(hh))}
+        {"months": [], "carried": 0, "current_month": month_key(ev_bugun(hh)),
+         "ev_toplam": 0}
         if snap else
         await _ekstre(hh["household_id"], period["period_id"], user["user_id"],
                       participants, hh["member_ids"], ev_bugun(hh))

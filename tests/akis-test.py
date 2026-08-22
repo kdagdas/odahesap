@@ -142,6 +142,20 @@ print("\n-- DEGISMEZLIK: ekstre satirlari ayin degisimini veriyor --")
 # bir GOZAT araci ("ne aldik"). Ikisi bilerek ayri eksenler, o yuzden
 # tutarlari birebir esitlenmiyor. Ama ekstrenin KENDI icinde tutmasi sart:
 # artiran satirlarin toplami eksi azaltanlarin toplami, o ayin deltasidir.
+# EV TOPLAMI (son odesmeden bu yana) -- Kasa'daki "Odestik" satirini besliyor.
+#
+# Kapsam ETIKETTEN degil BOLUSME LISTESINDEN cikiyor, `/stats` ile ayni kural:
+# evin tamami listede degilse o harcamayi ev almadi. Bu takimda tek ev
+# harcamasi var (60), ikili alim (30) ve kisisel (15) DISARIDA kalmali.
+#
+# Uc kisinin de ayni sayiyi gormesi sart: ev toplami bir OLGU, kisiye gore
+# degismez.
+for jeton, ad in ((alice, "alice"), (bob, "bob"), (carol, "carol")):
+    st = c.get(f"{API}/balances", headers=hdr(jeton)).json()["statement"]
+    check(f"{ad} · ev toplami yalnizca ev harcamasi (60)",
+          abs(st.get("ev_toplam", -1) - 60.0) < 0.01, str(st.get("ev_toplam")))
+
+print()
 ARTIRAN = ("ev_pay", "bana_pay", "baskasi_pay", "sana_odenen")
 for jeton, ad in ((alice, "alice"), (bob, "bob"), (carol, "carol")):
     st = c.get(f"{API}/balances", headers=hdr(jeton)).json()["statement"]
