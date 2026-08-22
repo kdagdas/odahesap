@@ -493,6 +493,22 @@ export default function Panel() {
                   oraya giden tek kapının bir fısıltı olmasıydı. */}
               {cats.length > 0 && (
                 <Card title="Nereye Gitti" style={styles.mx}>
+                  {/* HALKANIN KENDİSİ DE BİR KAPI.
+                      Alt satırdaki "Tüm analizler" zaten oraya gidiyor ama ev
+                      sahibinin sorusu yerindeydi: halkaya bakan insan zaten
+                      "daha büyüğünü göreyim" diye bakıyor ve parmağı doğal
+                      olarak halkanın üstüne gidiyor. Dokunamayan bir grafik,
+                      dokunmayı deneyen herkese bir kez "bozuk" diyor.
+
+                      Alt satır KALIYOR: o bir ETIKET (nereye gittiğini
+                      söylüyor), halka ise sezgisel bir kısayol. İkisi aynı
+                      yere gidiyor ve bu bir tekrar değil — Kasa'daki "her
+                      satır ayrı hedef" kalıbının aynısı.
+
+                      Basılı hissi yok (`android_ripple` yok): halkanın
+                      üstünde dalga efekti grafiği kirletiyordu. */}
+                  <Pressable onPress={() => router.push("/istatistik")}
+                             testID="open-stats-donut">
                   <View style={styles.donutRow}>
                     <View style={styles.donutWrap}>
                       <Donut parts={cats} />
@@ -520,6 +536,7 @@ export default function Panel() {
                       ))}
                     </View>
                   </View>
+                  </Pressable>
 
                   <Divider inset={0} />
                   {/* "Sana düşen" = ev harcamalarından payına düşen, kim
