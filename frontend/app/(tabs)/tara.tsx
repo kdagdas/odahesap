@@ -287,13 +287,16 @@ export default function Tara() {
           <View style={[styles.corner, styles.cornerBL]} />
           <View style={[styles.corner, styles.cornerBR]} />
         </View>
-        <View style={styles.frameHint}>
-          <Ionicons name="scan-outline" size={16} color={colors.onDark} />
-          {/* "Çerçeveye yerleştir" DEĞİL "tamamı görünsün". Tarih fişin ya en
-              üstünde ya en altında; yarısını çeken kullanıcı tarihi de
-              kaybediyor ve bunu ancak inceleme ekranında fark ediyor. */}
-          <Text style={styles.frameHintTxt}>Fişin tamamı görünsün</Text>
-        </View>
+        {/* YAZI KALDIRILDI.
+            Önce "Fişi çerçeveye yerleştir" yazıyordu; çerçeve ekranın tamamı
+            olunca o cümle anlamsızlaştı. Yerine "Fişin tamamı görünsün"
+            denendi ve ev sahibi haklı olarak itiraz etti: **zorlama gibi
+            hissettiriyor.** Kullanıcıya kamerada nasıl fotoğraf çekeceğini
+            öğretmek bizim işimiz değil; ekranın dört köşesindeki işaretler
+            "alan burası" demeye zaten yetiyor.
+
+            Boş kalabilme cesareti bu ekranda da geçerli: söylenecek bir şey
+            yoksa satır hiç çizilmiyor. */}
       </View>
 
       {processing && <ScanOverlay note={progressTxt || undefined} />}
@@ -382,11 +385,6 @@ const styles = StyleSheet.create({
   cornerBL: { bottom: 0, left: 0, borderBottomWidth: 3, borderLeftWidth: 3, borderBottomLeftRadius: 12 },
   cornerBR: { bottom: 0, right: 0, borderBottomWidth: 3, borderRightWidth: 3, borderBottomRightRadius: 12 },
   // Sits under the box in normal flow now, so it can never land on the buttons.
-  frameHint: {
-    flexDirection: "row", alignItems: "center", gap: 6,
-    backgroundColor: "rgba(0,0,0,0.55)", paddingHorizontal: spacing.md, paddingVertical: 7, borderRadius: radius.pill,
-  },
-  frameHintTxt: { ...T.bodySb, color: colors.onDark },
   processing: {
     ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(15,27,51,0.82)",
     alignItems: "center", justifyContent: "center",
