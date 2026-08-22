@@ -1795,6 +1795,64 @@ Fikir kötü değildi; zamanlaması kötüydü. Yeniden açılırsa yukarıdaki 
 tuzağıyla (veri gelmeden konum ölçülemez, parametre bir kez tüketilmeli)
 birlikte düşünülsün.
 
+## ⚠️ BURADAN BAŞLA — 22 Ağustos oturumu KÖTÜ BİTTİ
+
+Ev sahibinin sözü: *"Düzeltmeye çalıştığın birçok şey düzelmemiş, üstüne
+bozulmuş. Dün geceden beri yapmaya çalışıyoruz ve olmuyor, daha çok
+bozuyoruz."* Doğruydu. Oturum burada kesildi.
+
+### Ne oldu
+
+Cihazda **doğrulanmadan** yapılan arayüz düzeltmeleri üst üste bozuk çıktı.
+Aynı sınıfa **dört kez** düşüldü:
+
+1. Kaydırma ipucu — "düzeltildi" denildi, cihazda satırlar donmaya devam etti
+2. Geri alma şeridinin klavye telafisi — **iki farklı formül**, ikisi de
+   şeridi ekranın ortasına çıkardı
+3. Geri tuşu — kontrol doğruydu ama `BackHandler`a konmuştu; Android'de
+   `Modal` açıkken geri tuşu oraya hiç uğramıyor
+4. **Çift "Ödeştik" düğmesi** — bir bloğu taşımak için yazılan betik düğmeyi
+   çoğalttı; derleme ve tip kontrolü ikisini de geçti
+
+### Bir sonraki oturum İÇİN KURAL
+
+> **Arayüz değişikliği cihazda görülmeden "yapıldı" sayılmaz.**
+> `tsc` ve `eslint` temiz olması hiçbir şey kanıtlamıyor — yukarıdaki dördü
+> de ikisini geçti. Tek geçerli kanıt telefondaki ekran görüntüsü.
+
+Ve ikinci kural, daha sert olanı:
+
+> **Aynı hatayı ikinci kez düzeltmeye çalışma.** Bir düzeltme cihazda bir kez
+> yanlış çıktıysa, ikinci tahmin değil ÖLÇÜM gerekir. Geri alma şeridinde
+> iki tahmin arka arkaya yanlış çıktı ve doğru cevap "sayı eklemek" değil
+> "şeridi kısalan kabın içine koymak"tı — yani sorun aritmetikte değil
+> yapıdaydı.
+
+### v56'da DOĞRULANMAMIŞ olanlar
+
+Bunlar telefonda test edilmedi; **çalıştıkları varsayılmayacak**:
+
+- Klavye payı (`KeyboardAvoidingView behavior="padding"` — 4 ekran + alt sayfalar)
+- Geri tuşunun klavyeyi kapatması (`onRequestClose`a taşındı)
+- Geri alma şeridinin konumu ve sönümlenmesi
+- Açılma animasyonları (`FadeInDown`/`FadeOutUp` — Profil, Kasa)
+- Düzenli gider listelerinin animasyonu
+- Kasa başlığındaki "Son ödeşmeden bu yana · N gün"
+- Anasayfa sayacı
+
+Ev sahibi v56'yı kurdu ve **"diğer animasyonlar zaten çalışmıyor"** dedi.
+Yani en az bir kısmı hâlâ bozuk. **İlk iş bunları tek tek cihazda ölçmek**,
+yeni bir şey eklemek değil.
+
+### Çalıştığı DOĞRULANMIŞ olanlar (v55'te cihazda görüldü)
+
+Kategori otomatik doldurma · mavi ipucu kartının kenar boşluğu · kamera
+lekelerinin gitmesi ve rehber konumu · fiyat ipucunun tam eşleşme istemesi ·
+kısa market adları · dairenin işaretlemesi ve satırın işaretlememesi ·
+çip şeridinin normal yüksekliği · Kasa ekstre açılımının içeriği.
+
+---
+
 ## PARK EDİLENLER — 22 Ağustos: ev sahibi OLGUNLAŞMA istiyor
 
 Ev sahibinin sözü ve bu bir öncelik kararıdır:
