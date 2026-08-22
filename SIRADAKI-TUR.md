@@ -1325,6 +1325,56 @@ tek iz**. Genele açmadan önce alınacak: tanınmayan marketler için zaten
 isimden renk türeten bir havuz var (`FALLBACK_COLORS`) ve bu dükkân da oradan
 alsın. Kayıp, evin kendi rozetinin rengi değişmesi; bedeli bir kez.
 
+### FİŞTEKİ ÖTEKİ VERİLER — konuşuldu ama BELGEYE GİRMEMİŞTİ
+
+Ev sahibi 22 Ağustos'ta bunun daha önce konuşulduğunu hatırlattı ve haklıydı:
+karar konuşulmuş, hiçbir yere yazılmamış. **Yazılmayan karar bir sonraki
+oturumda yok sayılıyor** — bu maddenin buraya yazılma sebebi de bu.
+
+Bugünkü OCR şeması yalnızca şunu döndürüyor:
+`merchant · date · total · currency · items[]`. **Ödeme yöntemi, şube adresi,
+fiş numarası İSTENMİYOR**, dolayısıyla kullanıcı fişin tamamını çekse bile
+gelmiyor.
+
+**Karar: şimdi toplanmıyor.** Kullanılacak yeri olmayan veriyi toplamak hem
+gizlilik yükü hem "boş kalabilme cesareti" kuralına aykırı. Tetikleyicileri
+belli ve ikisi de yol haritasında zaten var:
+
+- **Ödeme yöntemi (nakit / kart)** → **ödeyen ile ekleyen ayrıldığında**
+  anlam kazanıyor. "Kemal nakit ödedi" kaydı o zaman doğrulanabilir bir şey
+  oluyor; bugün yazılacak yeri yok.
+- **Şube / adres** → fiyatı **şubeye göre** kıyaslamak istediğimizde. Aynı
+  zincirin iki şubesi farklı fiyat verebiliyor ve bugün ikisi tek markete
+  düşüyor. Tetikleyici: aynı zincirden birden çok şubede alışveriş yapan bir
+  ev çıkması.
+
+Genele açmadan önce alınabilir; ikisi de OCR isteminde birer alan, ek çağrı
+maliyeti yok.
+
+### UZUN FİŞ — 2000 PİKSEL YETİYOR MU, ÖLÇÜLMEDİ
+
+`RECEIPT_MAX_EDGE = 2000` (uzun kenar). 30 cm'lik bir fiş tam boy çekilip
+2000 piksele indirildiğinde santimetre başına ~66 piksel kalıyor; termal fiş
+yazısı ~2,5 mm, yani karakter başına ~16 piksel. Okunabilir ama SINIRDA.
+50 cm'lik bir fişte ~10 piksele iniyor ve büyük olasılıkla kırılıyor.
+
+`photo.ts` bunun ölçülmediğini zaten yazıyor: *"1600 ve 1200 muhtemelen de
+çalışır ama bunu aynı fişi üç boyutta taratıp çıkan kalem sayısını
+karşılaştırarak doğrulamak gerekiyor."* Ölçüm hiç yapılmadı.
+
+**Öneri — sınırı UZUN KENARDAN değil ALANDAN koyalım.** Sebep: kısıt toplam
+piksel değil, santimetre başına piksel. Karşılaştır:
+
+    2000 × 1300 (normal fotoğraf)  = 2,6 MP
+    3000 ×  900 (uzun dar fiş)     = 2,7 MP
+
+Yükleme maliyeti aynı, okunabilirlik kat kat farklı. Yani dar ve uzun bir
+görüntüde uzun kenarı 3000'e çıkarmak bedava.
+
+**Yapılmadan önce ölçülecek:** bir uzun fiş, iki boyutta (2000 / 3000), çıkan
+kalem sayısı ve tarihin gelip gelmediği karşılaştırılacak. İki OCR çağrısı
+eder ve bu soruyu kalıcı olarak kapatır.
+
 ### GÜVENLİK — genele açmadan önce, sırayla
 
 Kod tarafı denetlendi. Ayrıntılı gerekçe ve tehdit sıralaması ayrı belgede;

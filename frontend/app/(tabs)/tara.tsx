@@ -289,7 +289,10 @@ export default function Tara() {
         </View>
         <View style={styles.frameHint}>
           <Ionicons name="scan-outline" size={16} color={colors.onDark} />
-          <Text style={styles.frameHintTxt}>Fişi çerçeveye yerleştir</Text>
+          {/* "Çerçeveye yerleştir" DEĞİL "tamamı görünsün". Tarih fişin ya en
+              üstünde ya en altında; yarısını çeken kullanıcı tarihi de
+              kaybediyor ve bunu ancak inceleme ekranında fark ediyor. */}
+          <Text style={styles.frameHintTxt}>Fişin tamamı görünsün</Text>
         </View>
       </View>
 
@@ -347,15 +350,32 @@ const styles = StyleSheet.create({
   rootLight: { flex: 1, backgroundColor: colors.surface },
   // Centre the guide inside the space *above* the button row — centring it in
   // the whole screen pushed the lower corners down among the buttons.
+  /* ÇERÇEVE ARTIK EKRANIN TAMAMI.
+     Önce ekranın ortasında %74 genişlikte, en/boy 0,62'lik bir kutuydu —
+     yani neredeyse kare. Gerçek bir fiş 8 cm eninde ve 30 cm'i geçebiliyor,
+     oranı ~0,27. O kutuya uzun bir fişi sığdırmaya çalışan insan ister
+     istemez GERİ ÇEKİLİYOR ve yazı okunmaz hâle geliyordu. Ev sahibi bunu
+     bilerek fişin yalnızca üst kısmını çekiyordu; bilmeyen kullanıcı ya
+     fişin yarısını ya da okunmayacak kadar küçük bir görüntüyü gönderiyor.
+
+     Kritik nokta: bu çerçeve bir KIRPMA DEĞİL, sadece bir rehber —
+     fotoğrafın tamamı gönderiliyor. Yani kutuyu küçük tutmanın hiçbir
+     kazancı yoktu, kaybı vardı.
+
+     Köşeler artık ekranın kenarlarına yakın ve alt köşeler denetimlerin
+     ALTINDA kalıyor: "bütün ekranı kullan" mesajı ancak böyle okunuyor. */
   frame: {
     ...StyleSheet.absoluteFillObject,
     alignItems: "center",
-    justifyContent: "center",
+    justifyContent: "flex-end",
     paddingBottom: CONTROLS_HEIGHT,
     paddingTop: spacing.xl,
     gap: spacing.lg,
   },
-  frameBox: { width: "74%", aspectRatio: 0.62, position: "relative" },
+  /* Kenarlardan 14 piksel içeride: köşeler ekranın kendi kenarına
+     yapışırsa çerçeve olduğu anlaşılmıyor, çentik ve köşe yuvarlaklığıyla
+     kavga ediyor. Denetimler bu katmanın ÜSTÜNDE çiziliyor. */
+  frameBox: { ...StyleSheet.absoluteFillObject, margin: 14, position: "absolute" },
   corner: { position: "absolute", width: CORNER, height: CORNER, borderColor: colors.onDark },
   cornerTL: { top: 0, left: 0, borderTopWidth: 3, borderLeftWidth: 3, borderTopLeftRadius: 12 },
   cornerTR: { top: 0, right: 0, borderTopWidth: 3, borderRightWidth: 3, borderTopRightRadius: 12 },
