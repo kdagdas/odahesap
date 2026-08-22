@@ -570,10 +570,19 @@ export function useScrollPad(opts?: { tabs?: boolean; extra?: number }) {
  * Revolut ve Monzo'nun imzasi. Tek sayi degistigi icin liste yeniden
  * cizilmiyor -- kasma riski yok.
  */
-export function useCountUp(value: number, ms = 550) {
+export function useCountUp(value: number, ms = 550, hazir = true) {
   const [gosterilen, setGosterilen] = React.useState(value);
   const onceki = React.useRef(value);
   React.useEffect(() => {
+    /* VERİ HENÜZ GELMEDİYSE SAYMIYOR, sessizce yerine oturuyor.
+       Tuzak şuydu: Anasayfa açılırken `stats` null, yani rakam 0'dan
+       başlıyor. Veri gelince 0 → 436,10 bir DEĞİŞİM gibi görünüyor ve sayaç
+       her açılışta çalışıyordu. Oysa kural şu: sayaç senin bir eyleminin
+       sonucunu gösterir, ekranın yüklenmesini değil.
+
+       `hazir` false iken değer doğrudan yazılıyor ve kıyas noktası da
+       güncelleniyor; ilk gerçek veri geldikten SONRAKİ değişimler sayıyor. */
+    if (!hazir) { onceki.current = value; setGosterilen(value); return; }
     const bas = onceki.current;
     if (bas === value) return;
     const t0 = Date.now();
@@ -585,7 +594,7 @@ export function useCountUp(value: number, ms = 550) {
       if (p >= 1) { clearInterval(id); onceki.current = value; setGosterilen(value); }
     }, 16);
     return () => clearInterval(id);
-  }, [value, ms]);
+  }, [value, ms, hazir]);
   return gosterilen;
 }
 
@@ -2649,9 +2658,20 @@ export function PrimaryButton({
   const kisik = tone === "muted";
   const fg = kisik ? colors.inkSecondary : colors.onBrand;
   return (
+    /* BASMA GERİ BİLDİRİMİ — uygulamanın en önemli dokunuşları bu düğmede
+       ("Kaydet", "Öde", "Ödeştik") ve hiçbir tepkisi yoktu. Parmağını
+       kaldırana kadar bir şey olup olmadığını bilmiyorsun; ağ yavaşsa
+       insan ikinci kez basıyor.
+
+       Bu bir animasyon değil REFLEKS: 60 ms'lik hafif bir sönme, gözün
+       "değdi" diyebileceği en kısa geri bildirim. `android_ripple` Android'in
+       kendi dilini konuşuyor; `overflow: hidden` dalgayı hapın içinde
+       tutuyor, yoksa köşelerden taşıyor. */
     <Pressable onPress={onPress} disabled={disabled}
-               style={[styles.primary, kisik && styles.primaryMuted,
-                       disabled && { opacity: 0.5 }, style]} testID={testID}>
+               android_ripple={{ color: kisik ? colors.divider : "rgba(255,255,255,0.18)" }}
+               style={({ pressed }) => [styles.primary, kisik && styles.primaryMuted,
+                       disabled && { opacity: 0.5 },
+                       pressed && !disabled && { opacity: 0.85 }, style]} testID={testID}>
       {icon && <Ionicons name={icon} size={18} color={fg} style={{ marginRight: 8 }} />}
       <Text style={[styles.primaryTxt, { color: fg }]}>{label}</Text>
     </Pressable>
@@ -3270,6 +3290,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.brand, borderRadius: radius.pill, minHeight: 54,
     alignItems: "center", justifyContent: "center", flexDirection: "row",
     paddingHorizontal: spacing.xl,
+    // Dalga hapın içinde kalsın; yoksa köşelerden taşıyor.
+    overflow: "hidden",
   },
   primaryMuted: {
     backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.borderStrong,

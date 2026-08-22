@@ -13,7 +13,7 @@ import {
   Money, IconPill, CategoryIcon, categoryLabel, splitBadge, splitSummary, PulseDot,
   useAramaIpucu,
   Donut, formatEUR, formatEURShort, useScrollPad, useBasaSar, yenileme,
-  ayDe, buAy, degisimTxt,
+  ayDe, buAy, degisimTxt, useCountUp,
 } from "@/src/ui";
 import { ConfirmSheet } from "@/app/duzenli";
 import {
@@ -230,6 +230,8 @@ export default function Panel() {
   /* Yer tutucu evin kendi verisinden — gerekçesi `useAramaIpucu` içinde.
      Örnek kişi BEN değil, bir EV ARKADAŞI: kendi adını aramak kimsenin
      aklına gelmez, aranan hep öteki taraftır. */
+  // `hazir` = veri geldi mi. Yükleme sırasındaki 0 bir değişim sayılmıyor.
+  const heroSayac = useCountUp(stats?.total ?? 0, 550, !!stats);
   const aramaIpucu = useAramaIpucu(
     members.find((m) => m.user_id !== user?.user_id)?.name);
   const firstName = (id?: string | null) => member(id)?.name?.split(" ")[0] || "?";
@@ -289,7 +291,17 @@ export default function Panel() {
           }
         >
           <Text style={styles.heroLabel}>{ayDe(stats?.month || buAy())} EV HARCAMASI</Text>
-          <Text style={styles.heroValue}>{formatEUR(stats?.total ?? 0)}</Text>
+          {/* SAYI DEĞİŞTİĞİNDE SAYARAK GİDİYOR, açılışta değil.
+              Kasa'daki sayaçla aynı gerekçe ve aynı sınır: orada da sayı
+              senin bir eyleminin sonucu değiştiği için sayıyor. Uygulamayı
+              açtığında hiçbir şey olmadı — o an sayarak gelen bir rakam geri
+              bildirim değil süsleme olurdu.
+
+              Ama fiş kaydedip buraya döndüğünde rakam GERÇEKTEN değişiyor ve
+              orada sayması "az önce sen yaptın" diyor. `useCountUp` önceki
+              değeri hatırladığı için bu ayrımı kendisi yapıyor: ilk çizimde
+              hedefle başlıyor, sonraki değişimlerde sayıyor. */}
+          <Text style={styles.heroValue}>{formatEUR(heroSayac)}</Text>
           {/* Trend bir HAP değil bir SATIR: ana rakamın hemen altında, aynı
               sola dayalı, yani öznesini komşuluktan alıyor. Ortada duran ve
               öznesiz bir rozet "neyin %12'si" sorusunu bırakıyordu.
