@@ -1915,6 +1915,14 @@ export function BottomSheet({
      AYNI geometride olmasi -- `statusBarTranslucent` + `navigationBarTranslucent`
      tam olarak bunu yapiyor: dialog da kenardan kenara ciziliyor. */
   const insets = useSafeAreaInsets();
+  /* Klavye durumu `Modal`in kendi kapsaminda: `onRequestClose` geri cagrisi
+     bir kez kuruluyor ve eski degeri yakalamamali, o yuzden `ref`. */
+  const klavyeAcikModal = React.useRef(false);
+  React.useEffect(() => {
+    const ac = Keyboard.addListener("keyboardDidShow", () => { klavyeAcikModal.current = true; });
+    const kapa = Keyboard.addListener("keyboardDidHide", () => { klavyeAcikModal.current = false; });
+    return () => { ac.remove(); kapa.remove(); };
+  }, []);
   return (
     /* `animationType="slide"` KULLANILMIYOR: o, pencerenin TAMAMINI
        kaydiriyordu -- karartma da dahil. Sonuc ekranda goruluyordu: karartma
