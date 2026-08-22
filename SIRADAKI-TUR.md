@@ -1636,6 +1636,52 @@ göstermek istediğimiz an.
 
 ---
 
+## TİTREŞİM — yapılacak, DÖRT YER (yeni bağımlılık)
+
+`expo-haptics` **kurulu değil**, yani prebuild + yeni APK gerektiriyor. Buna
+değer, çünkü titreşim **bakmadan** hissedilen tek geri bildirim ve bu
+uygulamanın kullanıcısı markette, elinde telefon, gözü rafta.
+
+| Nerede | Tür | Niçin |
+|---|---|---|
+| **Kaydırma silme EŞİĞİNİ geçince** | `Medium` | **En değerlisi.** "Bırakırsan gider" bilgisi parmağa geçiyor; ekrana bakmaya gerek kalmıyor. Eşik göstergesi ("Sil" → "Bırak") zaten var ama gözle okunuyor |
+| Alınacaklar dairesine dokunma | `Light` | "aldım" hissi; en sık yapılan eylem |
+| Fiş kaydedildi | `Success` | 10-20 saniyelik bir işin bittiğini söylüyor |
+| Ödeşme kaydedildi | `Success` | Geri alınması zor bir eylem |
+
+**Nereye KONMAYACAK: her düğmeye.** Her basışta titreyen telefon bir hafta
+içinde ayarlardan kapatılıyor — ve o an yukarıdaki dördü de kaybediliyor.
+Titreşimin değeri seyrekliğinden geliyor.
+
+**Ses REDDEDİLDİ.** Öğretme uygulamaları sesi kullanıyor çünkü dikkat onların
+ürünü. Burada dikkat ürün değil: kullanıcı markette, otobüste, ev
+arkadaşının yanında. Para uygulamasında ses oyun gibi hissettiriyor ve
+kullanıcıların çoğu sistem seslerini zaten kapalı tutuyor. Titreşim aynı işi
+sessizce yapıyor.
+
+---
+
+## ANASAYFADAN ANALİZE — BÖLÜME İNMEK
+
+Ev sahibi üç kez sordu, o yüzden gerekçesiyle yazılıyor: Anasayfa'daki
+"Nereye Gitti" kartına dokunmak Analiz sayfasını açıyor **ama en üstten**, ve
+halka orada görünmüyor — yani dokunduğu şeyi görmek için bir de kaydırması
+gerekiyor. Kapı doğru yere açılıyor ama yanlış yerden başlıyor.
+
+**Yapılabilir ve iş bir ekranla sınırlı:** Anasayfa bir parametre gönderir
+(`?bolum=nereye`), Analiz açılışta o bölümün konumunu ölçüp oraya kaydırır
+(`onLayout` ile y konumu + `scrollTo`). Yeni mekanik yok.
+
+**İki tuzağı var ve ölçülmeden yapılmamalı:**
+1. Analiz sayfası açılışta veri çekiyor; konum veri gelmeden ölçülürse
+   kaydırma yanlış yere gider. Ölçüm veri geldikten SONRA yapılmalı.
+2. Kullanıcı geri gelip tekrar açtığında yine oraya inmeli mi, yoksa
+   yalnızca o dokunuştan gelirken mi? Parametre bir kez tüketilmeli.
+
+Park edildi — olgunlaşma dönemi bitince alınacak.
+
+---
+
 ## PARK EDİLENLER — 22 Ağustos: ev sahibi OLGUNLAŞMA istiyor
 
 Ev sahibinin sözü ve bu bir öncelik kararıdır:
