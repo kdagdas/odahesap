@@ -1687,6 +1687,39 @@ Bir sonraki APK'da bu iki madde YOK. Yeniden denenirlerse önce cihazda
 
 ---
 
+## FLAŞ — yazıldı, ŞİMDİLİK EKLENMEDİ
+
+Kamera ekranına flaş düğmesi eklendi ve **aynı turda geri alındı**. Ev
+sahibinin gerekçesi: *"Şu an doğru çalışıp çalışmayacağından emin değilim,
+bu yüzden eklemek istemiyorum."* Olgunlaşma dönemiyle tutarlı.
+
+Yapılmışı şuydu ve yeniden istenirse kalıbı hazır: `CameraView`e
+`enableTorch={flas}`, sağ üstte tek düğme, **varsayılan kapalı**, ekrandan
+çıkınca sönüyor. Sürekli ışık (deklanşörle senkron patlama değil), çünkü
+kullanıcının çerçeveyi ışıkla birlikte görüp hizalaması gerekiyor.
+
+**Gerekçesi hâlâ geçerli:** fiş en çok market çıkışında çekiliyor ve orası
+nadiren aydınlık; termal fiş zaten düşük kontrastlı, karanlıkta OCR'ın
+okuduğu kalem sayısı düşüyor. **Tetikleyici:** cihazda gerçekten karanlıkta
+bir fiş taranıp okuma kalitesi ölçüldüğünde.
+
+## KASA EKSTRESİNDE "SON ÖDEŞMEDEN BU YANA" BAŞLIĞI — GERİ ALINDI
+
+Ekstre bloğunun üstüne pencereyi söyleyen bir satır konmuştu. İki biçim
+denendi (normal cümle, sonra overline) ve ev sahibi ikisini de beğenmedi:
+*"hiç hoşuma gitmedi, orayı tamamen eski hâline çevirelim."*
+
+Blok eski hâline döndü. **Ama altındaki sorun duruyor ve çözülmedi:**
+Anasayfa "Sana düşen 145,37" derken Kasa aynı anda "Ağustos'ta sana düşen
+142,45" diyor. İkisi de doğru — Anasayfa takvim ayını, ekstre ödeşilmemiş
+olanı gösteriyor — ama ekran bunu söylemiyor ve ev sahibinin defalarca
+takıldığı yer burası.
+
+**Başka bir çözüm düşünülecek.** Denenmiş ve reddedilmiş olan: bloğun üstüne
+açıklayıcı satır koymak. Olası yönler: etiketin kendisini değiştirmek
+("Ağustos'ta" demeyi bırakmak), ya da farkı bir kez, dokunulunca açılan bir
+açıklamada anlatmak.
+
 ## TİTREŞİM — yapılacak, DÖRT YER (yeni bağımlılık)
 
 `expo-haptics` **kurulu değil**, yani prebuild + yeni APK gerektiriyor. Buna

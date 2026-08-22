@@ -12,7 +12,7 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 
 import { apiGet, apiPost, apiDelete } from "@/src/api";
 /* Açılma geçişleri: gerekçesi `liste.tsx` içinde. */
-import Animated, { LinearTransition, FadeIn, FadeOut } from "react-native-reanimated";
+import Animated, { LinearTransition, FadeInDown, FadeOutUp } from "react-native-reanimated";
 import { useAuth } from "@/src/auth";
 import { useHousehold } from "@/src/household";
 import {
@@ -623,25 +623,6 @@ export default function Denge() {
                  vurgunun kendisi "seçili" ile "açık" arasında ayrım
                  yapmıyor. */
               <View style={styles.ekstre}>
-                {/* PENCEREYI SOYLEYEN TEK SATIR.
-                    Ev sahibinin defalarca takildigi kafa karisikligi buradaydi
-                    ve sebebi bir hesap hatasi degil bir CUMLE hatasiydi:
-                    Anasayfa "Sana dusen 145,37" diyor, Kasa ayni anda
-                    "Agustos'ta sana dusen 142,45". Ikisi de dogru -- Anasayfa
-                    takvim ayini, ekstre ise ODESILMEMIS olani (acik donem)
-                    gosteriyor. Ama Kasa'nin etiketi "Agustos'ta" diyerek ay
-                    penceresi IDDIA ediyor ve odesilmemis rakami gosteriyordu.
-                    Ayni kelimeler, iki sayi, hicbir aciklama.
-
-                    Cozum sayiyi degistirmek DEGIL: ikisi de dogru sayilar ve
-                    ikisi de gerekli. Cozum blogu dogru cercevelemek. Ay
-                    etiketleri yerinde kaliyor cunku blok ay ay okunuyor; ustune
-                    konan bu satir hepsinin hangi pencerede oldugunu soyluyor.
-                    Acik donem zaten son odesmede basliyor, yani cumle bir
-                    yorum degil bir olgu. */}
-                <Text style={styles.ekstrePencere} testID="ekstre-pencere">
-                  Son ödeşmeden bu yana
-                </Text>
                 {Math.abs(ekstre.carried) > 0.005 && (
                   <EkstreSatir
                     etiket="Önceki aylardan"
@@ -720,8 +701,8 @@ export default function Denge() {
                     hızda olmalı. */}
                 {acikSatir && ekstre && (
                   <Animated.View layout={LinearTransition.duration(200)}
-                                 entering={FadeIn.duration(180)}
-                                 exiting={FadeOut.duration(140)}>
+                                 entering={FadeInDown.duration(220)}
+                                 exiting={FadeOutUp.duration(180)}>
                   <Card title={acilimBaslik} style={styles.mx}
                         action="Kapat" onAction={() => setAcikSatir(null)}
                         testID="ekstre-acilim">
@@ -756,8 +737,8 @@ export default function Denge() {
                           {acikAy === a.month && (
                             <Animated.View style={styles.hareketler}
                                            layout={LinearTransition.duration(200)}
-                                           entering={FadeIn.duration(180)}
-                                           exiting={FadeOut.duration(140)}>
+                                           entering={FadeInDown.duration(220)}
+                                           exiting={FadeOutUp.duration(180)}>
                               {(a.lines || []).map((l) => hareketSatiri(l, a.month))}
                             </Animated.View>
                           )}
@@ -1012,6 +993,9 @@ export default function Denge() {
                         <PrimaryButton label="Ödeştik" icon="checkmark-done"
                                        onPress={() => setMode("close")}
                                        tone="muted" testID="close-period-btn" />
+                        <PrimaryButton label="Ödeştik" icon="checkmark-done"
+                                       onPress={() => setMode("close")}
+                                       tone="muted" testID="close-period-btn" />
                         {/* SON ÖDEŞMEDEN BU YANA EVİN TOPLAMI — kararın
                             alındığı yerde.
 
@@ -1208,19 +1192,6 @@ const styles = StyleSheet.create({
   heroValue: { ...T.hero, marginTop: spacing.xs },
   heroHint: { ...T.body, color: colors.onDarkMuted, marginTop: 2 },
   ekstre: { marginTop: spacing.md, gap: 2 },
-  /* ÜSLUP OVERLINE — ve bu bir düzeltme.
-     Önce normal cümle puntosundaydı ("bu bir bölüm başlığı değil, blogun
-     kendisi hakkında bir not" diye yazmıştım). Cihazda yanlış çıktı: ekstre
-     bloğundaki her satır "etiket ......... tutar" biçiminde, ve aynı hizada
-     duran tutarsız bir cümle **sağında rakam bekleyen boş bir satır** gibi
-     okunuyor. Ev sahibinin sözü: "sanki karşısına bir rakam yazılacakmış da
-     yazılmamış gibi duruyor."
-
-     Büyük harf ve harf aralığı burada ağırlık vermiyor, TÜR değiştiriyor:
-     göz onu satır değil BAŞLIK olarak ayırıyor ve başlıkların sağında tutar
-     aramıyor. Uygulamanın kendi sözlüğü de bu — "KASA", "ALINACAKLAR",
-     "EVDE NELER OLDU" hepsi overline. */
-  ekstrePencere: { ...overline, color: colors.onDarkMuted, marginBottom: spacing.sm },
   ekstreRow: { flexDirection: "row", alignItems: "center", gap: spacing.md },
   /* Dokunulabilir satır biraz nefes alıyor ve içeri kayıyor: vurgu bir kutu
      olarak çizildiğinde etiketin kutuya yapışmaması için. Negatif kenar
