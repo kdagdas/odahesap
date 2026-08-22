@@ -1108,15 +1108,40 @@ export function OdesmeUyarisi({
  * Süre 5 saniye: 3 saniye "gördüm ama yetişemedim" üretiyor, 10 saniye
  * ekranda unutulmuş bir kutu gibi duruyor.
  */
+/**
+ * Klavye yüksekliği — kapalıysa 0.
+ *
+ * Geri alma şeridi için gerekiyor: şerit kaydırma alanının DIŞINDA ve ekranın
+ * dibine yapışık. Klavye açıkken onun ALTINDA kalıyordu, yani beş saniyelik
+ * geri alma penceresi görünmeden geçiyordu. Ev sahibi Alınacaklar'da yakaladı:
+ * madde yazarken bir şey siliyorsun ve şeridi hiç görmüyorsun.
+ *
+ * Süre kritik olduğu için bu bir süsleme değil: görünmeyen bir geri alma
+ * penceresi, olmayan bir geri alma penceresidir.
+ */
+function useKlavyeYuksekligi(): number {
+  const [yukseklik, setYukseklik] = React.useState(0);
+  React.useEffect(() => {
+    const ac = Keyboard.addListener("keyboardDidShow",
+      (e) => setYukseklik(e.endCoordinates?.height ?? 0));
+    const kapa = Keyboard.addListener("keyboardDidHide", () => setYukseklik(0));
+    return () => { ac.remove(); kapa.remove(); };
+  }, []);
+  return yukseklik;
+}
+
 export function GeriAlSeridi({
   gorunur, metin, onGeriAl, alt = 0, testID,
 }: {
   gorunur: boolean; metin: string; onGeriAl: () => void;
   alt?: number; testID?: string;
 }) {
+  const klavye = useKlavyeYuksekligi();
   if (!gorunur) return null;
+  /* Klavye açıkken şerit onun ÜSTÜNE çıkıyor. Klavye kapalıyken `klavye`
+     sıfır, yani eski davranış birebir korunuyor. */
   return (
-    <View style={[styles.geriAlKap, { bottom: alt + spacing.lg }]} pointerEvents="box-none">
+    <View style={[styles.geriAlKap, { bottom: alt + spacing.lg + klavye }]} pointerEvents="box-none">
       <View style={styles.geriAl} testID={testID}>
         <Text style={styles.geriAlTxt} numberOfLines={1}>{metin}</Text>
         <Pressable onPress={onGeriAl} hitSlop={10} testID={testID ? `${testID}-btn` : undefined}>
