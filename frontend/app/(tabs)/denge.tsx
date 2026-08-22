@@ -1194,9 +1194,19 @@ const styles = StyleSheet.create({
   heroValue: { ...T.hero, marginTop: spacing.xs },
   heroHint: { ...T.body, color: colors.onDarkMuted, marginTop: 2 },
   ekstre: { marginTop: spacing.md, gap: 2 },
-  /* Uslup OVERLINE degil: bu bir bolum basligi degil, blogun kendisi hakkinda
-     bir not. Buyuk harf ve harf araligi ona hak etmedigi bir agirlik verirdi. */
-  ekstrePencere: { ...T.caption, color: colors.onDarkMuted, marginBottom: 4 },
+  /* ÜSLUP OVERLINE — ve bu bir düzeltme.
+     Önce normal cümle puntosundaydı ("bu bir bölüm başlığı değil, blogun
+     kendisi hakkında bir not" diye yazmıştım). Cihazda yanlış çıktı: ekstre
+     bloğundaki her satır "etiket ......... tutar" biçiminde, ve aynı hizada
+     duran tutarsız bir cümle **sağında rakam bekleyen boş bir satır** gibi
+     okunuyor. Ev sahibinin sözü: "sanki karşısına bir rakam yazılacakmış da
+     yazılmamış gibi duruyor."
+
+     Büyük harf ve harf aralığı burada ağırlık vermiyor, TÜR değiştiriyor:
+     göz onu satır değil BAŞLIK olarak ayırıyor ve başlıkların sağında tutar
+     aramıyor. Uygulamanın kendi sözlüğü de bu — "KASA", "ALINACAKLAR",
+     "EVDE NELER OLDU" hepsi overline. */
+  ekstrePencere: { ...overline, color: colors.onDarkMuted, marginBottom: spacing.sm },
   ekstreRow: { flexDirection: "row", alignItems: "center", gap: spacing.md },
   /* Dokunulabilir satır biraz nefes alıyor ve içeri kayıyor: vurgu bir kutu
      olarak çizildiğinde etiketin kutuya yapışmaması için. Negatif kenar

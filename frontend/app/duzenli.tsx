@@ -19,6 +19,9 @@ import { Ionicons } from "@expo/vector-icons";
 import { api, apiGet, apiPost } from "@/src/api";
 import { useAuth } from "@/src/auth";
 import { useHousehold } from "@/src/household";
+/* Liste geçişleri: gerekçesi `liste.tsx` içinde yazılı — `LayoutAnimation`
+   Yeni Mimari'de çalışmıyor, Reanimated çalışıyor. */
+import Animated, { LinearTransition, FadeIn, FadeOut } from "react-native-reanimated";
 import {
   ScreenHeader, Sheet, Card, Divider, Chip, SplitPicker, splitAll,
   BottomSheet, TabSwitch, HintCard, formatEUR, todayISO, useScrollPad, type Split,
@@ -135,7 +138,15 @@ export default function Duzenli() {
         <Sheet>
           {/* Aciklama BASLIKTAN cikti: bir kez okunacak bir cumle,
               kalici olarak ekranin tepesini isgal etmemeli. */}
-          <HintCard hintKey="duzenli-nasil">Vadesi gelince sorulur. Onaylamadan hiçbir kayıt oluşmaz.</HintCard>
+          {/* İPUCU KARTI KENAR BOŞLUĞU ALDI.
+              `Sheet` yatay dolgu vermiyor — her çocuk kendi payını koyuyor
+              (`styles.body` gibi). Bu kart doğrudan `Sheet`in çocuğuydu, yani
+              ekranı BOYDAN BOYA kaplıyordu ve öteki uyarılarımızın (başı sonu
+              belli kartlar) yanında yabancı duruyordu. Ev sahibi haklıydı;
+              bilinçli bir tercih değil, atlanmış bir paydı. */}
+          <View style={styles.ipucuPay}>
+            <HintCard hintKey="duzenli-nasil">Vadesi gelince sorulur. Onaylamadan hiçbir kayıt oluşmaz.</HintCard>
+          </View>
 
           <View style={styles.body}>
             <TabSwitch
@@ -171,7 +182,10 @@ export default function Duzenli() {
                  bakista degil. */
               <View style={{ gap: spacing.md }}>
                 {bekleyen.map((r) => (
-                  <View key={r.recurring_id}
+                  <Animated.View key={r.recurring_id}
+                        layout={LinearTransition.duration(200)}
+                        entering={FadeIn.duration(180)}
+                        exiting={FadeOut.duration(140)}
                         style={[styles.dueCard, (r.days_until ?? 0) < 0 && styles.dueCardLate]}>
                     <Pressable style={styles.row} onPress={() => setEditing(r)}
                                testID={`duzenli-row-${r.recurring_id}`}>
@@ -200,7 +214,7 @@ export default function Duzenli() {
                         <Text style={styles.atlaTxt}>Atla</Text>
                       </Pressable>
                     </View>
-                  </View>
+                  </Animated.View>
                 ))}
 
                 {sonrakiler.length > 0 && (
@@ -208,7 +222,10 @@ export default function Duzenli() {
                     <Text style={styles.grupBaslik}>SONRAKİLER</Text>
                     <Card>
                       {sonrakiler.map((r, i) => (
-                        <View key={r.recurring_id}>
+                        <Animated.View key={r.recurring_id}
+                                       layout={LinearTransition.duration(200)}
+                                       entering={FadeIn.duration(180)}
+                                       exiting={FadeOut.duration(140)}>
                           {i > 0 && <Divider inset={62} />}
                           <Pressable
                             style={[styles.row, !r.active && { opacity: 0.45 }]}
@@ -227,7 +244,7 @@ export default function Duzenli() {
                             </Text>
                             <Ionicons name="chevron-forward" size={16} color={colors.inkTertiary} />
                           </Pressable>
-                        </View>
+                        </Animated.View>
                       ))}
                     </Card>
                   </>
@@ -237,12 +254,16 @@ export default function Duzenli() {
                     olurdu) ama 1.200 EUR'nun sessizce kaybolmasina da izin
                     verilmiyor: tek satirlik not. */}
                 {kacirilan.map((r) => (
-                  <View key={`missed-${r.recurring_id}`} style={styles.missed}>
+                  <Animated.View key={`missed-${r.recurring_id}`}
+                                 layout={LinearTransition.duration(200)}
+                                 entering={FadeIn.duration(180)}
+                                 exiting={FadeOut.duration(140)}
+                                 style={styles.missed}>
                     <Ionicons name="information-circle-outline" size={16} color={colors.inkSecondary} />
                     <Text style={styles.missedTxt}>
                       {ayAdiTR(r.missed_period!)} {r.name.toLocaleLowerCase("tr")} hiç kaydedilmedi
                     </Text>
-                  </View>
+                  </Animated.View>
                 ))}
               </View>
             )}
@@ -662,6 +683,7 @@ export function ConfirmSheet({
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.dark },
   page: { backgroundColor: colors.bg, flexGrow: 1 },
+  ipucuPay: { paddingHorizontal: spacing.lg, paddingTop: spacing.md },
   headBtn: {
     width: 36, height: 36, borderRadius: 18, backgroundColor: colors.darkSurface,
     alignItems: "center", justifyContent: "center",

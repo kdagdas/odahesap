@@ -300,9 +300,30 @@ export function useGeriDon(varsayilan = "/(tabs)/panel") {
      `true` döndürmek olayı burada bitiriyor; ekran odakta değilken
      dinleyici kaldırılıyor ki üst üste açılan ekranlarda yalnızca en
      üsttekinin geri tuşu çalışsın. */
+  /* Klavye açık mı — geri tuşu dinleyicisinin içinden okunuyor, o yüzden
+     `state` değil `ref`: dinleyici bir kez kuruluyor ve eski değeri
+     yakalamamalı. */
+  const klavyeAcikRef = React.useRef(false);
+  React.useEffect(() => {
+    const ac = Keyboard.addListener("keyboardDidShow", () => { klavyeAcikRef.current = true; });
+    const kapa = Keyboard.addListener("keyboardDidHide", () => { klavyeAcikRef.current = false; });
+    return () => { ac.remove(); kapa.remove(); };
+  }, []);
+
   useFocusEffect(
     React.useCallback(() => {
       const abone = BackHandler.addEventListener("hardwareBackPress", () => {
+        /* KLAVYE AÇIKSA ÖNCE O KAPANIYOR.
+           Ev sahibi düzenli giderlerde yakaladı: ad yazarken geri tuşuna
+           basınca klavye kapanacağına ALT SAYFANIN TAMAMI kapanıyor ve
+           yazdıkları gidiyordu. Klavyeyi kapatmanın tek yolu klavyenin kendi
+           aşağı oku kalıyordu.
+
+           Sebep bizdeydi: Android geri tuşu normalde önce klavyeyi kapatır,
+           ama biz olayı `true` döndürüp kendimize alıyoruz ve o adım hiç
+           çalışmıyor. Artık klavye açıkken olayı klavyeye bırakıyoruz —
+           kullanıcının beklediği sıra bu ve her Android uygulamasında böyle. */
+        if (klavyeAcikRef.current) { Keyboard.dismiss(); return true; }
         don();
         return true;
       });
@@ -2046,8 +2067,51 @@ export function TabSwitch<T extends string>({
   onDark?: boolean;
   testID?: string;
 }) {
+  /* KAPSÜL KAYARAK GEÇİYOR, ışınlanmıyor.
+     Önce seçili haptaki arka plan bir sekmeden kaybolup ötekinde beliriyordu;
+     göz "aynı nesne yer değiştirdi" diyemiyordu, iki ayrı olay görüyordu.
+     Kayan tek bir kapsül, bunun bir SEÇİM olduğunu ve neyin neyle yer
+     değiştirdiğini kelimesiz anlatıyor.
+
+     Kapsül ayrı bir katman: seçenek sayısına bölünmüş genişlikte ve seçili
+     indekse göre konumlanıyor. Yazılar üstünde duruyor, yani metin
+     animasyonla birlikte yeniden çizilmiyor -- kasma riski yok. */
+  const secili = Math.max(0, options.findIndex((o) => o.value === value));
+  const [genislik, setGenislik] = React.useState(0);
+  const kayma = React.useRef(new Animated.Value(secili)).current;
+  React.useEffect(() => {
+    Animated.timing(kayma, {
+      toValue: secili, duration: 200, useNativeDriver: true,
+    }).start();
+  }, [secili, kayma]);
+  /* Kabın iç boşluğu kapsülün DIŞINDA kalmalı: `tabs` 3, `tabsOnDark` 4
+     piksel `padding` taşıyor ve kapsül onu kaplarsa kabın kenarına yapışıp
+     hapı bozuyor. */
+  const ic = onDark ? 4 : 3;
+  const hapGenislik = genislik > 0 ? (genislik - ic * 2) / options.length : 0;
+
   return (
-    <View style={[styles.tabs, onDark && styles.tabsOnDark]} testID={testID}>
+    <View style={[styles.tabs, onDark && styles.tabsOnDark]} testID={testID}
+          onLayout={(e) => setGenislik(e.nativeEvent.layout.width)}>
+      {hapGenislik > 0 && (
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.tabKapsul,
+            onDark ? styles.tabOnDarkActive : styles.tabActive,
+            {
+              width: hapGenislik, top: ic, bottom: ic, left: ic,
+              transform: [{
+                translateX: kayma.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [0, hapGenislik],
+                  extrapolate: "clamp",
+                }),
+              }],
+            },
+          ]}
+        />
+      )}
       {options.map((o) => {
         const on = o.value === value;
         // Secili hap `brand` zeminde duruyor -> yazi `onBrand`.
@@ -2058,10 +2122,8 @@ export function TabSwitch<T extends string>({
         return (
           <Pressable
             key={o.value}
-            style={[
-              styles.tab,
-              on && (onDark ? styles.tabOnDarkActive : styles.tabActive),
-            ]}
+            // Seçili zemin artık kayan kapsülde; düğme yalnızca yazıyı taşıyor.
+            style={styles.tab}
             onPress={() => onChange(o.value)}
             testID={testID ? `${testID}-${o.value}` : undefined}
           >
@@ -3196,6 +3258,10 @@ const styles = StyleSheet.create({
      birlikte ~25 piksel) ve hedef `hitSlop` ile yukarı-aşağı 12'şer piksel
      genişliyor — parmak için ~49, göz için 25. */
   grabZone: { paddingTop: 10, paddingBottom: 10 },
+  /* Kapsül mutlak konumlu ve içeriğin ALTINDA: yazılar üstünde kalıyor. */
+  /* Köşe yuvarlaklığı kapsülün KENDİSİNDE: eskiden `tab` taşıyordu ve zemin
+     ondaydı; zemin ayrı katmana çıkınca yuvarlaklık da onunla gitti. */
+  tabKapsul: { position: "absolute", borderRadius: radius.pill },
   tabs: {
     flexDirection: "row", backgroundColor: colors.surfaceSecondary,
     borderRadius: radius.pill, padding: 3,

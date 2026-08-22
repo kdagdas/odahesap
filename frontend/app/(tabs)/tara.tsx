@@ -3,7 +3,7 @@ import {
   View, Text, StyleSheet, Pressable, ActivityIndicator, ScrollView,
   Animated, useWindowDimensions, Platform, Linking,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { Ionicons } from "@expo/vector-icons";
@@ -86,6 +86,7 @@ export default function Tara() {
   const [progressTxt, setProgressTxt] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
   const cam = useRef<CameraView>(null);
+  const insets = useSafeAreaInsets();
 
   /* İZİN EKRANA GİRİNCE SORULUYOR — düğmeye basmayı beklemeden.
      Bu sekmenin tek işi kamera; buraya gelmek zaten "fiş tarayacağım" demek.
@@ -281,7 +282,13 @@ export default function Tara() {
       <CameraView ref={cam} style={StyleSheet.absoluteFill} facing="back" />
 
       <View style={styles.frame} pointerEvents="none">
-        <View style={styles.frameBox}>
+        {/* ÜST KÖŞELER DURUM ÇUBUĞUNUN ALTINDA.
+            Çerçeve ekranın tamamına yayılınca üst köşeler saat, şarj ve
+            bildirim simgeleriyle çakıştı — iki farklı şey aynı piksellerde
+            duruyordu. Güvenli alan payı + 14 ile aşağı alındı; alt köşeler
+            denetimlerin altında kalmaya devam ediyor, "bütün ekran" mesajı
+            bozulmuyor. */}
+        <View style={[styles.frameBox, { top: insets.top + 14, bottom: 14 }]}>
           <View style={[styles.corner, styles.cornerTL]} />
           <View style={[styles.corner, styles.cornerTR]} />
           <View style={[styles.corner, styles.cornerBL]} />
@@ -378,7 +385,7 @@ const styles = StyleSheet.create({
   /* Kenarlardan 14 piksel içeride: köşeler ekranın kendi kenarına
      yapışırsa çerçeve olduğu anlaşılmıyor, çentik ve köşe yuvarlaklığıyla
      kavga ediyor. Denetimler bu katmanın ÜSTÜNDE çiziliyor. */
-  frameBox: { ...StyleSheet.absoluteFillObject, margin: 14, position: "absolute" },
+  frameBox: { ...StyleSheet.absoluteFillObject, marginHorizontal: 14, position: "absolute" },
   corner: { position: "absolute", width: CORNER, height: CORNER, borderColor: colors.onDark },
   cornerTL: { top: 0, left: 0, borderTopWidth: 3, borderLeftWidth: 3, borderTopLeftRadius: 12 },
   cornerTR: { top: 0, right: 0, borderTopWidth: 3, borderRightWidth: 3, borderTopRightRadius: 12 },
@@ -421,10 +428,18 @@ const styles = StyleSheet.create({
        sınırını çizgi değil ışık belirliyor. Deklanşörün beyaz halkası da
        aynı sebeple gölgeli — orada halka kasıtlı, çünkü deklanşör olduğunu
        o söylüyor. */
-    backgroundColor: "rgba(15,27,51,0.62)",
+    /* YARI SAYDAM ZEMİN + `elevation` = ANDROID'DE ALTIGEN LEKE.
+       Konturu kaldırırken buraya gölge eklemiştim ve cihazda düğmelerin
+       altında beyazımsı çokgen şekiller belirdi. Sebep: Android'de
+       `elevation` gölgeyi görünümün DIŞ HATTINDAN çiziyor ve zemin yarı
+       saydam olunca gölge içeriden görünüyor; yuvarlak köşelerle birleşince
+       çokgen bir leke çıkıyor.
+
+       Çözüm gölgeyi atıp zemini koyulaştırmak: şeklin sınırını dolgunun
+       kendisi çiziyor. İkonun okunurluğunu zaten `glyph` gölgesi taşıyor,
+       yani parlak bir fişin üstünde de seçiliyor. */
+    backgroundColor: "rgba(15,27,51,0.78)",
     alignItems: "center", justifyContent: "center",
-    shadowColor: colors.black, shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.35, shadowRadius: 6, elevation: 5,
   },
   // Ionicons bir metin glifi olduğu için gölge stilleri ona uygulanabiliyor.
   glyph: { textShadowColor: "rgba(0,0,0,0.65)", textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 5 },
