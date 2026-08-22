@@ -1204,12 +1204,25 @@ export function GeriAlSeridi({
   gorunur: boolean; metin: string; onGeriAl: () => void;
   alt?: number; testID?: string;
 }) {
-  const klavye = useKlavyeOrtusu();
   if (!gorunur) return null;
-  /* Klavye açıkken şerit onun ÜSTÜNE çıkıyor. Klavye kapalıyken `klavye`
-     sıfır, yani eski davranış birebir korunuyor. */
+  /* KLAVYE TELAFİSİ GERİ ALINDI — iki deneme, iki başarısızlık.
+     İlk deneme ham klavye yüksekliğini ekledi: şerit çip şeridinin üzerine,
+     ekranın ortasına çıktı. İkinci deneme "örtüşme" hesabı yaptı
+     (`klavye − pencerenin kısaldığı kadar`) ve aynı yere çıktı, çünkü
+     varsayım yanlıştı: `useWindowDimensions` bu cihazda klavye açılınca
+     KÜÇÜLMÜYOR, tam ekran yüksekliğini bildirmeye devam ediyor.
+
+     Doğru sayı `endCoordinates.height` ile bizim mutlak konumumuzun taban
+     noktası arasındaki farkta ve o fark kenardan kenara çizimle birlikte
+     cihaza göre değişiyor. Üçüncü kez tahmin etmek yerine ÇALIŞAN HÂLE
+     dönüldü.
+
+     Bilinen ve kabul edilen sınır: klavye açıkken silinen bir maddenin geri
+     alma şeridi klavyenin altında kalıyor. Küçük, çünkü klavye açıkken silme
+     nadir — madde yazarken değil, listeye bakarken siliniyor. Ayrıntı ve
+     ölçümler `SIRADAKI-TUR.md`'de. */
   return (
-    <View style={[styles.geriAlKap, { bottom: alt + spacing.lg + klavye }]} pointerEvents="box-none">
+    <View style={[styles.geriAlKap, { bottom: alt + spacing.lg }]} pointerEvents="box-none">
       <View style={styles.geriAl} testID={testID}>
         <Text style={styles.geriAlTxt} numberOfLines={1}>{metin}</Text>
         <Pressable onPress={onGeriAl} hitSlop={10} testID={testID ? `${testID}-btn` : undefined}>
@@ -2067,51 +2080,20 @@ export function TabSwitch<T extends string>({
   onDark?: boolean;
   testID?: string;
 }) {
-  /* KAPSÜL KAYARAK GEÇİYOR, ışınlanmıyor.
-     Önce seçili haptaki arka plan bir sekmeden kaybolup ötekinde beliriyordu;
-     göz "aynı nesne yer değiştirdi" diyemiyordu, iki ayrı olay görüyordu.
-     Kayan tek bir kapsül, bunun bir SEÇİM olduğunu ve neyin neyle yer
-     değiştirdiğini kelimesiz anlatıyor.
+  /* KAPSÜL ANİMASYONU GERİ ALINDI.
+     Seçili zemin ayrı bir katmana çıkarılıp kaydırılmıştı; cihazda ev sahibi
+     "geçişlerde kasıyor, takılıyor" dedi ve haklıydı. Sebebi muhtemelen
+     `SIRADAKI-TUR.md`'de sekme geçiş animasyonu için zaten yazılmış olan
+     şey: sekmeye basmak AYNI ANDA veri çekiyor (`setLoading(true)` + yeni
+     istek) ve animasyon o render fırtınasıyla yarışıyor. Reanimated'e
+     geçmemiz bu maddeyi zayıflatmıştı ama bu animasyon Reanimated değil
+     RN `Animated` idi ve `onLayout` ile yeniden ölçülüyordu.
 
-     Kapsül ayrı bir katman: seçenek sayısına bölünmüş genişlikte ve seçili
-     indekse göre konumlanıyor. Yazılar üstünde duruyor, yani metin
-     animasyonla birlikte yeniden çizilmiyor -- kasma riski yok. */
-  const secili = Math.max(0, options.findIndex((o) => o.value === value));
-  const [genislik, setGenislik] = React.useState(0);
-  const kayma = React.useRef(new Animated.Value(secili)).current;
-  React.useEffect(() => {
-    Animated.timing(kayma, {
-      toValue: secili, duration: 200, useNativeDriver: true,
-    }).start();
-  }, [secili, kayma]);
-  /* Kabın iç boşluğu kapsülün DIŞINDA kalmalı: `tabs` 3, `tabsOnDark` 4
-     piksel `padding` taşıyor ve kapsül onu kaplarsa kabın kenarına yapışıp
-     hapı bozuyor. */
-  const ic = onDark ? 4 : 3;
-  const hapGenislik = genislik > 0 ? (genislik - ic * 2) / options.length : 0;
-
+     Bu bir SÜSLEMEYDİ, bir düzeltme değil. Çalışan bir şeyi bozdu ve geri
+     alındı. Yeniden denenirse: önce veri çekmenin animasyonla çakışmaması
+     çözülmeli, sonra animasyon. */
   return (
-    <View style={[styles.tabs, onDark && styles.tabsOnDark]} testID={testID}
-          onLayout={(e) => setGenislik(e.nativeEvent.layout.width)}>
-      {hapGenislik > 0 && (
-        <Animated.View
-          pointerEvents="none"
-          style={[
-            styles.tabKapsul,
-            onDark ? styles.tabOnDarkActive : styles.tabActive,
-            {
-              width: hapGenislik, top: ic, bottom: ic, left: ic,
-              transform: [{
-                translateX: kayma.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0, hapGenislik],
-                  extrapolate: "clamp",
-                }),
-              }],
-            },
-          ]}
-        />
-      )}
+    <View style={[styles.tabs, onDark && styles.tabsOnDark]} testID={testID}>
       {options.map((o) => {
         const on = o.value === value;
         // Secili hap `brand` zeminde duruyor -> yazi `onBrand`.
@@ -2122,8 +2104,10 @@ export function TabSwitch<T extends string>({
         return (
           <Pressable
             key={o.value}
-            // Seçili zemin artık kayan kapsülde; düğme yalnızca yazıyı taşıyor.
-            style={styles.tab}
+            style={[
+              styles.tab,
+              on && (onDark ? styles.tabOnDarkActive : styles.tabActive),
+            ]}
             onPress={() => onChange(o.value)}
             testID={testID ? `${testID}-${o.value}` : undefined}
           >
@@ -3259,9 +3243,6 @@ const styles = StyleSheet.create({
      genişliyor — parmak için ~49, göz için 25. */
   grabZone: { paddingTop: 10, paddingBottom: 10 },
   /* Kapsül mutlak konumlu ve içeriğin ALTINDA: yazılar üstünde kalıyor. */
-  /* Köşe yuvarlaklığı kapsülün KENDİSİNDE: eskiden `tab` taşıyordu ve zemin
-     ondaydı; zemin ayrı katmana çıkınca yuvarlaklık da onunla gitti. */
-  tabKapsul: { position: "absolute", borderRadius: radius.pill },
   tabs: {
     flexDirection: "row", backgroundColor: colors.surfaceSecondary,
     borderRadius: radius.pill, padding: 3,

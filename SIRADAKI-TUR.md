@@ -1636,6 +1636,57 @@ göstermek istediğimiz an.
 
 ---
 
+## GERİ ALINAN İKİ DEĞİŞİKLİK — ve çıkan ders (22 Ağustos)
+
+v55'te cihazda iki "iyileştirme" bozuk çıktı ve **geri alındı**. İkisi de
+çalışan bir şeye dokunuyordu.
+
+### 1. Geri alma şeridinin klavye telafisi — İKİ DENEME, İKİ BAŞARISIZLIK
+
+- **Birinci deneme:** ham klavye yüksekliği eklendi. Şerit ekranın ortasına,
+  çip şeridinin üzerine çıktı.
+- **İkinci deneme:** "örtüşme" hesabı (`klavye − pencerenin kısaldığı kadar`).
+  Aynı yere çıktı, çünkü varsayım yanlıştı: **`useWindowDimensions` bu
+  cihazda klavye açılınca küçülmüyor**, tam ekran yüksekliğini bildirmeye
+  devam ediyor.
+
+Doğru sayı, `endCoordinates.height` ile mutlak konumun taban noktası
+arasındaki farkta ve o fark kenardan kenara çizimle birlikte cihaza göre
+değişiyor (gezinme çubuğu payı). Üçüncü kez tahmin etmek yerine çalışan hâle
+dönüldü.
+
+**Kabul edilen sınır:** klavye açıkken silinen bir maddenin geri alma şeridi
+klavyenin altında kalıyor. Küçük, çünkü klavye açıkken silme nadir — madde
+yazarken değil, listeye bakarken siliniyor.
+
+**Not:** kaydırma alanına eklenen klavye payı (`useScrollPad`) KALDI ve
+doğru. Aynı ölçüm onu destekliyor: pencere küçülmüyorsa aşağıda gerçekten yer
+açmak gerekiyor. Fazla pay zararsız (kaydırılabilir boşluk), fazla telafi ise
+görünür bir hata.
+
+### 2. Sekme kapsülünün kayması — SÜSLEMEYDİ, BOZDU
+
+Seçili zemin ayrı bir katmana çıkarılıp kaydırıldı. Cihazda "geçişlerde
+kasıyor, takılıyor". Sebebi muhtemelen bu belgede **zaten yazılı** olan şey:
+sekmeye basmak aynı anda veri çekiyor (`setLoading(true)` + yeni istek) ve
+animasyon o render fırtınasıyla yarışıyor. Reanimated'e geçmemiz bu maddeyi
+zayıflatmıştı — ama bu animasyon Reanimated değil RN `Animated` idi ve
+`onLayout` ile yeniden ölçülüyordu.
+
+### ÇIKAN KURAL
+
+> **Çalışan bir şeye dokunan değişiklik, bozuk bir şeyi düzelten
+> değişiklikle aynı bütçede değildir.** İkincisi zorunlu, birincisi lüks —
+> ve lüks olan **cihazda doğrulanmadan** girmez.
+
+Ev sahibinin sözü bu kuralın kaynağı: *"Daha iyi bir deneyim verelim derken
+daha kötü bir deneyim vermeye başladık. Bu beni korkutmaya başladı."*
+
+Bir sonraki APK'da bu iki madde YOK. Yeniden denenirlerse önce cihazda
+ölçülecek, sonra girecek.
+
+---
+
 ## TİTREŞİM — yapılacak, DÖRT YER (yeni bağımlılık)
 
 `expo-haptics` **kurulu değil**, yani prebuild + yeni APK gerektiriyor. Buna
@@ -1661,26 +1712,27 @@ sessizce yapıyor.
 
 ---
 
-## ANASAYFADAN ANALİZE — BÖLÜME İNMEK
+## ANASAYFADAN ANALİZE BÖLÜME İNMEK — **İPTAL** (22 Ağustos)
 
-Ev sahibi üç kez sordu, o yüzden gerekçesiyle yazılıyor: Anasayfa'daki
-"Nereye Gitti" kartına dokunmak Analiz sayfasını açıyor **ama en üstten**, ve
-halka orada görünmüyor — yani dokunduğu şeyi görmek için bir de kaydırması
-gerekiyor. Kapı doğru yere açılıyor ama yanlış yerden başlıyor.
+Ev sahibi üç kez sordu, sonra **kendisi iptal etti** ve gerekçesi bu belgenin
+en önemli satırı olabilir:
 
-**Yapılabilir ve iş bir ekranla sınırlı:** Anasayfa bir parametre gönderir
-(`?bolum=nereye`), Analiz açılışta o bölümün konumunu ölçüp oraya kaydırır
-(`onLayout` ile y konumu + `scrollTo`). Yeni mekanik yok.
+> *"Bu tarz şeyleri doğru çalıştıramıyoruz ve gittikçe daha kötü bir hâle
+> geliyor uygulama. Bu beni korkutmaya başladı. Daha iyi bir deneyim verelim
+> derken daha kötü bir deneyim vermeye başladık."*
 
-**İki tuzağı var ve ölçülmeden yapılmamalı:**
-1. Analiz sayfası açılışta veri çekiyor; konum veri gelmeden ölçülürse
-   kaydırma yanlış yere gider. Ölçüm veri geldikten SONRA yapılmalı.
-2. Kullanıcı geri gelip tekrar açtığında yine oraya inmeli mi, yoksa
-   yalnızca o dokunuştan gelirken mi? Parametre bir kez tüketilmeli.
+Haklıydı ve ölçülebilir: aynı oturumda "iyileştirme" diye eklenen üç şey
+cihazda **bozuk çıktı** — sekme kapsülü kasıyordu, geri alma şeridi havada
+duruyordu, kamera düğmelerinde leke belirdi. Üçü de çalışan bir şeyi
+"daha iyi" yapma denemesiydi.
 
-Park edildi — olgunlaşma dönemi bitince alınacak.
+**Kural olarak alınsın: çalışan bir şeye dokunan değişiklik, bozuk bir şeyi
+düzelten değişiklikle aynı bütçede değildir.** İkincisi zorunlu, birincisi
+lüks — ve lüks olan cihazda doğrulanmadan girmez.
 
----
+Fikir kötü değildi; zamanlaması kötüydü. Yeniden açılırsa yukarıdaki iki
+tuzağıyla (veri gelmeden konum ölçülemez, parametre bir kez tüketilmeli)
+birlikte düşünülsün.
 
 ## PARK EDİLENLER — 22 Ağustos: ev sahibi OLGUNLAŞMA istiyor
 
