@@ -234,9 +234,29 @@ export default function Panel() {
     members.find((m) => m.user_id !== user?.user_id)?.name);
   const firstName = (id?: string | null) => member(id)?.name?.split(" ")[0] || "?";
 
-  const cats = (stats?.categories || []).slice(0, 4).map((c) => ({
+  /* HALKANIN DİLİMLERİ ORTADAKİ SAYIYA TOPLANMAK ZORUNDA.
+     Önce yalnızca ilk dört kategori halkaya gidiyordu ve `Donut` dilimleri
+     KENDİ toplamına göre ölçekliyor — yani dört dilim çemberi tamamen
+     dolduruyor ve "toplamın tamamı bu" diye okunuyordu. Cihazda ölçüldü:
+     orta 436,10 € yazıyor, dilimler 385,01 €'yu paylaşıyordu. Sonuç yalnızca
+     eksik bilgi değil YANLIŞ BİLGİ: et & şarküteri %69 iken %78 görünüyordu
+     ve hiçbir yerde çizilmeyen 51 € vardı. Analiz sayfası aynı ayı doğru
+     çiziyordu (o bütün kategorileri veriyor), yani iki ekran aynı ay için
+     farklı halka gösteriyordu.
+
+     Çözüm ilk dördü büyütmek değil: geri kalanı TEK dilimde toplamak. Böylece
+     dilimler her zaman ortadaki sayıya toplanıyor, açıklama dört satır
+     kalıyor ve nadir kategoriler eklendiğinde resim bozulmuyor — kendiliğinden
+     "kalanlar"a katılıyorlar. */
+  const KALAN_RENK = colors.inkTertiary;
+  const tumKategoriler = stats?.categories || [];
+  const ilkDort = tumKategoriler.slice(0, 4).map((c) => ({
     ...c, color: (CATEGORY_ICONS[c.key] || CATEGORY_ICONS.diger).color,
   }));
+  const kalanTutar = tumKategoriler.slice(4).reduce((t, c) => t + c.total, 0);
+  const cats = kalanTutar > 0.005
+    ? [...ilkDort, { key: "__kalanlar", total: kalanTutar, color: KALAN_RENK }]
+    : ilkDort;
 
   return (
     <View style={styles.root} testID="panel-screen">
@@ -484,8 +504,17 @@ export default function Panel() {
                     <View style={{ flex: 1, gap: spacing.sm }}>
                       {cats.map((c) => (
                         <View key={c.key} style={styles.legend}>
-                          <CategoryIcon category={c.key} size={26} />
-                          <Text style={styles.legendTxt} numberOfLines={1}>{categoryLabel(c.key)}</Text>
+                          {/* Toplanmış dilimin simgesi yok: bir kategori değil,
+                              kategorilerin geri kalanı. Nokta hangi dilim
+                              olduğunu söylemeye yetiyor. */}
+                          {c.key === "__kalanlar" ? (
+                            <View style={[styles.legendNokta, { backgroundColor: KALAN_RENK }]} />
+                          ) : (
+                            <CategoryIcon category={c.key} size={26} />
+                          )}
+                          <Text style={styles.legendTxt} numberOfLines={1}>
+                            {c.key === "__kalanlar" ? "Kalanlar" : categoryLabel(c.key)}
+                          </Text>
                           <Money value={c.total} style={styles.legendVal} />
                         </View>
                       ))}
@@ -709,6 +738,9 @@ const styles = StyleSheet.create({
     flexDirection: "row", alignItems: "center", gap: 5,
     alignSelf: "flex-start", marginTop: 3,
   },
+  /* Simge yerine geçen nokta: `CategoryIcon` 26 piksel yer kaplıyor, satır
+     hizası bozulmasın diye aynı genişlikte bir kap içinde duruyor. */
+  legendNokta: { width: 26, height: 10, borderRadius: 5, alignSelf: "center" },
   trendPct: { ...T.captionSb, color: colors.accentOnDark },
   trendPrev: { ...T.caption, color: colors.onDarkMuted, flexShrink: 1 },
   mineRow: {
