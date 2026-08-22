@@ -437,11 +437,33 @@ export default function Liste() {
                               degil -- yari saydam bir katman yaziyi
                               soluklastirirdi. */}
                           <Vurgu aktif={vurgu?.id === it.item_id} nonce={vurgu?.n}>
+                          {/* DOKUNMA HEDEFİ SATIRIN TAMAMI DEĞİL, DAİRE.
+                              Ev sahibinin gözlemi: satırın neresine dokunursa
+                              dokunsun madde "alındı" oluyordu ve yanlışlıkla
+                              dokunmak kolaydı — uzun listede madde ALINDI
+                              bölümüne atlayınca "listede kaybettim" hissi
+                              veriyordu.
+
+                              Daire 21 piksel ama dokunma alanı 48: `hitSlop`
+                              ile büyütüldü, yani göz küçük bir daire görüyor,
+                              parmak Google'ın istediği hedefi buluyor. Apple
+                              Hatırlatmalar ve Todoist de aynı ayrımı yapıyor:
+                              daire tamamlar, satır başka bir şey yapar.
+
+                              Satırın kendisi artık DOKUNULAMAZ. Boş bir hedef
+                              gibi görünebilir ama listedeki tek diğer eylem
+                              silme ve o zaten kaydırma jestinde. Satıra bir
+                              iş vermek (ad düzenleme) ayrı bir madde. */}
                           <Row
                             minHeight={52}
-                            onPress={() => toggle(it)}
                             testID={`liste-item-${it.item_id}`}
-                            leading={<View style={styles.check} />}
+                            leading={
+                              <Pressable onPress={() => toggle(it)}
+                                         hitSlop={14}
+                                         testID={`liste-check-${it.item_id}`}>
+                                <View style={styles.check} />
+                              </Pressable>
+                            }
                             title={<Text style={styles.itemTxt}>{it.text}</Text>}
                             /* FİYAT İPUCU — yalnızca daha önce alındıysa.
                                Eşleşmeyen satırda alt yazı YOK; "fiyat
@@ -493,10 +515,18 @@ export default function Liste() {
                                        exiting={FadeOut.duration(140)}>
                           <Row
                             minHeight={52}
-                            onPress={() => toggle(it)}
                             testID={`liste-item-${it.item_id}`}
-                            leading={<IconPill name="checkmark" color={colors.onBrand}
-                                               tint={colors.accent} size={22} />}
+                            leading={
+                              /* Geri almak da aynı yerden: işareti kaldırmak
+                                 için yine daireye dokunuluyor. İki yönün aynı
+                                 hedefi olması jesti öğrenilir kılıyor. */
+                              <Pressable onPress={() => toggle(it)}
+                                         hitSlop={14}
+                                         testID={`liste-check-${it.item_id}`}>
+                                <IconPill name="checkmark" color={colors.onBrand}
+                                          tint={colors.accent} size={22} />
+                              </Pressable>
+                            }
                             title={<Text style={styles.itemDone}>{it.text}</Text>}
                             right={scope === "household" && it.done_by ? (
                               <Text style={styles.itemWho}>{first(it.done_by)} aldı</Text>
