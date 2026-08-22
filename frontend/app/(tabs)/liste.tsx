@@ -7,13 +7,24 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useLocalSearchParams } from "expo-router";
+/* LAYOUTANIMATION DEĞİL REANIMATED.
+   `LayoutAnimation` Yeni Mimari'de çalışmıyor — `BridgelessUIManager` içinde
+   "no-op in the New Architecture" diye yazılı. Uygulama `newArchEnabled: true`
+   ile derleniyor, yani `animateNextLayout()` çağrılıyor, hata vermiyor ve
+   HİÇBİR ŞEY yapmıyordu. Ev sahibinin gözlemi tam buydu: "işaretliyorum,
+   alttakiler hop üste geliyor, animasyon yok."
+
+   Reanimated zaten kurulu (4.1.1) ve Yeni Mimari'nin desteklenen yolu. Öteki
+   animasyonlar (kaydırma ipucu, kopya vurgusu, sil paneli, nabız) RN'in kendi
+   `Animated`'ıyla çalışıyor ve onlara DOKUNULMADI — ikisi yan yana yaşıyor. */
+import Animated, { LinearTransition, FadeIn, FadeOut } from "react-native-reanimated";
 
 import { apiGet, apiPost, apiDelete, api } from "@/src/api";
 import { useAuth } from "@/src/auth";
 import { useHousehold } from "@/src/household";
 import {
   ScreenHeader, Sheet, Card, Row, Divider, Avatar, IconPill, Overline, TabSwitch,
-  animateNextLayout, useScrollPad, useBasaSar, yenileme, formatEUR,
+  useScrollPad, useBasaSar, yenileme, formatEUR,
   KaydirSil, GeriAlSeridi, KaydirmaIpucu, useKaydirmaIpucu, Vurgu,
 } from "@/src/ui";
 import { colors, spacing, radius, type as T, metrics, marketKisaAd } from "@/src/theme";
@@ -165,7 +176,6 @@ export default function Liste() {
   };
 
   const toggle = async (item: Item) => {
-    animateNextLayout();
     const next = !item.done;
     setItems((cur) => cur.map((i) => (i.item_id === item.item_id ? { ...i, done: next } : i)));
     try {
@@ -198,7 +208,6 @@ export default function Liste() {
   const silinenSira = useRef<number>(-1);
 
   const remove = (item: Item) => {
-    animateNextLayout();
     silinenSira.current = items.findIndex((i) => i.item_id === item.item_id);
     setItems((cur) => cur.filter((i) => i.item_id !== item.item_id));
     // Üst üste silmede önceki, beklemeden gerçekleşiyor: şerit tek satırlık
@@ -243,7 +252,6 @@ export default function Liste() {
     const geri = silinen;
     setSilinen(null);
     if (!geri) return;
-    animateNextLayout();
     setItems((cur) => {
       if (cur.some((i) => i.item_id === geri.item_id)) return cur;
       const yeni = [...cur];
@@ -404,8 +412,16 @@ export default function Liste() {
                         kolaylastiriyordu -- Todoist ve Apple Hatirlatmalar da
                         bu yuzden jeste gecmis. Dokunmak "aldim" demeye devam
                         ediyor, yani en sik eylem hala tek dokunus. */}
+                    {/* GEÇİŞ SÜRELERİ KISA ve bu bilinçli: uygulama hızlı ve
+                        animasyon onu yavaşlatmamalı. 200 ms, gözün "bir şey
+                        yer değiştirdi" diyebileceği en kısa süre; altında
+                        sıçrama gibi okunuyor. Çıkışta 140 ms, çünkü gideni
+                        izlemek değil gittiğini görmek istiyoruz. */}
                     {pending.map((it, i) => (
-                      <View key={it.item_id}
+                      <Animated.View key={it.item_id}
+                            layout={LinearTransition.duration(200)}
+                            entering={FadeIn.duration(180)}
+                            exiting={FadeOut.duration(140)}
                             /* Satir gidince kaydi da gidiyor: birakilan olu
                                dugum hem birikir hem yanlis yer olcturur. */
                             ref={(r) => {
@@ -456,7 +472,7 @@ export default function Liste() {
                         </KaydirSil>
                         </KaydirmaIpucu>
                         {i < pending.length - 1 && <Divider inset={58} />}
-                      </View>
+                      </Animated.View>
                     ))}
                   </Card>
                 )}
@@ -471,7 +487,10 @@ export default function Liste() {
                     </View>
                     <Card style={styles.mx}>
                       {done.map((it, i) => (
-                        <View key={it.item_id}>
+                        <Animated.View key={it.item_id}
+                                       layout={LinearTransition.duration(200)}
+                                       entering={FadeIn.duration(180)}
+                                       exiting={FadeOut.duration(140)}>
                           <Row
                             minHeight={52}
                             onPress={() => toggle(it)}
@@ -484,7 +503,7 @@ export default function Liste() {
                             ) : undefined}
                           />
                           {i < done.length - 1 && <Divider inset={58} />}
-                        </View>
+                        </Animated.View>
                       ))}
                     </Card>
                   </View>

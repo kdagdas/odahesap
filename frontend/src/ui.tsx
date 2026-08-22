@@ -14,7 +14,6 @@ import React from "react";
 import {
   View, Text, Pressable, StyleSheet, ViewStyle, StyleProp, Image, TextStyle,
   Keyboard, Platform, Modal, Alert, TextInput, Animated, BackHandler,
-  LayoutAnimation, UIManager,
   useWindowDimensions,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
@@ -533,21 +532,20 @@ export function useScrollPad(opts?: { tabs?: boolean; extra?: number }) {
   return { paddingBottom: alt + (opts?.extra ?? spacing.xxl) };
 }
 
-/**
- * Liste degisimini yumusatir — bir sonraki cizimde uygulanir.
+/* `animateNextLayout()` KALDIRILDI — çalışmıyordu.
  *
- * KURAL: animasyon degisimi ACIKLAR, suslemez. Alinacaklar'da isaretlenen
- * madde bir yerden otekine ZIPLIYORDU; kayarak gitmesi "senin yaptigin seyin
- * sonucu" diyor. Sekme gecis animasyonu ise BILEREK yok -- denenmis ve geri
- * alinmisti, cunku sekmeye basmak ayni anda veri cekiyor ve animasyon o
- * render firtinasiyla yarisiyor (bkz. SIRADAKI-TUR.md).
+ * `LayoutAnimation` Yeni Mimari'nin desteklemediği eski araç; RN'in kendi
+ * `BridgelessUIManager`ı içinde "no-op in the New Architecture" diye yazılı.
+ * Uygulama `newArchEnabled: true` ile derleniyor, yani fonksiyon çağrılıyor,
+ * hata vermiyor ve HİÇBİR ŞEY yapmıyordu. Ev sahibinin gözlemi buydu:
+ * "işaretliyorum, alttakiler hop üste geliyor, animasyon yok."
+ *
+ * Kural aynen duruyor ve artık gerçekten uygulanıyor: **animasyon değişimi
+ * AÇIKLAR, süslemez.** Yerini Reanimated'in düzen animasyonları aldı
+ * (`liste.tsx`). Sekme geçiş animasyonu ise BİLEREK yok — denenmiş ve geri
+ * alınmıştı, çünkü sekmeye basmak aynı anda veri çekiyor ve animasyon o
+ * render fırtınasıyla yarışıyor (bkz. SIRADAKI-TUR.md).
  */
-export function animateNextLayout() {
-  if (Platform.OS === "android" && !UIManager.setLayoutAnimationEnabledExperimental) return;
-  LayoutAnimation.configureNext(LayoutAnimation.create(
-    220, LayoutAnimation.Types.easeInEaseOut, LayoutAnimation.Properties.opacity,
-  ));
-}
 
 /**
  * Degisen bir tutari hedefine SAYARAK gider.
@@ -836,6 +834,11 @@ export const SIL_GENIS = 84;
  * "bunu bırakırsan gider" cümlesini kuruyor. Sessizce silmek, kullanıcıya
  * jesti öğretmeden cezalandırmak olurdu.
  */
+/* Şu an açık olan satır. **Modül düzeyinde ve bilinçli:** aynı anda birden
+   çok satırın açık kalması listeyi yamultuyor ve "hangisini siliyorum"
+   sorusunu doğuruyor. Tek bir başvuru yeterli, çünkü kural zaten "tek satır". */
+let acikSatirKapat: any = null;
+
 export function KaydirSil({
   onSil, testID, children,
 }: { onSil: () => void; testID?: string; children: React.ReactNode }) {
@@ -853,6 +856,8 @@ export function KaydirSil({
      değer parmağın bıraktığı yer. */
   const dragRef = React.useRef<any>(null);
   const silindi = React.useRef(false);
+  /** Satır şu an açık mı — açıkken dokunuş SİLMEYE değil KAPATMAYA gidiyor. */
+  const [acik, setAcik] = React.useState(false);
   const { width } = useWindowDimensions();
   /* Ekranın %42'si, ama en az 150 px. Oran tek başına küçük telefonda çok
      kolay, tablette çok zor bir eşik üretiyor. */
@@ -873,6 +878,16 @@ export function KaydirSil({
       onSwipeableWillOpen={() => {
         const v = dragRef.current?.__getValue?.();
         if (typeof v === "number" && v < -esik) sil();
+        /* AYNI ANDA TEK SATIR AÇIK. Açılan satır, önce açık olanı kapatıyor.
+           Eskiden ikisi birden açık kalabiliyordu ve liste "yamuk" görünüyordu;
+           kullanıcı hangisini sildiğini de karıştırıyordu. */
+        if (acikSatirKapat && acikSatirKapat !== ref.current) acikSatirKapat.close?.();
+        acikSatirKapat = ref.current;
+        setAcik(true);
+      }}
+      onSwipeableWillClose={() => {
+        if (acikSatirKapat === ref.current) acikSatirKapat = null;
+        setAcik(false);
       }}
       renderRightActions={(progress: any, dragX: any) => {
         dragRef.current = dragX;
@@ -881,6 +896,26 @@ export function KaydirSil({
       }}
     >
       {children}
+      {/* AÇIKKEN DOKUNUŞ KAPATIYOR, satırın kendi eylemini ÇALIŞTIRMIYOR.
+          Ev sahibi cihazda yakaladı: satırı yarıya kadar kaydırıp bıraktı,
+          satır açık kaldı (bu kasıtlı — "yarım kaydırma düğmeyi gösterir"),
+          ama kapatmanın tek yolu geri kaydırmaktı.
+
+          Asıl tehlike görünmezdi: açık satıra dokunmak onu KAPATMIYOR,
+          altındaki eylemi çalıştırıyordu — Alınacaklar'da o eylem "aldım
+          olarak işaretle". Yani açık satırı kapatmaya çalışan insan ürünü
+          listeden düşürüyordu. iOS Mail'de de, Gmail'de de açık satıra
+          dokunmak kapatır; jesti bilen herkesin ilk denediği şey bu.
+
+          Katman yalnızca AÇIKKEN var: kapalıyken hiç çizilmiyor, yani normal
+          dokunuşun önüne geçen bir şey kalmıyor. */}
+      {acik && (
+        <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={() => ref.current?.close?.()}
+          testID={testID ? `${testID}-kapat` : undefined}
+        />
+      )}
     </Swipeable>
   );
 }
