@@ -1550,6 +1550,92 @@ tarama ve Alınacaklar — 21 Ağustos dökümü"):
 
 ---
 
+## 22 AĞUSTOS OTURUMU — 36 commit, kararların tam dökümü
+
+Bu bölüm bir özet değil **kayıt**: konuşulan her karar, gerekçesiyle. Ev
+sahibinin uyarısı üzerine yazıldı — *"birçok şeyi mesajda yazdığım için
+birkaçını cevaplayabiliyorsun ve diğerleri kalıyor gibi."* Haklıydı.
+
+### Kapatılan hatalar (v53 + v54 + v55 adayı)
+
+| Ne | Kök sebep |
+|---|---|
+| Galeri izni fişi kaydetmiyordu, "Galeriden seç" ölüydü | Gerekmeyen OKUMA izni; Android 13+'ta kaydetmek izin istemiyor |
+| Kaydırma ipucu satırları donduruyordu | İpucu satıra değil "sıradaki 0 numaralı yere" bağlıydı |
+| Aynı madde iki kez ekleniyordu | Kontrol yoktu |
+| Anasayfa halkası ortadaki sayıya toplamıyordu (%13 eksik) | Yalnızca ilk dört kategori halkaya gidiyordu |
+| "9,5 katı" artış yeşil gösteriliyordu | Renk semantiği yoktu |
+| Fiyat ipucu yanlış fiyat gösteriyordu | `sorted(key=len)` eşleşmeyi İKİ YÖNDE birden çalıştırıyordu |
+| Aynı kural üç yerde farklı yazılmıştı | Tur 9'da terk edilen kuralın iki kopyası hayatta kalmıştı |
+| Yazılan kutu klavyenin altında kalıyordu | Pay hiçbir ekranda yoktu |
+| Geri tuşu klavye yerine alt sayfayı kapatıyordu | `BackHandler` olayı `true` döndürüp klavye adımını yutuyordu |
+| Animasyonlar hiç çalışmıyordu | `LayoutAnimation` Yeni Mimari'de no-op |
+| Açık kaydırma satırı kapatılamıyordu, dokunmak "aldım" yapıyordu | Kapatma yolu yoktu |
+| Kamera düğmelerinde altıgen lekeler | Yarı saydam zemin + `elevation` |
+| Rehber çerçevesi durum çubuğuyla çakışıyordu | Güvenli alan payı yoktu |
+
+### Ölçümle çürütülen üç varsayım
+
+1. **"Market eklerini atarak kaydediyoruz"** — hayır. `normalize_merchant`
+   ekleri yalnızca KARŞILAŞTIRMA anahtarında atıyor; kayda giden ad ekli.
+   Düzeltme kayıtta değil **gösterimde** yapıldı (eski kayıtlar da düzelsin,
+   veriye dokunulmasın diye).
+2. **"Marka → genel ad sözlüğü kuruldu"** — hayır. `genel-ad-sozluk.csv` bir
+   TEKLİF listesiydi, ONAY sütunu boş, sunucuya hiç girmedi. Yerine evin
+   kendi belleği kondu (`_genel_ad_bellegi`).
+3. **"Düzenli gider kategorisi hep adın kopyası"** — hayır. Altı kayıttan
+   dördünde öyle, ama işe yaradığı ikisinde ad bir MARKAYDI. Alan kaldırılmadı,
+   kalıba bağlandı.
+
+### Kararlar — itiraz edilmeyenler dahil
+
+- **Anasayfa penceresi TAKVİM AYI kalıyor.** Ödeşme penceresi oraya taşınsaydı
+  kıyas kaybolur ve manşet alakasız bir eylemle (ödeşme) sıfırlanırdı. "Son
+  ödeşmeden bu yana ev ne kadar harcadı" Kasa'ya, kararın alındığı yere kondu.
+- **Ekstre bloğunun penceresi yazıyor** ("Son ödeşmeden bu yana") ve üslubu
+  OVERLINE — normal cümle puntosunda sağında rakam bekleyen boş bir satır gibi
+  okunuyordu.
+- **Kampanya işareti REDDEDİLDİ.** Ev sahibi: arkadaşları fiş ekranında
+  kategoriye bile bakmıyor; oraya onay kutusu koymak kimsenin bakmayacağı bir
+  şeye veri sorumluluğu yüklemek olur. Referans mantığı zaten asimetrik
+  çalıştığı için gerek de yok.
+- **Düzenli gider silmede ONAY kalıyor** (geri alma değil): nadir, kasıtlı ve
+  yeniden kurmak gerçek emek. Alınacaklar'da tersi doğru. İkisi tutarsızlık
+  değil, kuralın iki ucu.
+- **Ekleme/silme için AYRI bildirim yok.** Hareketin kendisi (kayarak gitmek)
+  zaten geri bildirim; üstüne bir de "silindi" demek aynı olayı üç kez
+  anlatmak olur.
+- **Ses YOK** — gerekçesi `CLAUDE.md`'de.
+- **Kaydırınca sırayla beliren kartlar YOK** — jestle yarışıyor.
+- **APK dağıtımı: Google Play DAHİLİ TEST.** 100 kişiye kadar, süre sınırı
+  yok, mağazada aranmıyor, güncellemeler dakikalar içinde. "12 kişi × 14 gün"
+  kuralı yalnızca ÜRETİME çıkarken geçerli, dahili teste değil. Alternatif
+  mağaza reddedildi (tek uygulama için mağaza indirtmek daha kötü sürtünme).
+
+### Yeni yazılan kurallar
+
+Hepsi `CLAUDE.md`'ye geçti: `LayoutAnimation` yasağı ve Reanimated süreleri ·
+sayacın yalnızca eylem sonucu çalışması · geniş yüzeyde dalga / küçük hedefte
+ölçek · klavye payının tek yerden gelmesi ve örtüşmeye göre hesaplanması ·
+geri tuşunun önce klavyeyi kapatması · yıkıcı eylemin satırın tamamına
+bağlanmaması · onay-ya-da-geri-alma · ham ad/genel ad kalıbı · gevşek
+eşleşmenin yalnızca insan onayı olan yerde serbest olması · cihazda çalışma
+gizlilik kuralı.
+
+### GÖÇ BEKLEYEN — düzenli gider kategorileri
+
+Düzenli gider kategorisi **serbest Türkçe dizge** ("İnternet", "Elektrik"),
+harcama kategorisi ise **snake_case anahtar** (`ev_urunleri`). İkisi hiçbir
+analizde birleştirilemez — "bu ay sabit giderler ne kadar, kategori kırılımı
+ne" sorusu bu dizgelerle cevaplanamaz.
+
+Bugün altı kayıt var, yani göç kendisi önemsiz. Ama **API sözleşmesini**
+değiştiriyor (istemci çip listesi, sunucu alanı) ve olgunlaşma döneminde
+dokunulmayacak. **Tetikleyici:** düzenli giderleri analiz sayfasında
+göstermek istediğimiz an.
+
+---
+
 ## PARK EDİLENLER — 22 Ağustos: ev sahibi OLGUNLAŞMA istiyor
 
 Ev sahibinin sözü ve bu bir öncelik kararıdır:

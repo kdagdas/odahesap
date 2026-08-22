@@ -318,7 +318,9 @@ export default function Tara() {
           leke değil) + glif gölgesi. Böylece parlak bir fişin üstünde de
           beyaz ikonlar seçiliyor ve kamera tam boy kalıyor. */}
       <SafeAreaView style={styles.controls} edges={["bottom"]}>
-        <Pressable style={styles.sideBtn} onPress={pickImage} testID="open-gallery-btn">
+        <Pressable style={({ pressed }) => [styles.sideBtn,
+                                            pressed && { transform: [{ scale: 0.92 }] }]}
+                   onPress={pickImage} testID="open-gallery-btn">
           <Ionicons name="images-outline" size={24} color={colors.onDark} style={styles.glyph} />
           {/* Rozet "birden fazla seçebilirsin" diyor. Önce burada düz metin
               olarak `×N` yazılıydı: doldurulmamış bir şablon, ekranda cebir
@@ -328,12 +330,21 @@ export default function Tara() {
             <Text style={styles.multiBadgeTxt}>×{COKLU_SECIM_SINIRI}</Text>
           </View>
         </Pressable>
-        <Pressable style={styles.shutter} onPress={takePhoto} disabled={processing} testID="shutter-btn">
+        {/* DEKLANŞÖR BASINCA KÜÇÜLÜYOR.
+            Küçük ve yuvarlak bir hedefte dalga kayboluyor; ölçek burada
+            doğru dil. Ve ANINDA, yumuşatılmadan: deklanşörün işi hızlı
+            olduğunu hissettirmek, fotoğraf zaten o an çekiliyor. Yumuşak bir
+            geçiş burada gecikme gibi okunurdu. */}
+        <Pressable style={({ pressed }) => [styles.shutter,
+                                            pressed && !processing && { transform: [{ scale: 0.94 }] }]}
+                   onPress={takePhoto} disabled={processing} testID="shutter-btn">
           <View style={styles.shutterInner}>
             <Ionicons name="camera" size={28} color={colors.ink} />
           </View>
         </Pressable>
-        <Pressable style={styles.sideBtn} onPress={() => router.push("/manual")} testID="manual-from-camera">
+        <Pressable style={({ pressed }) => [styles.sideBtn,
+                                            pressed && { transform: [{ scale: 0.92 }] }]}
+                   onPress={() => router.push("/manual")} testID="manual-from-camera">
           <Ionicons name="create-outline" size={24} color={colors.onDark} style={styles.glyph} />
         </Pressable>
       </SafeAreaView>

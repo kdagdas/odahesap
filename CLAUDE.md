@@ -88,6 +88,16 @@ Bunlar ölçümle verilmiş kararlar. Değiştirmeden önce gerekçeyi oku.
 - **Boş kalabilme cesareti.** Kayda değer bir şey yoksa satır hiç çizilmez.
   Dolgu metni yazılırsa kullanıcı bir hafta içinde o satırı okumayı bırakır.
 - **Ürün gruplama `generic` alanına dayanır**, `product_key`'e değil.
+- **HAM AD / GENEL AD ayrımı bir kalıptır, fişe özel değil.** Kullanıcının
+  yazdığı ad bir MARKA olabilir ("Süperonline", "NUGGR", "SAHNE 200G"); ne
+  olduğunu söyleyen ikinci bir alan gerekir. Bu ayrımın olduğu her yerde aynı
+  davranış: **ad kendini söylüyorsa alan kendiliğinden dolar, söylemiyorsa
+  sorar.** Düzenli gider kategorisi de bu kalıba geçti.
+- **Gevşek eşleşme, İNSAN ONAYININ olduğu yerde serbest; olmadığı yerde
+  yasak.** `/shopping/match` içeren eşleşme yapabilir çünkü kutu BOŞ açılıyor
+  ve kullanıcı onaylıyor. Alınacaklar'daki fiyat ipucu **tam eşleşme** ister,
+  çünkü "geçen sefer 1,68 €" bir OLGU gibi yazılıyor ve kimse doğrulamıyor.
+  Onaylanmayan yanlış bir iddia sessiz bir yalandır.
 - **"Kez" = alışveriş sayısı**, kalem sayısı değil.
 - **`diger` bir kategori değil, kategorinin yokluğudur** — baskın kategori
   oylamasında oy kullanmaz.
@@ -108,7 +118,46 @@ Bunlar ölçümle verilmiş kararlar. Değiştirmeden önce gerekçeyi oku.
   Kiremit = para ters yöne gidiyor. Yeşil = lehine. Gri = yalın bilgi.
   **Sürekli yanıp sönen hiçbir şey yok** — nabız (`PulseDot`) üç kez atıp
   durur ve yalnızca senden bir şey isteyen satırdadır.
-- Dokunma hedefleri **Apple 44 pt / Google 48 dp**.
+- Dokunma hedefleri **Apple 44 pt / Google 48 dp**. Görsel öğe küçük
+  kalabilir; hedefi `hitSlop` büyütür (Alınacaklar'daki 21 piksellik daire,
+  48'lik hedef).
+- **Yıkıcı eylem satırın TAMAMINA bağlanmaz.** "Aldım" yalnızca daireden,
+  silme yalnızca kaydırmadan. Satırın her yeri bir eylemse yanlış dokunuş
+  kaçınılmaz olur.
+- **ONAY ya da GERİ ALMA — ikisi birden değil.** Sık ve ucuz eylemde geri
+  alma (alınacaklar), nadir ve pahalı eylemde onay (düzenli gider silme).
+  İkisini birlikte koymak aynı olayı üç kez anlatmak olur.
+
+**Animasyon**
+- **`LayoutAnimation` KULLANILMAZ** — Yeni Mimari'de sessizce çalışmıyor
+  (`newArchEnabled: true`). Düzen geçişleri **Reanimated** ile:
+  `LinearTransition 200 · FadeIn 180 · FadeOut 140`. Bu üç sayı her ekranda
+  aynı; aynı jest farklı yerlerde farklı hızda olmamalı.
+- **Animasyon değişimi AÇIKLAR, süslemez.** Ekleme, silme, yer değiştirme,
+  açılma — evet. Kaydırınca sırayla beliren kartlar, sekme geçişi, anahtar
+  animasyonu — hayır (jestle yarışıyor ve uygulamayı yavaş hissettiriyor).
+- **Sayaç yalnızca senin bir eyleminin sonucu değişen sayıda.** Ekran ilk
+  yüklenirken sayan rakam geri bildirim değil süslemedir (`useCountUp`'ın
+  `hazir` alanı bunun için).
+- **Geniş yüzeyde dalga, küçük yuvarlak hedefte ölçek.** `android_ripple`
+  Android'in kendi dili; geniş bir hapı büyütüp küçültmek lastik gibi durur.
+- **`Animated` değerini durduran her yol onu SIFIRLAMAK zorunda.** `stop()`
+  bir geri alma değil bir dondurma — donmuş satır hatası buradan çıkmıştı.
+- **Ses YOK.** Uygulama markette, otobüste, ev arkadaşının yanında
+  kullanılıyor; para uygulamasında ses oyun gibi hissettiriyor. Titreşim
+  aynı işi sessizce yapıyor (bkz. `SIRADAKI-TUR.md` → titreşim maddesi).
+
+**Klavye**
+- **Yazılan kutu klavyenin altında kalmaz.** Pay `useScrollPad` içinde tek
+  yerden geliyor; o kancayı kullanmayan ekran payı elle eklemeli.
+- **Ekran yukarı FIRLATILMAZ**, aşağıda yer açılır. Kaydırmayı işletim
+  sistemi yapıyor.
+- **Klavye yüksekliği elle yazılmaz.** `keyboardDidShow` gerçek yüksekliği
+  bildiriyor — üçüncü parti klavye, kullanıcının yükselttiği klavye, hepsi
+  o sayıya yansıyor. Ve telafi **örtüşmeye** göre hesaplanır: Android
+  pencereyi zaten küçültüyorsa telafi sıfırdır (iki kez telafi hatası).
+- **Geri tuşu önce KLAVYEYİ kapatır.** `BackHandler`'ı `true` döndürerek
+  kendimize aldığımız her yerde bu adımı elle yapmak zorundayız.
 - **Sabit örnek yazmayın.** Yer tutucular evin kendi verisinden gelir
   (market, ev arkadaşı, IBAN ülke biçimi). "REWE, EDEKA" ve "Örn. Kadir"
   Türkiye'deki evde anlamsızdı — hepsi temizlendi.
@@ -130,6 +179,9 @@ Bunlar ölçümle verilmiş kararlar. Değiştirmeden önce gerekçeyi oku.
   için ayrılamıyorsa bunu mesajda söyle.
 - **Yorumlar NE'yi değil NİÇİN'i anlatır** — özellikle bir kararın neden öteki
   seçenek yerine alındığını. Mevcut dosyaların üslubuna bak.
+- **Konuşulan karar AYNI TURDA yazılır.** Yazılmayan karar bir sonraki
+  oturumda **hiç var olmamış** demektir; bu bir kez yaşandı (fişteki öteki
+  veriler konuşulmuş, hiçbir yere geçmemişti).
 - **Reddedilen fikirler de gerekçesiyle yazılır.** "Yapmadık" bilgi değil;
   "şu ölçüm yüzünden yapmadık" bilgidir. (Görev dağılımı, yemek planlama,
   aynı ay içi fiyat kıyası — hepsi gerekçeleriyle `SIRADAKI-TUR.md`'de.)
@@ -152,6 +204,30 @@ Bunlar ölçümle verilmiş kararlar. Değiştirmeden önce gerekçeyi oku.
 - `price_points` koleksiyonunda `household_id`, `user_id`, `expense_id`
   **hiç yazılmıyor** — sonradan silinen değil, hiç var olmayan alanlar. Bu
   kasıtlı ve korunacak.
+
+---
+
+## Cihazda çalışırken
+
+Telefon `adb` ile bağlıyken **ekranda ne varsa Anthropic'e gidiyor** — ekran
+görüntüsü modele gönderilerek okunuyor. Bu yüzden:
+
+- Yalnızca **KaSa ekranlarının** görüntüsü alınır.
+- Uygulamadan çıkaran hiçbir şeye dokunulmaz (galeri seçici, kamera galerisi,
+  paylaş menüsü, bildirim gölgesi) — gerekiyorsa **önce sorulur**.
+- Uygulama küçülür ya da ana ekrana düşerse, görüntü almadan önce uygulama
+  geri açılır.
+- Dosya sistemine yalnızca açıkça istenen bir kontrol için bakılır ve neye
+  bakıldığı söylenir.
+
+Bu kural bir kez çiğnendi: "Galeriden seç" düğmesi denenirken foto seçici
+açıldı ve ekran görüntüsündeki küçük resimler okundu. Ev sahibi haklı olarak
+sordu; kural o konuşmadan doğdu.
+
+**Kullanıcı fişleri HEP GALERİDEN tarıyor**, kameradan taramıyor. Kamera
+yolundaki hatalar (izin diyalogları, galeriye kayıt) tam bu yüzden aylarca
+fark edilmedi. Cihaz turunda **kullanılmayan yollar özellikle denenir** —
+hatalar orada saklanıyor.
 
 ---
 
