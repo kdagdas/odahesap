@@ -15,7 +15,7 @@ import { useHousehold } from "@/src/household";
 import {
   ScreenHeader, Sheet, Card, Divider, Chip, MerchantBadge, CategoryPicker, formatEUR, nextUnit, UnitPicker,
   SplitPicker, splitFromExpense, type Split,
-  useSikMarketler, marketIpucu, useKlavyeOrtusu,
+  useSikMarketler, marketIpucu,
 } from "@/src/ui";
 import {
   colors, spacing, radius, type as T, overline, fontFamily,
@@ -60,7 +60,6 @@ export default function ExpenseEdit() {
   /* Market yer tutucusu evin kendi geçmişinden; sabit "REWE, EDEKA"
      başka bir ülkedeki evde anlamsız kalıyordu. */
   const sikMarketler = useSikMarketler(2);
-  const klavye = useKlavyeOrtusu();
   const [expense, setExpense] = useState<Expense | null>(null);
   const [rows, setRows] = useState<Row[]>([]);
   const [dateInput, setDateInput] = useState("");
@@ -222,12 +221,14 @@ export default function ExpenseEdit() {
 
   return (
     <View style={styles.root} testID="expense-edit-screen">
-      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
+      {/* Gerekçe `review.tsx` içinde: kenardan kenara çizimle `adjustResize`
+          artık pencereyi küçültmüyor, kabın kendisi kısalmalı. */}
+      <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
         {/* Başlık kaydırma alanının içinde; alttaki Kaydet çubuğu sabit kalıyor. */}
         {/* Klavye payı — gerekçesi `useScrollPad` içinde yazılı. Bu ekran o
             kancayı kullanmıyor (kendi tam ekran düzeni var), pay elle. */}
         <ScrollView style={{ flex: 1 }}
-                    contentContainerStyle={[styles.page, { paddingBottom: klavye }]}
+                    contentContainerStyle={styles.page}
                     keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         <ScreenHeader
           overline={benimMi ? "DÜZENLE" : "HARCAMA"}

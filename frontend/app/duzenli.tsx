@@ -25,7 +25,6 @@ import Animated, { LinearTransition, FadeIn, FadeOut } from "react-native-reanim
 import {
   ScreenHeader, Sheet, Card, Divider, Chip, SplitPicker, splitAll,
   BottomSheet, TabSwitch, HintCard, formatEUR, todayISO, useScrollPad, type Split,
-  useKlavyeOrtusu,
 } from "@/src/ui";
 import {
   colors, spacing, radius, type as T, overline, fontFamily,
@@ -402,17 +401,12 @@ function EditSheet({
     );
   };
 
-  const klavye = useKlavyeOrtusu();
 
   return (
     <BottomSheet visible onClose={onClose}>
-            {/* KLAVYE PAYI — fiş ekranındaki ile aynı gerekçe. Ev sahibi
-                burada da yakaladı: alan klavyenin altında kalıyor ve ancak
-                kaydırarak görünüyor. Alt sayfa kısa olduğunda kaydıracak yer
-                de kalmıyor. Aşağıda yer açıyoruz, kutuyu zorla yukarı
-                fırlatmıyoruz. */}
-            <ScrollView keyboardShouldPersistTaps="handled" style={{ maxHeight: 520 }}
-                        contentContainerStyle={{ paddingBottom: klavye }}>
+            {/* Klavye payı artık `BottomSheet`in kendisinde (kabın yüksekliği
+                kısalıyor); buradaki elle pay kaldırıldı, çift sayım olurdu. */}
+            <ScrollView keyboardShouldPersistTaps="handled" style={{ maxHeight: 520 }}>
               <Text style={[overline, styles.sheetTitle]}>
                 {value ? "DÜZENLİ ÖDEMEYİ DÜZENLE" : "YENİ DÜZENLİ ÖDEME"}
               </Text>

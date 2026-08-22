@@ -14,7 +14,7 @@ import {
   ScreenHeader, Sheet, Chip, MerchantBadge, SplitPicker, splitAll, formatEUR, todayISO,
   CategoryIcon, AnchorMenu, MenuSatir, useSikMarketler, marketIpucu,
   type Split, type MenuTutamak,
-  OdesmeUyarisi, useKlavyeOrtusu,
+  OdesmeUyarisi,
 } from "@/src/ui";
 import {
   colors, spacing, radius, type as T, overline, fontFamily, CATEGORY_LABEL_TR,
@@ -53,7 +53,6 @@ export default function Manual() {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const { members, household } = useHousehold();
-  const klavye = useKlavyeOrtusu();
   const [amount, setAmount] = useState("");
   const [quantity, setQuantity] = useState("1");
   const [title, setTitle] = useState("");
@@ -171,14 +170,14 @@ export default function Manual() {
           boyutlandırıyor, `behavior="height"` aynı işi bir kez daha yapıyor ve
           kenardan kenara çizimde ikisi üst üste binip altta boş bir şerit
           bırakıyordu. Fiş ekranında da aynı sebeple kaldırıldı. */}
-      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined}
+      <KeyboardAvoidingView behavior="padding"
                             style={{ flex: 1 }}>
         {/* Başlık kaydırma alanının içinde; alttaki Kaydet çubuğu sabit kalıyor.
             Tutar koyu alanda: ekranın tek büyük rakamı, kart içinde değil. */}
         {/* Klavye payı — gerekçesi `useScrollPad` içinde yazılı. Bu ekran o
             kancayı kullanmıyor (kendi tam ekran düzeni var), pay elle. */}
         <ScrollView style={{ flex: 1 }}
-                    contentContainerStyle={[styles.page, { paddingBottom: klavye }]}
+                    contentContainerStyle={styles.page}
                     keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         <ScreenHeader
           size="l"

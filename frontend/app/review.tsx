@@ -21,7 +21,7 @@ import {
   todayISO, nextUnit, UnitPicker, HintCard, SplitPicker, splitAll, splitSummary,
   BottomSheet, Divider, type Split,
   useSikMarketler, marketIpucu,
-  OdesmeUyarisi, useKlavyeOrtusu,
+  OdesmeUyarisi,
 } from "@/src/ui";
 import {
   colors, spacing, radius, type as T, overline, fontFamily, CATEGORY_ICONS, CATEGORY_LABEL_TR,
@@ -111,7 +111,6 @@ export default function Review() {
    * listeden çalınan yeri ortadan kaldırıyor.
    */
   const kaydirmaRef = useRef<ScrollView>(null);
-  const klavye = useKlavyeOrtusu();
   const [klavyeAcik, setKlavyeAcik] = useState(false);
   useEffect(() => {
     const ac = Keyboard.addListener("keyboardDidShow", () => setKlavyeAcik(true));
@@ -397,7 +396,7 @@ export default function Review() {
           Telafiye artık ihtiyaç da yok: klavye açılınca Kaydet çubuğu zaten
           gizleniyor, geriye kalan tek iş odaklanılan alanı görünür tutmak ve
           onu `ScrollView` kendisi yapıyor. */}
-      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined}
+      <KeyboardAvoidingView behavior="padding"
                             style={{ flex: 1 }}>
         {/* Başlık kaydırma alanının içinde; alttaki Kaydet çubuğu sabit kalıyor. */}
         {/* KLAVYE PAYI: klavye açıkken kaydırma alanının altına onun ÖRTTÜĞÜ
@@ -409,7 +408,7 @@ export default function Review() {
             Kutuyu zorla yukarı FIRLATMIYORUZ (ev sahibinin isteği): yalnızca
             aşağıda yer açıyoruz, kaydırmayı işletim sistemi zaten yapıyor. */}
         <ScrollView ref={kaydirmaRef} style={{ flex: 1 }}
-                    contentContainerStyle={[styles.page, { paddingBottom: klavye }]}
+                    contentContainerStyle={styles.page}
                     keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         {/* Sag ustteki rozet kaldirildi: ayni bilgi baslikta ("Fis 1 / 2") ve
             altindaki ilerleme cizgilerinde zaten iki kez duruyordu. */}
@@ -480,7 +479,11 @@ export default function Review() {
               bilgi metin değil RENK: "bu marketi tanıdım". O bilgi simgenin
               rengine taşındı, hem yer kaplamıyor hem aynı şeyi söylüyor. */}
           <View style={styles.metaCard}>
-            <View style={[styles.metaField, { flex: 3 }]}>
+            {/* Market esner, tarih SABİT. Önce ikisi de esnekti (2:1, sonra
+                3:1) ve her denemede tarih daha da daraldı — oysa tarihin
+                ihtiyacı sabit: "GG.AA.YYYY" hep on karakter. Esneyen alan
+                market olmalı, çünkü uzunluğu değişen o. */}
+            <View style={[styles.metaField, { flex: 1 }]}>
               <View style={styles.metaLabelRow}>
                 <Ionicons name="storefront" size={14}
                           color={merchant ? merchantColor(merchant) : colors.inkSecondary} />
@@ -495,7 +498,7 @@ export default function Review() {
                 testID="review-merchant-input"
               />
             </View>
-            <View style={[styles.metaField, { flex: 1 }]}>
+            <View style={[styles.metaField, { width: 128 }]}>
               <View style={styles.metaLabelRow}>
                 <Ionicons name="calendar-outline" size={14} color={colors.inkSecondary} />
                 <Text style={styles.metaLabel}>Tarih</Text>

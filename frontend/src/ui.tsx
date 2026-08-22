@@ -14,6 +14,7 @@ import React from "react";
 import {
   View, Text, Pressable, StyleSheet, ViewStyle, StyleProp, Image, TextStyle,
   Keyboard, Platform, Modal, Alert, TextInput, Animated, BackHandler,
+  KeyboardAvoidingView,
   useWindowDimensions,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
@@ -550,22 +551,17 @@ export function useScrollPad(opts?: { tabs?: boolean; extra?: number }) {
      Sekmeli ekranda cihazin gezinme cubugu payini da cubuk kendisi
      ustleniyor; burada yalnizca nefes payi kaliyor. */
   const alt = opts?.tabs ? 0 : insets.bottom;
-  /* KLAVYE PAYI BURADA, tek yerden.
-     Metin girilen her ekranda aynı sorun vardı: odaklanılan kutu klavyenin
-     altında kalıyor ve ancak listeyi kaydırarak görünüyor — içerik kısaysa
-     kaydıracak yer de yok, yani kutu ERİŞİLEMEZ oluyordu. Ev sahibi bunu üç
-     ekranda birden yakaladı (fiş, düzenli ödeme, elle giriş) ve haklı olarak
-     "her yerde var galiba" dedi. Vardı.
+  /* KLAVYE PAYI BURADAN KALDIRILDI.
+     Bir ara buraya `+ klavye` eklenmişti: kutu klavyenin altında kalıyordu ve
+     aşağıda yer açmak çözüm sanılmıştı. Yer açıldı ama **kimse oraya
+     kaydırmıyordu** — ev sahibinin tarifi buydu.
 
-     Çözüm bütün uygulamaların yaptığı sıkıcı olan: AŞAĞIDA YER AÇ, kaydırmayı
-     işletim sistemine bırak. Ekranı yukarı fırlatmak (`KeyboardAvoidingView`
-     `behavior="position"`) düzeni zıplatıyor ve ev sahibi bunu açıkça
-     istemedi. iOS bu payı kendisi ekliyor; Android'de uygulama eklemek
-     zorunda.
-
-     Klavye kapalıyken sıfır, yani eski davranış birebir korunuyor. */
-  const klavye = useKlavyeOrtusu();
-  return { paddingBottom: alt + (opts?.extra ?? spacing.xxl) + klavye };
+     Asıl sebep başkaymış: kenardan kenara çizimle `adjustResize` pencereyi
+     artık küçültmüyor, dolayısıyla React Native odaklanılan kutuyu görünür
+     yapmıyor. Çözüm kabın KENDİ yüksekliğini kısaltmak
+     (`KeyboardAvoidingView behavior="padding"`); o zaman kaydırma
+     kendiliğinden oluyor ve buradaki pay çift sayım olurdu. */
+  return { paddingBottom: alt + (opts?.extra ?? spacing.xxl) };
 }
 
 /* `animateNextLayout()` KALDIRILDI — çalışmıyordu.
@@ -1930,10 +1926,19 @@ export function BottomSheet({
           (Fabric) modal icindeki dokunuslari RNGH yonetiyor ve bu sarmalayici
           olmadan icerideki hicbir jest calismiyor -- alt sayfa "tutuluyor ama
           hic tepki vermiyor" halindeydi, tam sebebi buydu. */}
+      {/* KLAVYE PAYI ALT SAYFANIN KENDİSİNDE.
+          Alt sayfa ayrı bir `Modal` penceresinde çiziliyor, yani ekrandaki
+          `KeyboardAvoidingView` onu HİÇ ETKİLEMİYOR. Sayfa ekranın dibine
+          yapışık olduğu için klavye açılınca içindeki alanlar doğrudan
+          altında kalıyordu — ev sahibi düzenli ödeme formunda yakaladı.
+          Kabın kendi yüksekliği kısalınca içerideki `ScrollView` odaklanılan
+          alanı görünür yapıyor. */}
       <GestureHandlerRootView style={{ flex: 1 }}>
-        <SheetBody onClose={onClose} maxHeight={maxHeight} insets={insets} testID={testID}>
-          {children}
-        </SheetBody>
+        <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
+          <SheetBody onClose={onClose} maxHeight={maxHeight} insets={insets} testID={testID}>
+            {children}
+          </SheetBody>
+        </KeyboardAvoidingView>
       </GestureHandlerRootView>
     </Modal>
   );

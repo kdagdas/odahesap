@@ -282,7 +282,9 @@ export default function Liste() {
 
   return (
     <View style={styles.root} testID="liste-screen">
-      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
+      {/* Gerekçe `review.tsx` içinde: kenardan kenara çizimle `adjustResize`
+          artık pencereyi küçültmüyor, kabın kendisi kısalmalı. */}
+      <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
         <ScrollView
           ref={scrollRef}
           contentContainerStyle={[styles.scroll, altPay]}
