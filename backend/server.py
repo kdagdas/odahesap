@@ -3008,16 +3008,30 @@ async def list_shopping(scope: Optional[str] = None, user=Depends(get_current_us
             m_anahtar = product_key(metin) or metin.casefold()
             if not m_anahtar:
                 continue
+            # FİYAT İPUCU YALNIZCA TAM EŞLEŞMEDE.
+            #
+            # Burada içeren eşleşme vardı ve `sorted(..., key=len)` yüzünden
+            # İKİ YÖNDE birden çalışıyordu — yani ürün adı liste maddesinin
+            # İÇİNDE geçtiğinde de tutuyordu. Ev sahibi cihazda üç örnekle
+            # yakaladı ve üçü de yanlış fiyat gösteriyordu:
+            #
+            #   listede "yassı şeftali"  <- "şeftali"nin fiyatı  (başka ürün)
+            #   listede "tavuk kıyma"    <- "kıyma"nın fiyatı    (dana kıyma!)
+            #   listede "güzel muz"      <- "muz"un fiyatı
+            #
+            # Üstelik sözlükte İLK denk geleni alıyordu; "en iyi eşleşme" diye
+            # bir şey yoktu.
+            #
+            # Neden burada sıkı, `/shopping/match`te gevşek: o uç ÖNERİYOR ve
+            # kutu BOŞ açılıyor, yani insan onaylıyor. Bu satır ise "geçen
+            # sefer 1,68 €" diye OLGU gibi yazıyor ve kimse doğrulamıyor.
+            # Onaylanmayan bir iddia yanlışsa sessiz bir yalandır — üstelik
+            # kullanıcı markette ona göre karar veriyor.
+            #
+            # Bedeli: "arpa şehriye 2 tane" gibi not taşıyan maddeler artık
+            # ipucu almıyor. Kabul edildi — "yanlış birleştirmek,
+            # birleştirmemekten pahalıdır" ve boş kalabilme cesareti.
             bulunan = son_fiyat.get(m_anahtar)
-            if bulunan is None:
-                # Tam kelime içerme: listede "arpa şehriye 2 tane", üründe
-                # "şehriye". Alt dize değil kelime — "yağ" ile "yağlı kağıt"
-                # eşleşmesin. Üç harf eşiği: "su" her şeye eşleşir.
-                for anahtar, v in son_fiyat.items():
-                    kisa, uzun = sorted((anahtar, m_anahtar), key=len)
-                    if len(kisa) >= 3 and kisa in uzun.split():
-                        bulunan = v
-                        break
             if bulunan:
                 it["last_price"] = bulunan["price"]
                 it["last_merchant"] = bulunan["merchant"]

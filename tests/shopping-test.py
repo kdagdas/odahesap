@@ -134,6 +134,32 @@ check("BASKASININ KISISELINDEN de fiyat geliyor (bilincli karar)",
       ipucu.get("sampuan") == 4.5, str(ipucu))
 check("alinmamis urunde ipucu YOK, uydurulmuyor",
       ipucu.get("hic alinmamis sey") is None, str(ipucu))
+# NITELEYICI TASIYAN MADDE BASKA BIR URUNUN FIYATINI ALMAZ.
+#
+# Ev sahibi cihazda uc ornekle yakaladi: "yassi seftali" seftalinin fiyatini,
+# "tavuk kiyma" (dana) kiymanin fiyatini, "guzel muz" muzun fiyatini
+# aliyordu. Sebep iki yonlu iceren esleme idi: urun adi liste maddesinin
+# ICINDE gecince de tutuyordu.
+#
+# Bu satir bir IDDIA ve kimse onaylamiyor -- `/shopping/match` gevsek
+# olabilir cunku orada kutu bos aciliyor ve insan onayliyor.
+c.post(f"{API}/expenses", headers=hdr(alice), json={
+    "target_type": "household", "total": 12.49, "source": "receipt",
+    "merchant": "BIZIM", "expense_date": "2026-08-12",
+    "items": [{"name": "RINDER HACK", "price": 12.49, "quantity": 1,
+               "generic": "kiyma", "category": "et_balik"}]})
+for metin in ("kiyma", "tavuk kiyma", "sut kremasi"):
+    c.post(f"{API}/shopping", headers=hdr(alice),
+           json={"text": metin, "scope": "household"})
+
+r3 = c.get(f"{API}/shopping", headers=hdr(alice), params={"scope": "household"}).json()
+ip3 = {i["text"]: i.get("last_price") for i in r3["items"]}
+check("tam eslesen madde fiyati aliyor", ip3.get("kiyma") == 12.49, str(ip3))
+check("NITELEYICILI madde fiyat ALMIYOR (tavuk kiyma)",
+      ip3.get("tavuk kiyma") is None, str(ip3))
+check("urun adi maddeyi iceriyor diye de eslesmiyor",
+      ip3.get("sut kremasi") is None, str(ip3))
+
 markt = {i["text"]: i.get("last_merchant") for i in r["items"]}
 check("market de geliyor", markt.get("sut") == "ALDI", str(markt))
 
