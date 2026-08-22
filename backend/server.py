@@ -4483,12 +4483,26 @@ async def stats(period_id: Optional[str] = None, user=Depends(get_current_user))
     ).sort("closed_at", -1).to_list(1)
     change_pct = None
     if previous:
-        prev_exps = await db.expenses.find(
-            {"household_id": hh["household_id"], "period_id": previous[0]["period_id"],
-             "target_type": {"$in": ["household", "custom"]}},
-            {"_id": 0, "total": 1},
+        # ONCEKI DONEM DE AYNI KURALLA OLCULUYOR.
+        #
+        # Burasi `target_type in ["household", "custom"]` ile suzuluyordu, oysa
+        # yukaridaki `total` bolusme listesinden cikiyor. Yani yuzde degisim
+        # ELMAYLA ARMUDU karsilastiriyordu: onceki donem `custom` harcamalarla
+        # sisiyor, degisim sistematik olarak oldugundan DUSUK cikiyordu.
+        # Tur 9'da terk edilen kuralin bu ucta hayatta kalmis kopyasiydi.
+        #
+        # Uyeler o donemin katilimcilarindan geliyor, bugunku ev listesinden
+        # degil: evden ayrilan biri gecmis bir donemin harcamalarini kisisele
+        # dusururdu.
+        prev_rows = await db.expenses.find(
+            {"household_id": hh["household_id"], "period_id": previous[0]["period_id"]},
+            {"_id": 0},
         ).to_list(5000)
-        prev_total = sum(float(e["total"]) for e in prev_exps)
+        prev_uyeler = await period_participants(
+            hh["household_id"], previous[0]["period_id"], hh["member_ids"])
+        prev_total = sum(
+            float(e.get("total") or 0)
+            for e in _kapsa(prev_rows, "household", me_id, prev_uyeler))
         if prev_total > 0:
             change_pct = round((total - prev_total) / prev_total * 100)
 
@@ -5635,15 +5649,20 @@ ONE_CIKAN_TAVAN = 3    # dördüncü satırda lacivert alan ekranın yarısını
 ONE_CIKAN_ETKI_ORANI = 0.005
 
 
-async def _ay_ev_toplami(household_id: str, month: str) -> float:
-    """Bir ayın EV harcaması toplamı. Kişisel harcamalar dışarıda."""
-    lo, hi = _month_bounds(month)
-    rows = await db.expenses.find(
-        {"household_id": household_id, "target_type": {"$in": ["household", "custom"]}},
-        {"_id": 0, "total": 1, "expense_date": 1, "created_at": 1},
-    ).to_list(5000)
-    return sum(float(e.get("total") or 0)
-               for e in rows if lo <= (_expense_day(e) or "") < hi)
+async def _ay_ev_toplami(household_id: str, month: str, members: List[str]) -> float:
+    """Bir ayın EV harcaması toplamı. Kişisel harcamalar dışarıda.
+
+    **Kapsam `_kapsa`dan geliyor, burada YENİDEN TANIMLANMIYOR.** Eskiden
+    `target_type in ["household", "custom"]` süzülüyordu ve bu, Tur 9'da
+    terk edilmiş kuralın burada hayatta kalmış kopyasıydı: üç kişilik bir evde
+    "sen + Salih" alımı `custom` etiketi taşıyor ama ev onu almadı. Sonuç,
+    öne çıkan cümlenin "kayda değer mi" eşiğinin paydasının şişmesiydi —
+    görünen bir sayı değil ama neyin gösterileceğini kaydırıyordu.
+
+    Aynı kuralın üçüncü bir yazımı olmasın diye ortak yol kullanılıyor.
+    """
+    rows = await _month_expenses(household_id, month, "household", "", members)
+    return sum(float(e.get("total") or 0) for e in rows)
 
 
 @api.get("/stats/highlight")
@@ -5753,8 +5772,9 @@ async def highlight(user=Depends(get_current_user)):
         #
         # Payda GEÇEN AY ile BU AYIN büyüğü: ayın 3'ünde bu ayın toplamı
         # küçüktür ve eşik saçma biçimde düşerdi.
-        taban = max(await _ay_ev_toplami(hh["household_id"], _prev_month(ay)),
-                    await _ay_ev_toplami(hh["household_id"], ay))
+        _uyeler = hh.get("member_ids") or []
+        taban = max(await _ay_ev_toplami(hh["household_id"], _prev_month(ay), _uyeler),
+                    await _ay_ev_toplami(hh["household_id"], ay, _uyeler))
         etki_esigi = taban * ONE_CIKAN_ETKI_ORANI
 
         def yeterli(x: Optional[dict]) -> bool:
