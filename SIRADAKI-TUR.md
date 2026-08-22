@@ -1550,6 +1550,55 @@ tarama ve Alınacaklar — 21 Ağustos dökümü"):
 
 ---
 
+## PARK EDİLENLER — 22 Ağustos: ev sahibi OLGUNLAŞMA istiyor
+
+Ev sahibinin sözü ve bu bir öncelik kararıdır:
+
+> *"Yapmak istiyorum ama şu an çalışan uygulamaya yeni özellikler getirip
+> sonra yine bir hata bulup yeniden oturmak istemiyorum. Belli bir süre bu
+> uygulamayı OLGUN şekilde kullanmak istiyorum."*
+
+Doğru bir istek ve ölçülebilir bir gerekçesi var: bu oturumda kapatılan
+hataların **çoğu yeni eklenen özelliklerin yan etkisiydi** (çip şeridi, öneri
+kalıbı, halka, ipucu animasyonu). Özellik hızı hata üretiyor.
+
+**Kural: bir sonraki APK'ya YALNIZCA hata düzeltmesi girer.** Aşağıdakiler
+hazır, gerekçeli ve bekliyor; ev sahibi "şimdi" diyene kadar açılmayacak.
+
+| Madde | Durum | Nerede yazılı |
+|---|---|---|
+| **Animasyonlar (Reanimated)** | Teşhis bitti: `LayoutAnimation` Yeni Mimari'de çalışmıyor, `animateNextLayout()` üç yerde çağrılıyor (hepsi `liste.tsx`). Öteki animasyonlar RN `Animated` ile çalışıyor ve DOKUNULMAYACAK. | bu bölüm |
+| **Eczane / sağlık kategorisi** | Halka düzeltmesinden sonra bedava; Rossmann fişinin altı kalemi de "ev ürünleri"ne düşmüştü | "Eksik kategoriler" |
+| **Analiz'de "Kalanlar" açılımı** | Kural: dilim < %3 ya da tavan 7 → Kalanlar; satır aynı sayfada açılıyor | bu bölüm |
+| **Market + tarih yan yana** | Fiş ekranında bir satır kazandırıyor | bu bölüm |
+| **Fiyat ekseni: "her zamankine göre"** | Referans = son 6 ayın medyanı, ≥3 ölçüm şartı, aşağı sapma söylenir / yukarı sapma iki ölçüm ister | "Aynı ay içindeki iki alışveriş" |
+| **Bütçe + manşet yeri (B)** | Maket çizildi ve onaylandı; çubuk rengi ve kategori bütçesi kararları bekliyor | "BÜTÇE — B versiyonu" |
+| **Ödeme yöntemi / şube** | Tetikleyicileri yazılı | "FİŞTEKİ ÖTEKİ VERİLER" |
+| **Uzun fiş ölçümü** | İki OCR çağrısı, alan tabanlı sınır | "UZUN FİŞ" |
+
+### ML KIT BELGE TARAYICI — istendi, park edildi
+
+Ev sahibi belge tarama uygulamalarındaki gibi **kâğıdın köşelerini bulan**
+bir rehber istedi. Elle yapılacak bir şey değil; gerçek zamanlı kenar
+algılama gerekiyor. Android'de hazır cevabı **Google ML Kit Document
+Scanner**: canlı köşe algılama, elle köşe düzeltme, **perspektif düzeltmesi**,
+arka planı kırpma. Cihazda çalışıyor, ücretsiz, Play Services üzerinden.
+
+**Asıl kazanç kırpma.** Bugün fiş karenin belki yarısını kaplıyor ve 2000
+pikselin yarısı masaya gidiyor. Kırpılmış bir fişte aynı 2000 piksel tamamen
+fişin üstünde — hiçbir şey büyütmeden okunabilirlik neredeyse iki katına
+çıkıyor.
+
+**Bedeli:** yeni yerel bağımlılık (prebuild + yeni APK şart), tarama ekranı
+**Google'ın arayüzü** olur — logomuz, çoklu seçim rozetimiz, "Galeriden seç"
+ve "elle giriş" kapılarımız o ekranda yok. Play Services'e bağımlılık.
+
+**Sıra önemli: ÖNCE UCUZ OLANI ÖLÇ.** Alan tabanlı piksel sınırı (uzun dar
+fişte 3000'e çıkmak) bedava ve aynı sorunu büyük ölçüde çözebilir. ML Kit bir
+arayüz kaybıdır ve ancak gerçekten gerekiyorsa ödenmeli.
+
+---
+
 ## Tur 14 planı — öncelik sırasıyla
 
 ### 1. ÖDEYEN ile EKLEYEN ayrılıyor — en yüksek getirili madde
