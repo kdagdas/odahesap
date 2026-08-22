@@ -1720,6 +1720,34 @@ açıklayıcı satır koymak. Olası yönler: etiketin kendisini değiştirmek
 ("Ağustos'ta" demeyi bırakmak), ya da farkı bir kez, dokunulunca açılan bir
 açıklamada anlatmak.
 
+## DURUM ÇUBUĞU — BUZLU ŞERİT, sonraya
+
+Kaydırınca beyaz içerik durum çubuğunun altına giriyor ve saat/pil simgeleri
+metnin üstüne biniyor.
+
+**Ev sahibi kendi isteğini geri çekti** ve gerekçesi kayda değer:
+
+> *"LinkedIn'e girdim ve benim uygulamamla aynı sorunu onlar da yaşıyor. Bu
+> kadar büyük bir uygulamada bile böyle bir sorun var demek ki."*
+
+**Bu iyi bir ölçüt ve kural olarak alınsın:** aynı davranışı olgun ve büyük
+bir uygulama da yaşıyorsa, elimizdeki şey bir kusur değil **platformun kabul
+edilmiş davranışı** olabilir. Böyle bir durumda düzeltme çabası, kazandırdığı
+kadar risk taşıyor.
+
+**Yapılırsa BUZLU ŞERİT olacak** (ev sahibinin kararı): durum çubuğu
+yüksekliğinde saydam-bulanık bir katman. Avantajı kendiliğinden doğru
+çalışması — altında hangi renk varsa onu gösteriyor, yani kaydırma konumunu
+izlemeye, her ekrana `onScroll` eklemeye gerek kalmıyor.
+
+Yine de çözülmesi gereken ikinci parça var: **simge rengi.** Şerit beyaz
+içeriğin üstündeyken saat ve pil koyuya dönmeli, yoksa beyaz üstünde beyaz
+kalır — bugünkü sorunun aynısı. `expo-status-bar` bunu yapabiliyor ama
+kaydırma konumu yine gerekiyor.
+
+Reddedilen yol: her ekranın kaydırma konumunu izleyip şeridin rengini elle
+değiştirmek. Her ekrana dokunuyor ve yarım kalırsa her ekranda görünür.
+
 ## TİTREŞİM — yapılacak, DÖRT YER (yeni bağımlılık)
 
 `expo-haptics` **kurulu değil**, yani prebuild + yeni APK gerektiriyor. Buna

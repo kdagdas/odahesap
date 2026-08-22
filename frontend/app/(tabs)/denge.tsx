@@ -138,7 +138,7 @@ function EkstreSatir({
 export default function Denge() {
   const router = useRouter();
   const { user } = useAuth();
-  const { members, pendingMembers, activePeriod, isAdmin, refresh: refreshHH } = useHousehold();
+  const { members, pendingMembers, activePeriod, isAdmin, household, refresh: refreshHH } = useHousehold();
   /* Ev TEK KİŞİLİK mi. Bu ekranın tamamı "kim kime borçlu" sorusuna cevap
      veriyor ve o soru tek kişilik bir evde yok. */
   const yalnizim = members.length <= 1;
@@ -202,6 +202,16 @@ export default function Denge() {
    * ile "Senin payın" yer değiştiriyor ama açılan şey satırın anlamını takip
    * etmeli, ekrandaki sırasını değil.
    */
+  /* Son ödeşmeden bu yana kaç gün. Ödeşme hiç olmadıysa satır çizilmiyor —
+     "0 gün" ya da "hiç ödeşilmedi" demek yeni bir eve sitem gibi okunur ve
+     boş kalabilme cesareti burada da geçerli. */
+  const odesmeGun = useMemo(() => {
+    const iso = household?.last_settlement;
+    if (!iso) return null;
+    const g = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
+    return g >= 0 ? g : null;
+  }, [household?.last_settlement]);
+
   const [acikSatir, setAcikSatir] = useState<"carried" | "share" | "paid" | null>(null);
   /** Devir açıkken, içinde açılmış olan ay. */
   const [acikAy, setAcikAy] = useState<string | null>(null);
