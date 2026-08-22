@@ -78,14 +78,49 @@ async def main():
     check("her deneme kaydedildi", n == server.OCR_SAATLIK_SINIR, f"{n} kayit")
 
     print()
-    print("== aylik sinir saatlikten BUYUK olmali ==")
-    # Aksi halde saatlik sinir hic devreye giremez ve kural anlamsizlasir.
-    check("aylik > saatlik", server.OCR_AYLIK_SINIR > server.OCR_SAATLIK_SINIR,
-          f"{server.OCR_AYLIK_SINIR} / {server.OCR_SAATLIK_SINIR}")
+    print("== KUTULAR dardan genise sirali olmali ==")
+    # Aksi halde genis bir kutu dar olanin onune gecer ve dar kutu hic devreye
+    # giremez -- kural yazili durur ama calismaz.
+    sinirlar = [k[2] for k in server.OCR_KUTULAR]
+    pencereler = [k[1] for k in server.OCR_KUTULAR]
+    check("sinirlar artan", sinirlar == sorted(sinirlar), str(sinirlar))
+    check("pencereler artan", pencereler == sorted(pencereler), str(pencereler))
+    # Her kutunun kendi mesaji olmali: "sinira takildin" demek yetmiyor,
+    # kullanicinin bilmesi gereken sey NE ZAMAN acilacagi.
+    check("her kutunun mesaji var", all(k[3] for k in server.OCR_KUTULAR))
+    check("mesajlar farkli", len({k[3] for k in server.OCR_KUTULAR}) == len(server.OCR_KUTULAR))
+
+    print()
+    print("== GLOBAL tavan kisi basi kutulardan BUYUK olmali ==")
+    # Kucuk olsaydi tek kullanici tek basina global tavani doldurup butun evi
+    # kilitlerdi; global tavan bir kotuye kullanim freni, gunluk kullanim
+    # freni degil.
+    en_genis = max(sinirlar)
+    check("global > en genis kisi kutusu",
+          server.OCR_GLOBAL_GUNLUK > en_genis,
+          f"{server.OCR_GLOBAL_GUNLUK} / {en_genis}")
+
+    print()
+    print("== GLOBAL tavan gercekten uyguluyor ==")
+    # Kisi basi kutularin ALTINDA kalan bir kullanici bile, toplam kapasite
+    # dolduysa durmali. Fatura tek kisiye geliyor: koruyan sinir bu.
+    uid3 = f"kota_{uuid.uuid4().hex[:10]}"
+    simdi = server.now_utc()
+    await server.db.ocr_calls.insert_many(
+        [{"user_id": f"dolgu_{i}", "at": simdi} for i in range(server.OCR_GLOBAL_GUNLUK)])
+    try:
+        await server._ocr_kota_kontrol(uid3)
+        check("global tavan durduruyor", False, "gecti, oysa tavan dolu")
+    except HTTPException as e:
+        check("global tavan durduruyor", e.status_code == 429, str(e.status_code))
+        check("mesaj SUCLAMIYOR (kapasite diyor)",
+              "kapasite" in e.detail.lower(), e.detail)
+    await server.db.ocr_calls.delete_many({"user_id": {"$regex": "^dolgu_"}})
 
     print()
     print("== temizlik ==")
-    await server.db.ocr_calls.delete_many({"user_id": {"$in": [uid, uid2]}})
+    await server.db.ocr_calls.delete_many({"user_id": {"$in": [uid, uid2, uid3]}})
+    await server.db.ocr_calls.delete_many({"user_id": {"$regex": "^dolgu_"}})
     print(f"\n===== {ok} basarili, {fail} basarisiz =====")
     return 1 if fail else 0
 

@@ -1470,8 +1470,50 @@ async def gemini_vision(system_prompt: str, user_text: str, image_b64: str, mime
 # Üçüncü ve atlatılamaz katman kodda DEĞİL: sağlayıcı panelinde API kotası.
 # Kodla yapılan her şey bir açık bulunursa atlatılabilir; fatura tavanı
 # atlatılamaz. Ücretli katmana geçmeden önce yapılacak ilk iş odur.
-OCR_AYLIK_SINIR = 100
-OCR_SAATLIK_SINIR = 20
+# ---------------------------------------------------------------- OCR kotası
+#
+# ### Kutuları belirleyen gözlem
+#
+# Ev sahibinin sözü: *"bir kullanıcı genelde saatte üç fişten fazla taramaz;
+# o gün üç markete gitmiştir ve fişleri aynı anda taramak ister."* Yani gerçek
+# kullanım DAR ve TOPAKLI — bir oturuşta birkaç fiş, sonra günlerce hiç.
+# Saatlik kutu topağı taşıyacak kadar geniş, günlük ve haftalık kutular ise
+# topağın kaç kez tekrarlanabileceğini sınırlıyor.
+#
+# ### Niçin bu kadar dar
+#
+# Kullanıcılar para ÖDEMİYOR ve fatura tek kişiye, ev sahibine geliyor. Ama
+# çok dar olursa insan uygulamayı bırakır — sınır bilerek "normal kullanımın
+# ÜSTÜNDE, kötüye kullanımın ALTINDA" seçildi.
+#
+# ### Aylık kutu KALDIRILDI
+#
+# Haftalık 30 zaten ayı ~130'da tutuyor. İki farklı pencereli sınır yan yana
+# durunca kullanıcıya hangisine takıldığını anlatmak zorlaşıyordu ve ikinci
+# sınır hiçbir şey eklemiyordu.
+OCR_KUTULAR = (
+    ("saat", timedelta(hours=1), 5,
+     "Saatlik fiş tarama sınırına ulaştın. Bir süre sonra tekrar dene."),
+    ("gun", timedelta(days=1), 10,
+     "Bugünlük fiş tarama sınırına ulaştın. Yarın tekrar dene."),
+    ("hafta", timedelta(days=7), 30,
+     "Bu haftalık fiş tarama sınırına ulaştın."),
+)
+
+# ### GLOBAL GÜNLÜK TAVAN — kişi başına kutular cebi KORUMUYOR
+#
+# Gemini anahtarı tek ve sınır PROJE başına. Yüz kullanıcı ayrı ayrı kendi
+# kotasının altında kalsa bile toplam çağrı ücretsiz katmanı aşar ve fatura
+# tek kişiye çıkar. Ölçülmüş gerçek: ücretsiz katman **arka arkaya iki
+# isteği bile** kaldırmıyor (ilk istek 200, ikincisi 429).
+#
+# Bu sayı bir ÇEVİRME DÜĞMESİ: beş kişilik bugünkü kullanımın çok üstünde,
+# yüz kişilik bir testte ise gerçek bir tavan. Aşıldığında kullanıcıya
+# suçlayıcı olmayan dürüst bir cümle dönüyor.
+OCR_GLOBAL_GUNLUK = 200
+
+# Eski adlar: `kota-test.py` ve olası dış okuyucular için korunuyor.
+OCR_SAATLIK_SINIR = OCR_KUTULAR[0][2]
 
 
 async def _ocr_kota_kontrol(user_id: str) -> None:
@@ -1482,20 +1524,24 @@ async def _ocr_kota_kontrol(user_id: str) -> None:
     yapılabilirdi: maliyet doğar, sayaç dönmez.
     """
     simdi = now_utc()
-    bir_saat = simdi - timedelta(hours=1)
-    ay_basi = simdi.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
-    saatlik = await db.ocr_calls.count_documents({"user_id": user_id, "at": {"$gte": bir_saat}})
-    if saatlik >= OCR_SAATLIK_SINIR:
+    # KİŞİ BAŞINA KUTULAR — dardan genişe. İlk takılan sınır konuşuyor, çünkü
+    # kullanıcıya "hangi sınıra takıldın" demek "sınıra takıldın" demekten
+    # daha kullanışlı: birinden çıkış yolu var (bekle), ötekinden yok.
+    for _ad, pencere, sinir, mesaj in OCR_KUTULAR:
+        adet = await db.ocr_calls.count_documents(
+            {"user_id": user_id, "at": {"$gte": simdi - pencere}})
+        if adet >= sinir:
+            raise HTTPException(status_code=429, detail=mesaj)
+
+    # GLOBAL TAVAN en sonda: kişi kendi kotasının altındaysa bile toplam
+    # kapasite dolmuş olabilir. Mesaj SUÇLAMIYOR — kullanıcı bir şey yanlış
+    # yapmadı, uygulamanın günlük kapasitesi bitti.
+    global_adet = await db.ocr_calls.count_documents({"at": {"$gte": simdi - timedelta(days=1)}})
+    if global_adet >= OCR_GLOBAL_GUNLUK:
         raise HTTPException(
             status_code=429,
-            detail="Saatlik fiş tarama sınırına ulaştınız. Bir süre sonra tekrar deneyin.")
-
-    aylik = await db.ocr_calls.count_documents({"user_id": user_id, "at": {"$gte": ay_basi}})
-    if aylik >= OCR_AYLIK_SINIR:
-        raise HTTPException(
-            status_code=429,
-            detail=f"Bu ay {OCR_AYLIK_SINIR} fiş taradınız. Kota ayın başında yenilenir.")
+            detail="Uygulamanın bugünkü tarama kapasitesi doldu. Yarın tekrar dene.")
 
     await db.ocr_calls.insert_one({"user_id": user_id, "at": simdi})
 
