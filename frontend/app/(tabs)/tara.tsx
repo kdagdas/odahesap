@@ -100,6 +100,17 @@ export default function Tara() {
      Android iki hak veriyor; ikinci retten sonra `canAskAgain` false oluyor
      ve `requestPermission()` SESSİZCE hiçbir şey yapmıyor -- düğme ölü
      kalıyordu. O durumda tek yol sistem ayarları, aşağıda ona geçiliyor. */
+  /* FLAŞ — fişin en sık çekildiği yer market çıkışı ve orada ışık nadiren
+     iyi. Termal fiş zaten düşük kontrastlı; karanlıkta OCR'ın okuduğu kalem
+     sayısı düşüyor. Açık kalıyor (`enableTorch`), yani deklanşörle senkron
+     bir "flaş patlaması" değil sürekli ışık — kullanıcı çerçeveyi ışıkla
+     birlikte görüyor ve hizalayabiliyor.
+
+     Ekran değişince sönüyor: cebe giren telefonda yanan bir lamba pil
+     yakar. */
+  const [flas, setFlas] = useState(false);
+  useEffect(() => () => setFlas(false), []);
+
   const izinSoruldu = useRef(false);
   useEffect(() => {
     if (!permission || permission.granted || !permission.canAskAgain) return;
@@ -279,7 +290,8 @@ export default function Tara() {
 
   return (
     <View style={styles.root} testID="tara-screen">
-      <CameraView ref={cam} style={StyleSheet.absoluteFill} facing="back" />
+      <CameraView ref={cam} style={StyleSheet.absoluteFill} facing="back"
+                  enableTorch={flas} />
 
       <View style={styles.frame} pointerEvents="none">
         {/* ÜST KÖŞELER DURUM ÇUBUĞUNUN ALTINDA.
@@ -305,6 +317,21 @@ export default function Tara() {
             Boş kalabilme cesareti bu ekranda da geçerli: söylenecek bir şey
             yoksa satır hiç çizilmiyor. */}
       </View>
+
+      {/* Flaş düğmesi SAĞ ÜSTTE, denetim şeridinde değil. Alt şerit üç
+          düğmeyle zaten dolu ve oradaki her şey "fişi al" ailesinden; flaş
+          ise bir AYAR — çekmeden önce bir kez dokunulup unutuluyor. Ayrı
+          aileye ayrı yer. */}
+      <SafeAreaView style={styles.flasKap} edges={["top"]} pointerEvents="box-none">
+        <Pressable onPress={() => setFlas((v) => !v)}
+                   style={({ pressed }) => [styles.flasBtn,
+                                            flas && styles.flasBtnAcik,
+                                            pressed && { transform: [{ scale: 0.92 }] }]}
+                   testID="torch-btn">
+          <Ionicons name={flas ? "flash" : "flash-off"} size={20}
+                    color={flas ? colors.ink : colors.onDark} style={styles.glyph} />
+        </Pressable>
+      </SafeAreaView>
 
       {processing && <ScanOverlay note={progressTxt || undefined} />}
       {error && (
@@ -425,6 +452,17 @@ const styles = StyleSheet.create({
     flexDirection: "row", alignItems: "center", justifyContent: "space-around",
     paddingHorizontal: spacing.xl, paddingBottom: spacing.md, paddingTop: spacing.lg,
   },
+  flasKap: {
+    position: "absolute", top: 0, right: 0,
+    paddingTop: spacing.md, paddingRight: spacing.lg,
+  },
+  flasBtn: {
+    width: 44, height: 44, borderRadius: 22,
+    backgroundColor: "rgba(15,27,51,0.78)",
+    alignItems: "center", justifyContent: "center",
+  },
+  // Açıkken tersine dönüyor: yanan bir lambanın kendisi de yanık görünmeli.
+  flasBtnAcik: { backgroundColor: colors.onDark },
   sideBtn: {
     width: 52, height: 52, borderRadius: 26,
     /* Beyaz yerine koyu daire: parlak bir fişin üstünde beyaz halka

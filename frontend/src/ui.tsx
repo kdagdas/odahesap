@@ -17,6 +17,8 @@ import {
   KeyboardAvoidingView,
   useWindowDimensions,
 } from "react-native";
+/* Reanimated: `LayoutAnimation` Yeni Mimari'de çalışmıyor (bkz. CLAUDE.md). */
+import ReAnimated, { FadeIn, FadeOut } from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
 import Svg, { Circle } from "react-native-svg";
 import { AvatarCizim, getAvatar } from "./avatarlar";
@@ -1218,14 +1220,17 @@ export function GeriAlSeridi({
      nadir — madde yazarken değil, listeye bakarken siliniyor. Ayrıntı ve
      ölçümler `SIRADAKI-TUR.md`'de. */
   return (
-    <View style={[styles.geriAlKap, { bottom: alt + spacing.lg }]} pointerEvents="box-none">
+    <ReAnimated.View style={[styles.geriAlKap, { bottom: alt + spacing.lg }]}
+                     pointerEvents="box-none"
+                     entering={FadeIn.duration(180)}
+                     exiting={FadeOut.duration(220)}>
       <View style={styles.geriAl} testID={testID}>
         <Text style={styles.geriAlTxt} numberOfLines={1}>{metin}</Text>
         <Pressable onPress={onGeriAl} hitSlop={10} testID={testID ? `${testID}-btn` : undefined}>
           <Text style={styles.geriAlBtn}>GERİ AL</Text>
         </Pressable>
       </View>
-    </View>
+    </ReAnimated.View>
   );
 }
 

@@ -9,6 +9,7 @@ import {
   View, Text, StyleSheet, ScrollView, TextInput, Pressable,
   KeyboardAvoidingView, Platform, ActivityIndicator, Alert, Keyboard,
 } from "react-native";
+import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -788,7 +789,13 @@ export default function Review() {
             bilerek silen kişi onu her seferinde kapatmak zorunda kalırdı,
             yani doğru işi yapan cezalandırılırdı. */}
         {silinen && (
-          <View style={styles.geriSerit} testID="review-undo">
+          /* SÖNÜMLENEREK geliyor ve gidiyor. Önce bir anda beliriyor, bir anda
+             yok oluyordu; kaybolma anı "ben mi kapattım, süresi mi doldu"
+             sorusunu bırakıyordu. Sönme, sürenin dolduğunu söyleyen tek
+             işaret. */
+          <Animated.View style={styles.geriSerit} testID="review-undo"
+                         entering={FadeIn.duration(180)}
+                         exiting={FadeOut.duration(220)}>
             <Ionicons name="trash-outline" size={16} color={colors.onDarkMuted} />
             <Text style={styles.geriTxt} numberOfLines={1}>
               {silinen.satir.name || "Kalem"} silindi
@@ -796,7 +803,7 @@ export default function Review() {
             <Pressable onPress={geriAl} hitSlop={10} testID="review-undo-btn">
               <Text style={styles.geriBtn}>Geri al</Text>
             </Pressable>
-          </View>
+          </Animated.View>
         )}
 
         {/* Alt cubuk telefonun gezinme cubugunun altinda kaliyordu: kenardan
@@ -1084,7 +1091,14 @@ const styles = StyleSheet.create({
   },
   dupeTitle: { ...T.bodySb, color: colors.onWarning },
   dupeTxt: { ...T.caption, color: colors.onWarning, marginTop: 1 },
-  dupeDismiss: { ...T.captionSb, color: colors.onWarning, textDecorationLine: "underline" },
+  /* KIRPILMASIN: ortadaki metin bloğu `flex: 1` ile bütün boşluğu alıyordu ve
+     bu bağlantı sağdan kesiliyordu ("Yine de kayd…"). Dokunulacak bir şeyin
+     yarısı görünüyorsa dokunulmuyor. `flexShrink: 0` onu sabitliyor; daralması
+     gereken taraf açıklama metni. */
+  dupeDismiss: {
+    ...T.captionSb, color: colors.onWarning, textDecorationLine: "underline",
+    flexShrink: 0,
+  },
   qtyInput: {
     backgroundColor: colors.surfaceSecondary, borderRadius: radius.md,
     paddingHorizontal: spacing.sm, paddingVertical: spacing.sm, minHeight: 44,

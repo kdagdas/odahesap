@@ -544,16 +544,25 @@ export default function Liste() {
             )}
           </Sheet>
         </ScrollView>
+      {/* ŞERİT `ScrollView`in DIŞINDA ama `KeyboardAvoidingView`in İÇİNDE.
+          İkisi de bilinçli ve gerekçeleri ayrı:
+
+          - ScrollView'in dışında, çünkü içeride olsaydı kaydırınca kaçardı ve
+            geri alma penceresi "beş saniye" değil "kaydırmadığın sürece beş
+            saniye" olurdu.
+          - KeyboardAvoidingView'in İÇİNDE, çünkü klavye açılınca kabın
+            yüksekliği kısalıyor ve şerit onunla birlikte yukarı çıkıyor.
+            **Bu bir hesap değil, bir yapı.** Daha önce iki kez klavye
+            yüksekliğini elle ekleyip iki kez yanıldım (şerit ekranın ortasına
+            çıktı); doğru çözüm sayı eklemek değil, şeridi kısalan kabın
+            içine koymak. */}
+          <GeriAlSeridi
+          gorunur={!!silinen}
+          metin={silinen ? `"${silinen.text}" silindi` : ""}
+          onGeriAl={geriAl}
+          testID="liste-geri-al"
+        />
       </KeyboardAvoidingView>
-      {/* Şerit ScrollView'in DIŞINDA: içeride olsaydı kaydırınca kaçardı ve
-          geri alma penceresi beş saniye değil, "kaydırmadığın sürece beş
-          saniye" olurdu. */}
-      <GeriAlSeridi
-        gorunur={!!silinen}
-        metin={silinen ? `"${silinen.text}" silindi` : ""}
-        onGeriAl={geriAl}
-        testID="liste-geri-al"
-      />
     </View>
   );
 }
