@@ -529,7 +529,22 @@ export function useScrollPad(opts?: { tabs?: boolean; extra?: number }) {
      Sekmeli ekranda cihazin gezinme cubugu payini da cubuk kendisi
      ustleniyor; burada yalnizca nefes payi kaliyor. */
   const alt = opts?.tabs ? 0 : insets.bottom;
-  return { paddingBottom: alt + (opts?.extra ?? spacing.xxl) };
+  /* KLAVYE PAYI BURADA, tek yerden.
+     Metin girilen her ekranda aynı sorun vardı: odaklanılan kutu klavyenin
+     altında kalıyor ve ancak listeyi kaydırarak görünüyor — içerik kısaysa
+     kaydıracak yer de yok, yani kutu ERİŞİLEMEZ oluyordu. Ev sahibi bunu üç
+     ekranda birden yakaladı (fiş, düzenli ödeme, elle giriş) ve haklı olarak
+     "her yerde var galiba" dedi. Vardı.
+
+     Çözüm bütün uygulamaların yaptığı sıkıcı olan: AŞAĞIDA YER AÇ, kaydırmayı
+     işletim sistemine bırak. Ekranı yukarı fırlatmak (`KeyboardAvoidingView`
+     `behavior="position"`) düzeni zıplatıyor ve ev sahibi bunu açıkça
+     istemedi. iOS bu payı kendisi ekliyor; Android'de uygulama eklemek
+     zorunda.
+
+     Klavye kapalıyken sıfır, yani eski davranış birebir korunuyor. */
+  const klavye = useKlavyeOrtusu();
+  return { paddingBottom: alt + (opts?.extra ?? spacing.xxl) + klavye };
 }
 
 /* `animateNextLayout()` KALDIRILDI — çalışmıyordu.
@@ -1109,25 +1124,48 @@ export function OdesmeUyarisi({
  * ekranda unutulmuş bir kutu gibi duruyor.
  */
 /**
- * Klavye yüksekliği — kapalıysa 0.
+ * Klavyenin uygulama penceresini ÖRTTÜĞÜ kadar — kapalıysa 0.
  *
- * Geri alma şeridi için gerekiyor: şerit kaydırma alanının DIŞINDA ve ekranın
- * dibine yapışık. Klavye açıkken onun ALTINDA kalıyordu, yani beş saniyelik
- * geri alma penceresi görünmeden geçiyordu. Ev sahibi Alınacaklar'da yakaladı:
- * madde yazarken bir şey siliyorsun ve şeridi hiç görmüyorsun.
+ * Neden ham klavye yüksekliği DEĞİL: ilk sürüm öyleydi ve cihazda ölçülünce
+ * yanlış çıktı. Şerit klavyenin çok üstünde, ekranın ortasında duruyordu.
+ * Sebep **iki kez telafi**: Android `adjustResize` ile pencereyi zaten
+ * küçültüyor, yani `bottom: 16` kendiliğinden klavyenin üstüne düşüyor;
+ * üstüne bir de klavye yüksekliği eklenince şerit havaya çıkıyordu.
  *
- * Süre kritik olduğu için bu bir süsleme değil: görünmeyen bir geri alma
- * penceresi, olmayan bir geri alma penceresidir.
+ * Formül kendini düzeltiyor. Pencere tam küçülüyorsa örtüşme sıfır, hiç
+ * telafi yok. Hiç küçülmüyorsa örtüşme klavyenin tamamı, tam telafi. Arada
+ * kalan durumlarda da doğru sonuç çıkıyor.
+ *
+ * **Üçüncü parti klavye sorun değil:** `keyboardDidShow` klavyenin GERÇEK
+ * yüksekliğini bildiriyor — hangi klavye kurulu, kullanıcı ne kadar
+ * yükseltmiş, hepsi o sayıya yansıyor. Sabit bir sayı yazılmadığı sürece
+ * herkeste doğru çalışıyor.
+ *
+ * Şerit kaydırma alanının DIŞINDA ve ekranın dibine yapışık; bu bilinçli,
+ * çünkü içeride olsaydı kaydırınca kaçardı. Ama dışarıda olmak klavyeyi
+ * hesaba katmayı zorunlu kılıyor: görünmeyen bir geri alma penceresi,
+ * OLMAYAN bir geri alma penceresidir.
  */
-function useKlavyeYuksekligi(): number {
-  const [yukseklik, setYukseklik] = React.useState(0);
+export function useKlavyeOrtusu(): number {
+  const { height: pencere } = useWindowDimensions();
+  const [klavye, setKlavye] = React.useState(0);
+  /** Klavye KAPALIYKEN pencerenin yüksekliği — kıyas noktası bu. */
+  const tam = React.useRef(pencere);
+  if (klavye === 0 && pencere > tam.current) tam.current = pencere;
+
   React.useEffect(() => {
     const ac = Keyboard.addListener("keyboardDidShow",
-      (e) => setYukseklik(e.endCoordinates?.height ?? 0));
-    const kapa = Keyboard.addListener("keyboardDidHide", () => setYukseklik(0));
+      (e) => setKlavye(e.endCoordinates?.height ?? 0));
+    const kapa = Keyboard.addListener("keyboardDidHide", () => setKlavye(0));
     return () => { ac.remove(); kapa.remove(); };
   }, []);
-  return yukseklik;
+
+  if (klavye <= 0) return 0;
+  /* ÖRTÜŞEN KISIM = klavye − pencerenin zaten kısaldığı kadar.
+     Android `adjustResize` ile pencereyi kendisi küçültüyorsa telafiye hiç
+     gerek yok; küçültmüyorsa tam telafi gerekiyor. Formül ikisini de
+     kendiliğinden veriyor ve arada kalan durumlarda da doğru sonuç üretiyor. */
+  return Math.max(0, klavye - Math.max(0, tam.current - pencere));
 }
 
 export function GeriAlSeridi({
@@ -1136,7 +1174,7 @@ export function GeriAlSeridi({
   gorunur: boolean; metin: string; onGeriAl: () => void;
   alt?: number; testID?: string;
 }) {
-  const klavye = useKlavyeYuksekligi();
+  const klavye = useKlavyeOrtusu();
   if (!gorunur) return null;
   /* Klavye açıkken şerit onun ÜSTÜNE çıkıyor. Klavye kapalıyken `klavye`
      sıfır, yani eski davranış birebir korunuyor. */

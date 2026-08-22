@@ -14,7 +14,7 @@ import {
   ScreenHeader, Sheet, Chip, MerchantBadge, SplitPicker, splitAll, formatEUR, todayISO,
   CategoryIcon, AnchorMenu, MenuSatir, useSikMarketler, marketIpucu,
   type Split, type MenuTutamak,
-  OdesmeUyarisi,
+  OdesmeUyarisi, useKlavyeOrtusu,
 } from "@/src/ui";
 import {
   colors, spacing, radius, type as T, overline, fontFamily, CATEGORY_LABEL_TR,
@@ -53,6 +53,7 @@ export default function Manual() {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const { members, household } = useHousehold();
+  const klavye = useKlavyeOrtusu();
   const [amount, setAmount] = useState("");
   const [quantity, setQuantity] = useState("1");
   const [title, setTitle] = useState("");
@@ -174,7 +175,10 @@ export default function Manual() {
                             style={{ flex: 1 }}>
         {/* Başlık kaydırma alanının içinde; alttaki Kaydet çubuğu sabit kalıyor.
             Tutar koyu alanda: ekranın tek büyük rakamı, kart içinde değil. */}
-        <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.page}
+        {/* Klavye payı — gerekçesi `useScrollPad` içinde yazılı. Bu ekran o
+            kancayı kullanmıyor (kendi tam ekran düzeni var), pay elle. */}
+        <ScrollView style={{ flex: 1 }}
+                    contentContainerStyle={[styles.page, { paddingBottom: klavye }]}
                     keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         <ScreenHeader
           size="l"

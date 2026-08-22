@@ -4,7 +4,7 @@
  *  Kalem bazlı bölüşüm fişin doğasından geliyor: aynı fişte domates herkese,
  *  yumurta iki kişiye ait olabilir. Aynı kişilerin bölüştüğü kalemler
  *  kaydederken tek harcamada toplanıyor. */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   View, Text, StyleSheet, ScrollView, TextInput, Pressable,
   KeyboardAvoidingView, Platform, ActivityIndicator, Alert, Keyboard,
@@ -21,7 +21,7 @@ import {
   todayISO, nextUnit, UnitPicker, HintCard, SplitPicker, splitAll, splitSummary,
   BottomSheet, Divider, type Split,
   useSikMarketler, marketIpucu,
-  OdesmeUyarisi,
+  OdesmeUyarisi, useKlavyeOrtusu,
 } from "@/src/ui";
 import {
   colors, spacing, radius, type as T, overline, fontFamily, CATEGORY_ICONS, CATEGORY_LABEL_TR,
@@ -110,6 +110,8 @@ export default function Review() {
    * gerçekti. Yazarken çubuğu hiç göstermemek, hem yanlış okumayı hem de
    * listeden çalınan yeri ortadan kaldırıyor.
    */
+  const kaydirmaRef = useRef<ScrollView>(null);
+  const klavye = useKlavyeOrtusu();
   const [klavyeAcik, setKlavyeAcik] = useState(false);
   useEffect(() => {
     const ac = Keyboard.addListener("keyboardDidShow", () => setKlavyeAcik(true));
@@ -190,6 +192,11 @@ export default function Review() {
     setRows((rs) => [...rs, { name: "", price: "0,00", quantity: "1", unit: "adet", category: "diger", generic: null, split: bulkSplit }]);
     // Ekleme ÖNCESİ uzunluk, yeni satırın indeksi.
     setAcikSatir(rows.length);
+    /* Ve yeni satırı GÖRÜNÜR yap. Açık gelmesi tek başına yetmiyordu: satır
+       listenin en altında doğuyor ve ekranın alt kenarında yarım kalıyor.
+       Çizim bittikten sonra kaydırıyoruz — hemen çağırınca liste henüz
+       uzamamış oluyor ve kaydırma boşa gidiyor. */
+    setTimeout(() => kaydirmaRef.current?.scrollToEnd({ animated: true }), 60);
   };
 
   const applyBulk = (sp: Split) => {
@@ -393,7 +400,16 @@ export default function Review() {
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined}
                             style={{ flex: 1 }}>
         {/* Başlık kaydırma alanının içinde; alttaki Kaydet çubuğu sabit kalıyor. */}
-        <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.page}
+        {/* KLAVYE PAYI: klavye açıkken kaydırma alanının altına onun ÖRTTÜĞÜ
+            kadar boşluk ekleniyor. Ev sahibi yakaladı: market adını
+            düzenlerken kutu klavyenin altında kalıyor ve ancak listeyi
+            kaydırarak görünüyor — kalem sayısı azsa kaydıracak yer de yok,
+            yani kutu erişilemez hâle geliyordu.
+
+            Kutuyu zorla yukarı FIRLATMIYORUZ (ev sahibinin isteği): yalnızca
+            aşağıda yer açıyoruz, kaydırmayı işletim sistemi zaten yapıyor. */}
+        <ScrollView ref={kaydirmaRef} style={{ flex: 1 }}
+                    contentContainerStyle={[styles.page, { paddingBottom: klavye }]}
                     keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         {/* Sag ustteki rozet kaldirildi: ayni bilgi baslikta ("Fis 1 / 2") ve
             altindaki ilerleme cizgilerinde zaten iki kez duruyordu. */}
@@ -464,7 +480,7 @@ export default function Review() {
               bilgi metin değil RENK: "bu marketi tanıdım". O bilgi simgenin
               rengine taşındı, hem yer kaplamıyor hem aynı şeyi söylüyor. */}
           <View style={styles.metaCard}>
-            <View style={[styles.metaField, { flex: 2 }]}>
+            <View style={[styles.metaField, { flex: 3 }]}>
               <View style={styles.metaLabelRow}>
                 <Ionicons name="storefront" size={14}
                           color={merchant ? merchantColor(merchant) : colors.inkSecondary} />

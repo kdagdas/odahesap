@@ -22,6 +22,7 @@ import { useHousehold } from "@/src/household";
 import {
   ScreenHeader, Sheet, Card, Divider, Chip, SplitPicker, splitAll,
   BottomSheet, TabSwitch, HintCard, formatEUR, todayISO, useScrollPad, type Split,
+  useKlavyeOrtusu,
 } from "@/src/ui";
 import {
   colors, spacing, radius, type as T, overline, fontFamily,
@@ -360,9 +361,17 @@ function EditSheet({
     );
   };
 
+  const klavye = useKlavyeOrtusu();
+
   return (
     <BottomSheet visible onClose={onClose}>
-            <ScrollView keyboardShouldPersistTaps="handled" style={{ maxHeight: 520 }}>
+            {/* KLAVYE PAYI — fiş ekranındaki ile aynı gerekçe. Ev sahibi
+                burada da yakaladı: alan klavyenin altında kalıyor ve ancak
+                kaydırarak görünüyor. Alt sayfa kısa olduğunda kaydıracak yer
+                de kalmıyor. Aşağıda yer açıyoruz, kutuyu zorla yukarı
+                fırlatmıyoruz. */}
+            <ScrollView keyboardShouldPersistTaps="handled" style={{ maxHeight: 520 }}
+                        contentContainerStyle={{ paddingBottom: klavye }}>
               <Text style={[overline, styles.sheetTitle]}>
                 {value ? "DÜZENLİ ÖDEMEYİ DÜZENLE" : "YENİ DÜZENLİ ÖDEME"}
               </Text>
