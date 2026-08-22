@@ -1930,7 +1930,19 @@ export function BottomSheet({
        titreme birakiyordu. Dogrusu karartmanin YERINDE durup sonumlenmesi,
        yalnizca sayfanin kaymasi. Ikisi de asagida elle yapiliyor. */
     <Modal
-      visible={visible} transparent animationType="none" onRequestClose={onClose}
+      visible={visible} transparent animationType="none"
+      /* GERİ TUŞU BURADAN GEÇİYOR, `BackHandler`dan DEĞİL.
+         Android'de açık bir `Modal` varken donanım geri tuşu doğrudan
+         `onRequestClose`u tetikliyor ve BackHandler dinleyicilerini ATLIYOR.
+         Önceki denemede kontrol `SheetBody` içindeki dinleyiciye konmuştu ve
+         cihazda hiç çalışmadı — mantık doğruydu, dinleyen yer yanlıştı.
+
+         Klavye açıkken önce o kapanıyor, sayfa duruyor. Aksi hâlde ad
+         yazarken geri tuşuna basan kişi bütün formu kaybediyor. */
+      onRequestClose={() => {
+        if (klavyeAcikModal.current) { Keyboard.dismiss(); return; }
+        onClose();
+      }}
       statusBarTranslucent navigationBarTranslucent
     >
       {/* Modal'in ICERIGI kendi `GestureHandlerRootView`'una sariliyor.
