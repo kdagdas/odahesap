@@ -1000,12 +1000,6 @@ export default function Denge() {
                             Ama asıl yol yukarıdaki köprülerin koyu "Öde"
                             düğmeleri; bu, toplu bir kısayol. İkincil olan
                             ikincil görünmeli. */}
-                        <PrimaryButton label="Ödeştik" icon="checkmark-done"
-                                       onPress={() => setMode("close")}
-                                       tone="muted" testID="close-period-btn" />
-                        <PrimaryButton label="Ödeştik" icon="checkmark-done"
-                                       onPress={() => setMode("close")}
-                                       tone="muted" testID="close-period-btn" />
                         {/* SON ÖDEŞMEDEN BU YANA EVİN TOPLAMI — kararın
                             alındığı yerde.
 
@@ -1027,6 +1021,9 @@ export default function Denge() {
                             Son ödeşmeden bu yana ev {formatEUR(ekstre.ev_toplam)} harcadı
                           </Text>
                         )}
+                        <PrimaryButton label="Ödeştik" icon="checkmark-done"
+                                       onPress={() => setMode("close")}
+                                       tone="muted" testID="close-period-btn" />
                         <Text style={styles.footNote}>
                           {ordered.length === 1
                             ? "Kalan borç ödenmiş olarak kaydedilir"
