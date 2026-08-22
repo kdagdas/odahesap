@@ -17,7 +17,7 @@ import { popNext, remaining, totalCount, currentIndex, clearQueue } from "@/src/
 import { useAuth } from "@/src/auth";
 import { useHousehold } from "@/src/household";
 import {
-  CategoryPicker, CategoryIcon, MerchantBadge, ScreenHeader, formatEUR, formatDateTR,
+  CategoryPicker, CategoryIcon, ScreenHeader, formatEUR, formatDateTR,
   todayISO, nextUnit, UnitPicker, HintCard, SplitPicker, splitAll, splitSummary,
   BottomSheet, Divider, type Split,
   useSikMarketler, marketIpucu,
@@ -25,7 +25,7 @@ import {
 } from "@/src/ui";
 import {
   colors, spacing, radius, type as T, overline, fontFamily, CATEGORY_ICONS, CATEGORY_LABEL_TR,
-  marketKisaAd,
+  marketKisaAd, merchantColor,
 } from "@/src/theme";
 
 /** `generic`: fişteki ad ile ürünün NE olduğu farklı şeyler — fiş
@@ -452,25 +452,34 @@ export default function Review() {
               </Pressable>
             </View>
           )}
+          {/* MARKET VE TARİH YAN YANA.
+              Alt alta iki alan, 6 kalemlik bir fişte tek bir kalemi bile
+              görünmez yapıyordu — ekranın tepesinde iki bant üstelik. Tarih
+              hep 10 karakter, market ise uzun olabiliyor; oran 2:1.
+
+              MARKET ROZETİ KALKTI, RENGİ ETİKETİN SİMGESİNE TAŞINDI.
+              Rozet kutunun HEMEN YANINDA aynı adı tekrar yazıyordu ("Market:
+              ROSSMANN" ve yanında "ROSSMANN") — uygulamanın kendi kuralı
+              aynı şeyi iki yerde söylemeyi yasaklıyor. Rozetin taşıdığı asıl
+              bilgi metin değil RENK: "bu marketi tanıdım". O bilgi simgenin
+              rengine taşındı, hem yer kaplamıyor hem aynı şeyi söylüyor. */}
           <View style={styles.metaCard}>
-            <View style={styles.metaField}>
+            <View style={[styles.metaField, { flex: 2 }]}>
               <View style={styles.metaLabelRow}>
-                <Ionicons name="storefront-outline" size={14} color={colors.inkSecondary} />
+                <Ionicons name="storefront" size={14}
+                          color={merchant ? merchantColor(merchant) : colors.inkSecondary} />
                 <Text style={styles.metaLabel}>Market</Text>
               </View>
-              <View style={styles.metaInputRow}>
-                <TextInput
-                  style={styles.metaInput}
-                  value={merchant}
-                  onChangeText={setMerchant}
-                  placeholder={marketIpucu(sikMarketler)}
-                  placeholderTextColor={colors.onSurfaceTertiary}
-                  testID="review-merchant-input"
-                />
-                {merchant ? <MerchantBadge name={merchant} /> : null}
-              </View>
+              <TextInput
+                style={styles.metaInput}
+                value={merchant}
+                onChangeText={setMerchant}
+                placeholder={marketIpucu(sikMarketler)}
+                placeholderTextColor={colors.onSurfaceTertiary}
+                testID="review-merchant-input"
+              />
             </View>
-            <View style={styles.metaField}>
+            <View style={[styles.metaField, { flex: 1 }]}>
               <View style={styles.metaLabelRow}>
                 <Ionicons name="calendar-outline" size={14} color={colors.inkSecondary} />
                 <Text style={styles.metaLabel}>Tarih</Text>
@@ -892,13 +901,14 @@ const styles = StyleSheet.create({
   metaCard: {
     backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.lg,
     gap: spacing.md, borderWidth: 1, borderColor: colors.border,
+    // Yan yana: alt alta iki alan ekranin tepesinden bir satir fazla yiyordu.
+    flexDirection: "row", alignItems: "flex-start",
   },
   metaField: { gap: spacing.xs },
   metaLabelRow: { flexDirection: "row", alignItems: "center", gap: 5 },
   metaLabel: { ...overline },
-  metaInputRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   metaInput: {
-    flex: 1, backgroundColor: colors.surfaceSecondary, borderRadius: radius.md,
+    backgroundColor: colors.surfaceSecondary, borderRadius: radius.md,
     paddingHorizontal: spacing.md, paddingVertical: spacing.sm, minHeight: 46,
     ...T.body, color: colors.ink,
   },
