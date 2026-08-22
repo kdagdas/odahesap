@@ -9,7 +9,7 @@
  *  sayede "Onayla" ve "Düzenle" tek şeye indi: karta dokunmak zaten dolu
  *  gelen sayfayı açıyor, sabit tutarda tek dokunuş yetiyor.
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   View, Text, StyleSheet, ScrollView, Pressable, TextInput,
   ActivityIndicator, Alert, Platform,
@@ -318,6 +318,26 @@ function EditSheet({
   const [day, setDay] = useState(String(value?.day_of_month || 1));
   const [fixed, setFixed] = useState(value?.amount_fixed ?? true);
   const [category, setCategory] = useState(value?.category || "");
+  /* KATEGORİ KENDİLİĞİNDEN DOLUYOR — ama yalnızca ad onu SÖYLEDİĞİNDE.
+     Ev sahibinin gözlemi: "Elektrik" yazıp "Elektrik" çipine basmak ikinci
+     bir dokunuş ve hiçbir bilgi eklemiyor. Ölçtük ve haklı çıktı — kayıtlı
+     altı giderin üçünde kategori adın birebir kopyasıydı, birinde hiç
+     doldurulmamıştı.
+
+     Ama alanı KALDIRMAK da yanlış olurdu: işe yaradığı iki durumda da ad bir
+     MARKAYDI ("Süperonline" → İnternet, "Bre Bike" → Abonelik). Bu, fişteki
+     ham ad / genel ad ayrımının aynısı; alan tam da orada değerli.
+
+     Çözüm bu yüzden fişteki kalıbın aynısı: ad kategoriyi söylüyorsa kendi
+     dolsun, söylemiyorsa sorsun. Kullanıcı bir kez elle seçtiyse bir daha
+     karışmıyoruz — otomatik doldurma, elle verilen kararı ezmemeli. */
+  const elleSecildi = useRef(!!value?.category);
+  useEffect(() => {
+    if (elleSecildi.current) return;
+    const sadele = (t: string) => t.trim().toLocaleLowerCase("tr");
+    const eslesen = SUGGESTED.find((t) => sadele(t) === sadele(name));
+    setCategory(eslesen ?? "");
+  }, [name]);
   const [split, setSplit] = useState<Split>(
     value ? { mode: value.split_mode, with: { ...value.split_with } } : { mode: "equal", with: {} }
   );
@@ -448,7 +468,11 @@ function EditSheet({
                           contentContainerStyle={styles.chipRow}>
                 {SUGGESTED.map((t) => (
                   <Chip key={t} label={t} active={category === t}
-                        onPress={() => setCategory(category === t ? "" : t)}
+                        onPress={() => {
+                          // Elle seçim otomatik doldurmayı kapatıyor.
+                          elleSecildi.current = true;
+                          setCategory(category === t ? "" : t);
+                        }}
                         testID={`duzenli-cat-${t}`} />
                 ))}
               </ScrollView>

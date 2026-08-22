@@ -14,6 +14,9 @@ import {
 } from "react-native";
 import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+/* Açılma geçişleri: gerekçesi `liste.tsx` içinde — `LayoutAnimation` Yeni
+   Mimari'de çalışmıyor, Reanimated çalışıyor. */
+import Animated, { LinearTransition, FadeIn, FadeOut } from "react-native-reanimated";
 import { useAuth } from "@/src/auth";
 import { useHousehold } from "@/src/household";
 import { apiPost, apiGet, api } from "@/src/api";
@@ -235,8 +238,15 @@ export default function Profil() {
                 <Ionicons name={hesapAcik ? "chevron-up" : "chevron-down"} size={20}
                           color={colors.inkTertiary} />
               </Pressable>
+              {/* AÇILMA ARTIK GÖRÜNÜYOR. Önce üç satır bir anda beliriyordu ve
+                  altındaki her şey sıçrıyordu; hangi satırın nereden geldiği
+                  görünmüyordu. Süre listedekiyle aynı (200/180/140) — aynı
+                  jest her ekranda aynı hızda olmalı, yoksa uygulama farklı
+                  yerlerde farklı hissettiriyor. */}
               {hesapAcik && (
-              <>
+              <Animated.View layout={LinearTransition.duration(200)}
+                             entering={FadeIn.duration(180)}
+                             exiting={FadeOut.duration(140)}>
               {([
                 { key: "name", label: "Adını değiştir", value: user?.name, icon: "person-outline" },
                 { key: "email", label: "E-postanı değiştir", value: user?.email, icon: "mail-outline" },
@@ -310,7 +320,7 @@ export default function Profil() {
                   )}
                 </View>
               ))}
-              </>
+              </Animated.View>
               )}
             </Card>
 

@@ -11,6 +11,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 
 import { apiGet, apiPost, apiDelete } from "@/src/api";
+/* Açılma geçişleri: gerekçesi `liste.tsx` içinde. */
+import Animated, { LinearTransition, FadeIn, FadeOut } from "react-native-reanimated";
 import { useAuth } from "@/src/auth";
 import { useHousehold } from "@/src/household";
 import {
@@ -711,7 +713,15 @@ export default function Denge() {
                 {/* AÇILIM — kavisin hemen altında, dokunulan satırın karşılığı.
                     Kartın ilk sırada olması bilinçli: yukarıda dokunulan
                     satır ile arasında başka hiçbir şey yok. */}
+                {/* AÇILIM KAYARAK GELİYOR. Ekstre satırına dokununca kart bir
+                    anda beliriyor ve altındaki her şey sıçrıyordu — Kasa'da
+                    açılan içerik uzun olduğu için sıçrama da büyüktü.
+                    Süreler listedekiyle aynı; aynı jest her ekranda aynı
+                    hızda olmalı. */}
                 {acikSatir && ekstre && (
+                  <Animated.View layout={LinearTransition.duration(200)}
+                                 entering={FadeIn.duration(180)}
+                                 exiting={FadeOut.duration(140)}>
                   <Card title={acilimBaslik} style={styles.mx}
                         action="Kapat" onAction={() => setAcikSatir(null)}
                         testID="ekstre-acilim">
@@ -744,9 +754,12 @@ export default function Denge() {
                                       size={14} color={colors.onSurfaceTertiary} />
                           </Pressable>
                           {acikAy === a.month && (
-                            <View style={styles.hareketler}>
+                            <Animated.View style={styles.hareketler}
+                                           layout={LinearTransition.duration(200)}
+                                           entering={FadeIn.duration(180)}
+                                           exiting={FadeOut.duration(140)}>
                               {(a.lines || []).map((l) => hareketSatiri(l, a.month))}
-                            </View>
+                            </Animated.View>
                           )}
                         </View>
                       ))
@@ -763,6 +776,7 @@ export default function Denge() {
                       )
                     )}
                   </Card>
+                  </Animated.View>
                 )}
 
                 {archived && (
